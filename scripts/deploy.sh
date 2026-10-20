@@ -4,7 +4,7 @@
 #   ./scripts/deploy.sh
 #
 # Optional environment variables:
-#   SENDER_EMAIL          SES-verified From address, default: noreply@<APP_DOMAIN>
+#   SENDER_EMAIL          SES-verified From address; remembered after the first deploy, else noreply@<APP_DOMAIN>
 #   AWS_REGION            default: us-east-2 (use the region where your SES identity is verified)
 #   AWS_PROFILE           AWS CLI profile to use
 #   STACK_NAME            default: occasion-address-book
@@ -53,6 +53,8 @@ if [ -n "$APP_DOMAIN" ] && [ -z "$APP_CERT_ARN" ]; then
   exit 1
 fi
 
+# The sender is remembered too: a plain redeploy keeps the address the stack already uses.
+SENDER_EMAIL="${SENDER_EMAIL:-$(current_param SenderEmail)}"
 SENDER_EMAIL="${SENDER_EMAIL:-${APP_DOMAIN:+noreply@$APP_DOMAIN}}"
 if [ -z "$SENDER_EMAIL" ]; then
   echo "Set SENDER_EMAIL to an SES-verified address (or set APP_DOMAIN to send from noreply@<domain>)." >&2
