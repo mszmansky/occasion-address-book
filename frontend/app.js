@@ -1,4 +1,4 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createAuth } from './auth.js';
 import {
   addressLines, buildEnvelopes, buildLabels, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES,
 } from './print-core.js';
@@ -10,20 +10,25 @@ const modal = document.getElementById('modal');
 const toastEl = document.getElementById('toast');
 const APP_NAME = 'Occasion Address Book';
 
-if (!cfg.apiUrl || !cfg.supabaseUrl || !cfg.supabaseKey) {
+if (!cfg.apiUrl || !cfg.region || !cfg.userPoolId || !cfg.userPoolClientId) {
   root.innerHTML = '<p class="boot">Missing config.js. Run scripts/deploy.sh, or copy config.example.js to config.js for local testing.</p>';
   throw new Error('APP_CONFIG missing');
 }
 
-const supabase = createClient(cfg.supabaseUrl, cfg.supabaseKey, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-});
+// Amazon Cognito, called straight from the browser (auth.js); accounts are by invitation.
+const auth = createAuth(cfg);
+
+const REMEMBER_KEY = 'oab.email';
+const rememberedEmail = () => { try { return localStorage.getItem(REMEMBER_KEY) || ''; } catch { return ''; } };
+function rememberEmail(email) {
+  try { if (email) localStorage.setItem(REMEMBER_KEY, email); else localStorage.removeItem(REMEMBER_KEY); } catch { /* storage blocked */ }
+}
 
 const KIND_LABEL = { card: 'Cards', invite: 'Invitation', other: 'Other' };
 const INVITE_BATCH = 25;
 
 const state = {
-  session: null, recovery: false, authMode: 'signin', authMsg: '', authErr: '',
+  session: null, authMode: 'signin', authMsg: '', authErr: '', authEmail: rememberedEmail(),
   me: null, households: [], occasions: [], loading: true,
   view: 'people',                 // 'people' | 'occasions'
   occasionId: null, occ: null,    // open occasion: { occasion, tags }
@@ -54,8 +59,9 @@ function toast(msg, isErr = false) {
 }
 
 async function api(path, { method = 'GET', body } = {}) {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const session = await auth.getSession();
+  if (!session) throw new Error('Please sign in again');
+  const token = session.idToken; // the API checks Cognito ID tokens (they carry the email)
   const res = await fetch(`${cfg.apiUrl.replace(/\/$/, '')}${path}`, {
     method,
     headers: { authorization: `Bearer ${token}`, ...(body ? { 'content-type': 'application/json' } : {}) },
@@ -63,7 +69,7 @@ async function api(path, { method = 'GET', body } = {}) {
   });
   const json = res.status === 204 ? null : await res.json().catch(() => ({}));
   if (res.status === 401) {
-    await supabase.auth.signOut();
+    await auth.signOut();
     throw new Error(json?.error ?? 'Please sign in again');
   }
   if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
@@ -76,56 +82,93 @@ async function withBusy(btn, fn) {
 }
 
 // ---------- auth ----------
+const AUTH_TITLES = {
+  signin: ['Sign in', 'Keep addresses up to date and print labels and envelopes for every occasion.'],
+  mfa: ['Two-step verification', 'Enter the 6-digit code from your authenticator app.'],
+  newpassword: ['Choose your password', 'Welcome! Choose the password you\'ll use from now on (at least 8 characters).'],
+  reset: ['Reset password', 'We\'ll email you a code to set a new password.'],
+  resetcode: ['Enter your code', 'Check your email for a 6-digit code, then choose a new password.'],
+};
+
 function renderAuth() {
-  const m = state.recovery ? 'newpassword' : state.authMode;
-  const titles = {
-    signin: ['Sign in', 'Keep addresses up to date and print labels and envelopes for every occasion.'],
-    signup: ['Create account', 'You\'ll get an email to confirm your address.'],
-    reset: ['Reset password', 'We\'ll email you a link to set a new password.'],
-    newpassword: ['Choose a new password', ''],
+  const m = AUTH_TITLES[state.authMode] ? state.authMode : 'signin';
+  const field = {
+    email: `<label>Email<input type="email" name="email" autocomplete="username" value="${val(state.authEmail)}" required></label>`,
+    password: '<label>Password<input type="password" name="password" autocomplete="current-password" required></label>',
+    newPassword: '<label>New password<input type="password" name="password" minlength="8" autocomplete="new-password" required></label>'
+      + '<label>Confirm new password<input type="password" name="confirmPassword" minlength="8" autocomplete="new-password" required></label>',
+    code: '<label>Code<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required class="mono code-input"></label>',
   };
+  const fields = {
+    signin: field.email + field.password
+      + `<label class="check"><input type="checkbox" name="remember" ${rememberedEmail() ? 'checked' : ''}> Remember my email on this device</label>`,
+    mfa: field.code,
+    newpassword: field.newPassword,
+    reset: field.email,
+    resetcode: field.code + field.newPassword,
+  }[m];
+  const button = { signin: 'Sign in', mfa: 'Verify', newpassword: 'Save password', reset: 'Email me a code', resetcode: 'Save new password' }[m];
+  const links = m === 'signin'
+    ? '<button class="link" data-action="auth-mode" data-mode="reset">Forgot password?</button>'
+    : '<button class="link" data-action="auth-mode" data-mode="signin">Back to sign in</button>';
   root.innerHTML = `
   <main class="auth"><div class="auth-card">
     <div class="brand">${LOGO}<span>${APP_NAME}</span></div>
-    <h1>${titles[m][0]}</h1>
-    <p class="muted small" style="margin:0">${titles[m][1]}</p>
+    <h1>${AUTH_TITLES[m][0]}</h1>
+    <p class="muted small" style="margin:0">${AUTH_TITLES[m][1]}</p>
     <form data-form="auth" data-mode="${m}" class="stack">
-      ${m !== 'newpassword' ? '<label>Email<input type="email" name="email" autocomplete="email" required></label>' : ''}
-      ${m !== 'reset' ? `<label>Password<input type="password" name="password" minlength="8" autocomplete="${m === 'signin' ? 'current-password' : 'new-password'}" required></label>` : ''}
+      ${fields}
       ${state.authErr ? `<p class="error">${esc(state.authErr)}</p>` : ''}
       ${state.authMsg ? `<p class="small" style="color:var(--ok)">${esc(state.authMsg)}</p>` : ''}
-      <button class="btn primary" type="submit">${{ signin: 'Sign in', signup: 'Create account', reset: 'Send reset link', newpassword: 'Save password' }[m]}</button>
+      <button class="btn primary" type="submit">${button}</button>
     </form>
-    ${m === 'newpassword' ? '' : `<div class="auth-links">
-      ${m === 'signin' ? '<button class="link" data-action="auth-mode" data-mode="signup">Create account</button><button class="link" data-action="auth-mode" data-mode="reset">Forgot password?</button>'
-        : '<button class="link" data-action="auth-mode" data-mode="signin">Back to sign in</button>'}
-    </div>`}
+    <div class="auth-links">${links}</div>
+    ${m === 'signin' ? '<p class="small muted" style="margin:14px 0 0">Accounts are by invitation. Got an invitation email? Sign in with your email and the temporary password in it.</p>' : ''}
   </div></main>`;
+  const first = root.querySelector('form input');
+  (m === 'signin' && first?.value ? root.querySelector('[name=password]') : first)?.focus();
 }
 
 async function submitAuth(form) {
-  const email = form.email?.value.trim();
-  const password = form.password?.value;
+  const d = Object.fromEntries([...form.elements].filter((el) => el.name && el.type !== 'checkbox').map((el) => [el.name, el.value.trim()]));
   const mode = form.dataset.mode;
   state.authErr = ''; state.authMsg = '';
-  form.querySelector('button[type=submit]').disabled = true;
+  const btn = form.querySelector('button[type=submit]');
+  btn.disabled = true;
+  const go = (res) => {
+    if (res?.step === 'mfa') state.authMode = 'mfa';
+    if (res?.step === 'new_password') state.authMode = 'newpassword';
+    return res?.done; // signed in: auth.onChange takes over
+  };
   try {
-    let res;
-    if (mode === 'signin') res = await supabase.auth.signInWithPassword({ email, password });
-    else if (mode === 'signup') {
-      res = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: location.origin } });
-      if (!res.error) { state.authMsg = 'Check your email to confirm your account, then sign in.'; state.authMode = 'signin'; }
-    } else if (mode === 'reset') {
-      res = await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.origin });
-      if (!res.error) state.authMsg = 'If that email has an account, a reset link is on its way.';
-    } else if (mode === 'newpassword') {
-      res = await supabase.auth.updateUser({ password });
-      if (!res.error) { state.recovery = false; toast('Password updated'); setTimeout(loadAll, 0); return; }
+    if ((mode === 'newpassword' || mode === 'resetcode') && d.password !== d.confirmPassword) {
+      throw new Error("The passwords don't match. Type them again.");
     }
-    if (res?.error) state.authErr = res.error.message;
+    if (mode === 'signin') {
+      state.authEmail = d.email;
+      rememberEmail(form.elements.remember?.checked ? d.email : '');
+      if (go(await auth.signIn(d.email, form.elements.password.value))) return;
+    } else if (mode === 'mfa') {
+      if (go(await auth.answerMfa(d.code.replace(/\s/g, '')))) return;
+    } else if (mode === 'newpassword') {
+      if (go(await auth.setNewPassword(form.elements.password.value))) return;
+    } else if (mode === 'reset') {
+      state.authEmail = d.email;
+      await auth.forgotPassword(d.email);
+      state.authMode = 'resetcode';
+      state.authMsg = `If ${d.email} has an account, a code is on its way.`;
+    } else if (mode === 'resetcode') {
+      await auth.confirmForgotPassword(state.authEmail, d.code.replace(/\s/g, ''), form.elements.password.value);
+      state.authMode = 'signin';
+      state.authMsg = 'Password changed. Sign in with your new password.';
+    }
+  } catch (e) {
+    state.authErr = e.message;
+    if (/sign in again/i.test(e.message)) state.authMode = 'signin';
   } finally {
-    if (!state.session || state.recovery || state.authErr || state.authMsg) renderAuth();
+    btn.disabled = false;
   }
+  if (!state.session) renderAuth();
 }
 
 // ---------- data ----------
@@ -156,7 +199,7 @@ function upsertHousehold(h) {
 
 // ---------- layout ----------
 function render() {
-  if (!state.session || state.recovery) return renderAuth();
+  if (!state.session) return renderAuth();
   const email = state.session.user?.email ?? '';
   const pending = state.households.filter((h) => h.pendingUpdate).length;
   root.innerHTML = `
@@ -839,6 +882,13 @@ function settingsModal() {
       </div>
       <div class="row-gap"><button type="button" class="btn sm" data-action="align-test" data-what="labels">Label alignment page</button>
       <button type="button" class="btn sm" data-action="align-test" data-what="envelopes">Envelope alignment page</button></div>
+    </fieldset>
+    <fieldset><legend>Change password</legend>
+      <div class="grid-2">
+        <label>Current password<input type="password" name="currentPassword" autocomplete="current-password"></label>
+        <label>New password <span class="muted">(at least 8 characters)</span><input type="password" name="newPassword" minlength="8" autocomplete="new-password"></label>
+      </div>
+      <div class="row-gap" style="justify-content:flex-start"><button type="button" class="btn sm" data-action="change-password">Change password</button></div>
     </fieldset>`, {
     form: 'settings',
     wide: true,
@@ -876,9 +926,9 @@ document.addEventListener('click', async (e) => {
   if (!el) return;
   const { action, id } = el.dataset;
   switch (action) {
-    case 'auth-mode': state.authMode = el.dataset.mode; state.authErr = ''; state.authMsg = ''; renderAuth(); break;
+    case 'auth-mode': auth.cancelSignIn(); state.authMode = el.dataset.mode; state.authErr = ''; state.authMsg = ''; renderAuth(); break;
     case 'toggle-user-menu': setUserMenu(document.getElementById('user-menu-list').hidden); break;
-    case 'signout': await supabase.auth.signOut(); break;
+    case 'signout': await auth.signOut(); break;
     case 'close': closeModal(); break;
     case 'view':
       state.view = el.dataset.view;
@@ -888,6 +938,17 @@ document.addEventListener('click', async (e) => {
       break;
     case 'settings': setUserMenu(false); settingsModal(); break;
     case 'align-test': await withBusy(el, () => alignTest(el.dataset.what)); break;
+    case 'change-password': {
+      const f = modal.querySelector('form').elements;
+      if (!f.currentPassword.value || f.newPassword.value.length < 8) { modalError('Enter your current password and a new one of at least 8 characters.'); break; }
+      await withBusy(el, async () => {
+        await auth.changePassword(f.currentPassword.value, f.newPassword.value);
+        f.currentPassword.value = ''; f.newPassword.value = '';
+        modalError('');
+        toast('Password changed');
+      });
+      break;
+    }
     // address book
     case 'add-household': householdModal(); break;
     case 'edit-household': householdModal(hhById().get(id)); break;
@@ -1034,15 +1095,15 @@ document.addEventListener('submit', async (e) => {
 
 modal.addEventListener('close', () => { modal.innerHTML = ''; });
 
-supabase.auth.onAuthStateChange((event, session) => {
+auth.onChange((event, session) => {
   const wasSignedIn = Boolean(state.session);
   state.session = session;
-  if (event === 'PASSWORD_RECOVERY') { state.recovery = true; return renderAuth(); }
   if (!session) {
     Object.assign(state, { me: null, households: [], occasions: [], occasionId: null, occ: null, view: 'people' });
     if (modal.open) modal.close();
+    if (wasSignedIn || event !== 'INITIAL_SESSION') state.authMode = 'signin';
     return renderAuth();
   }
-  if (!wasSignedIn && !state.recovery) setTimeout(loadAll, 0);
+  if (!wasSignedIn) { state.authMode = 'signin'; state.authErr = ''; setTimeout(loadAll, 0); }
   return undefined;
 });

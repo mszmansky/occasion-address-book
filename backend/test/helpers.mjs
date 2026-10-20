@@ -36,19 +36,23 @@ export function createFakeMailer({ failFor = [] } = {}) {
   };
 }
 
-export const SUPABASE_URL = 'https://example-ref.supabase.co';
+// Cognito-shaped ID tokens signed by a local key.
+export const REGION = 'us-east-2';
+export const USER_POOL_ID = 'us-east-2_TestPool';
+export const CLIENT_ID = 'test-client-id';
+export const ISSUER = `https://cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`;
 
 export async function createTokenFactory() {
-  const { publicKey, privateKey } = await generateKeyPair('ES256');
-  const jwk = { ...(await exportJWK(publicKey)), kid: 'test-key', alg: 'ES256' };
+  const { publicKey, privateKey } = await generateKeyPair('RS256');
+  const jwk = { ...(await exportJWK(publicKey)), kid: 'test-key', alg: 'RS256' };
   const jwks = createLocalJWKSet({ keys: [jwk] });
-  const sign = (claims = {}, { issuer = `${SUPABASE_URL}/auth/v1`, expiresIn = '1h' } = {}) => new SignJWT({
-    email: 'mike@example.com', role: 'authenticated', ...claims,
+  const sign = (claims = {}, { issuer = ISSUER, audience = CLIENT_ID, expiresIn = '1h' } = {}) => new SignJWT({
+    email: 'mike@example.com', email_verified: true, token_use: 'id', ...claims,
   })
-    .setProtectedHeader({ alg: 'ES256', kid: 'test-key' })
+    .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
     .setSubject(claims.sub ?? 'user-1')
     .setIssuer(issuer)
-    .setAudience('authenticated')
+    .setAudience(audience)
     .setIssuedAt()
     .setExpirationTime(expiresIn)
     .sign(privateKey);

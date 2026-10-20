@@ -4,13 +4,11 @@
 #   ./scripts/deploy.sh
 #
 # Optional environment variables:
-#   SUPABASE_URL          Supabase project URL (https://<ref>.supabase.co)           — required until filled in below
-#   SUPABASE_PUBLISHABLE_KEY  that project's publishable key (sb_publishable_...)   — required until filled in below
 #   SENDER_EMAIL          SES-verified From address, default: noreply@<APP_DOMAIN>
 #   AWS_REGION            default: us-east-2 (use the region where your SES identity is verified)
 #   AWS_PROFILE           AWS CLI profile to use
 #   STACK_NAME            default: occasion-address-book
-#   ALLOWED_EMAILS        comma-separated sign-in allow list, default * (any Supabase user)
+#   ALLOWED_EMAILS        comma-separated sign-in allow list, default * (anyone with an account)
 #   SES_CONFIGURATION_SET optional SES configuration set
 #   APP_DOMAIN            custom domain for the website, e.g. example-cards.com
 #   APP_ALT_DOMAIN        optional second domain, e.g. www.example-cards.com
@@ -22,13 +20,6 @@ cd "$(dirname "$0")/.."
 
 REGION="${AWS_REGION:-us-east-2}"
 STACK="${STACK_NAME:-occasion-address-book}"
-# Fill these in once the Supabase project exists so a plain ./scripts/deploy.sh works.
-SUPABASE_URL="${SUPABASE_URL:-}"
-SUPABASE_PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-}"
-if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
-  echo "Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY (Supabase > Project Settings > API Keys), or fill in the defaults in this script." >&2
-  exit 1
-fi
 ALLOWED_EMAILS="${ALLOWED_EMAILS:-*}"
 SES_CONFIGURATION_SET="${SES_CONFIGURATION_SET:-}"
 
@@ -73,14 +64,17 @@ ses_verified() {
   [ "$(aws sesv2 get-email-identity --region "$REGION" --email-identity "$1" \
     --query VerifiedForSendingStatus --output text 2>/dev/null)" = "True" ]
 }
-if ! ses_verified "$SENDER_EMAIL" && ! ses_verified "${SENDER_EMAIL#*@}"; then
+# Cognito sends its emails through the verified identity: the address itself, or its domain.
+if ses_verified "$SENDER_EMAIL"; then SES_IDENTITY="$SENDER_EMAIL"
+elif ses_verified "${SENDER_EMAIL#*@}"; then SES_IDENTITY="${SENDER_EMAIL#*@}"
+else
   echo "SES can't send from $SENDER_EMAIL in $REGION." >&2
   echo "Verify that address (or its domain) in the SES console for $REGION, or set AWS_REGION to the region where it's verified." >&2
   exit 1
 fi
 
 PARAMS=(
-  "SupabaseUrl=$SUPABASE_URL"
+  "SesIdentity=$SES_IDENTITY"
   "SenderEmail=$SENDER_EMAIL"
   "AllowedEmails=$ALLOWED_EMAILS"
 )
@@ -112,8 +106,9 @@ echo "==> Publishing website"
 cat > frontend/config.js <<EOF
 window.APP_CONFIG = {
   apiUrl: '${API_URL}',
-  supabaseUrl: '${SUPABASE_URL}',
-  supabaseKey: '${SUPABASE_PUBLISHABLE_KEY}',
+  region: '${REGION}',
+  userPoolId: '$(output UserPoolId)',
+  userPoolClientId: '$(output UserPoolClientId)',
 };
 EOF
 aws s3 sync frontend/ "s3://$BUCKET/" --region "$REGION" --delete \
@@ -126,10 +121,6 @@ Done.
   Website:  $APP_URL
   API:      $API_URL
 
-In Supabase (Authentication > URL Configuration) make sure:
-  Site URL:      $APP_URL
-  Redirect URLs: $APP_URL/**
+To invite someone (including yourself the first time):
+  ./scripts/invite-user.sh someone@example.com
 EOF
-if [ -n "$APP_DOMAIN" ]; then
-  echo "  (keep a Redirect URLs entry for every address you use, e.g. https://$APP_DOMAIN/**)"
-fi

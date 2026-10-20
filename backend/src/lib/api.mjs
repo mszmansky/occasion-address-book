@@ -1,5 +1,5 @@
 // HTTP API (API Gateway HTTP API, payload v2).
-// Every route needs a Supabase access token except /public/*, which serves the address-update
+// Every route needs a Cognito ID token except /public/*, which serves the address-update
 // page a household opens from its emailed link (the link's token is the credential there).
 
 import { createHash, randomBytes } from 'node:crypto';

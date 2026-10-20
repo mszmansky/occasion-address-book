@@ -120,3 +120,38 @@ ${update.unchanged ? 'Nothing needs to change.' : 'Open your address book to rev
 ${appUrl}`;
   return { subject, html, text };
 }
+
+/**
+ * Emails Cognito sends (invitation with a temporary password, password-reset code, email-change code),
+ * in the same style as the app's other emails. Cognito fills in the {####} code and {username} placeholders,
+ * so they must appear in the message exactly as given.
+ */
+export function buildCognitoMessage(triggerSource, { appUrl, codeParameter = '{####}', usernameParameter = '{username}' } = {}) {
+  const APP = 'Occasion Address Book';
+  const code = `<p style="margin:0 0 14px"><span style="display:inline-block;font:700 24px/1.2 'Courier New',Courier,monospace;letter-spacing:4px;background:#faf9f6;border:1px solid #e2dfd8;border-radius:6px;padding:10px 14px">${codeParameter}</span></p>`;
+  const p = (t) => `<p style="margin:0 0 14px">${t}</p>`;
+  const make = (subject, heading, inner, footer) => ({ subject, html: layout({ heading, inner, footer }) });
+  switch (triggerSource) {
+    case 'CustomMessage_AdminCreateUser':
+      return make(`You're invited to ${APP}`, `You're invited to ${APP}`,
+        p(`${APP} keeps your mailing list for cards and invitations, prints labels and envelopes, and emails invitations.`)
+        + p(`Sign in with <b>${usernameParameter}</b> and this temporary password:`)
+        + code
+        + p("You'll choose your own password when you first sign in. The temporary password works for 30 days.")
+        + (appUrl ? button(appUrl, `Open ${APP}`) : ''),
+        "If you weren't expecting this invitation, you can ignore this email.");
+    case 'CustomMessage_ForgotPassword':
+      return make(`Your ${APP} password reset code`, 'Reset your password',
+        p(`Enter this code in ${APP} to choose a new password:`) + code + p('The code expires in 1 hour.'),
+        "If you didn't ask to reset your password, you can ignore this email. Your password won't change.");
+    case 'CustomMessage_UpdateUserAttribute':
+    case 'CustomMessage_VerifyUserAttribute':
+      return make(`Confirm your new ${APP} email`, 'Confirm your new email address',
+        p(`Enter this code in ${APP} to make this your sign-in email:`) + code + p('The code expires in 24 hours. Until then, keep signing in with your current address.'),
+        "If you didn't ask to change your email, you can ignore this email.");
+    default: // sign-up and resend codes (sign-up is invite-only, but Cognito may still send these)
+      return make(`Your ${APP} verification code`, 'Your verification code',
+        p(`Enter this code in ${APP}:`) + code,
+        "If you didn't request this, you can ignore this email.");
+  }
+}

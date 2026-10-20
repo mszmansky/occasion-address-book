@@ -7,7 +7,7 @@ A small serverless web app that:
 - emails **invitations**;
 - emails people a private link to **confirm or update their address**.
 
-Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses Supabase Auth. The architecture is the same as the Vehicle Maintenance Tracker.
+Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses Amazon Cognito (accounts by invitation). The architecture is the same as the Vehicle Maintenance Tracker.
 
 ## What it does
 
@@ -34,12 +34,13 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses S
 ## Architecture
 
 ```
-Browser ── Supabase Auth (sign-in, issues ES256 access tokens)
+Browser ── Cognito user pool (sign-in from the browser, no SDK: frontend/auth.js)
+   │            └─ "custom message" Lambda: invitation / reset emails in the app's style, sent through SES
    │
    ├── CloudFront ── S3 (static site: frontend/)
    │
    └── API Gateway HTTP API ── Lambda "api" ── DynamoDB (single table, TTL on link tokens)
-                                   │  verifies Supabase tokens against the project's JWKS
+                                   │  verifies Cognito ID tokens against the user pool's JWKS
                                    └─ SES (invitations, address checks, "they replied" notices)
 ```
 
@@ -50,7 +51,10 @@ Browser ── Supabase Auth (sign-in, issues ES256 access tokens)
 | `template.yaml` | AWS SAM template: table, API, Lambda, S3 + CloudFront |
 | `backend/src/lib/api.mjs` | REST API routes and validation |
 | `backend/src/lib/email.mjs` | Invitation, address-check and reply emails |
-| `backend/src/lib/auth.mjs`, `repo.mjs`, `mailer.mjs` | Supabase token check, DynamoDB access, SES (shared with Vehicle Maintenance) |
+| `backend/src/lib/auth.mjs`, `repo.mjs`, `mailer.mjs` | Cognito token check, DynamoDB access, SES (shared with Vehicle Maintenance) |
+| `backend/src/handlers/cognito-message.mjs` | Cognito's invitation, password-reset and email-change emails |
+| `frontend/auth.js` | Cognito sign-in from the browser (shared with Vehicle Maintenance) |
+| `scripts/invite-user.sh` | Invite someone (Cognito emails a temporary password) |
 | `frontend/print-core.js` | Label and envelope layout (unit tested) |
 | `frontend/csv-core.js` | CSV parsing, column guessing, export (unit tested) |
 | `frontend/app.js` | The single-page app (vanilla JS, no build step) |
@@ -60,7 +64,7 @@ Browser ── Supabase Auth (sign-in, issues ES256 access tokens)
 ### Data model (single table)
 
 ```
-PK = USER#<supabase user id>
+PK = USER#<Cognito user id (sub)>
   SK = PROFILE                   name, return address, printer offsets
   SK = HH#<id>                   household
   SK = OCC#<id>                  occasion
@@ -73,21 +77,26 @@ PK = TOKEN#<sha256(token)>, SK = TOKEN    address-check link, removed by TTL aft
 - AWS CLI v2 and AWS SAM CLI, signed in to your account.
 - Node.js 22+.
 - An SES identity (a verified domain or address) to send from. **While SES is in the sandbox, every recipient must be verified too.** Request production access in the SES console before emailing friends and family.
-- A Supabase project for this app. Keep it separate from Vehicle Maintenance so the accounts stay separate.
 
 ## Deploy
 
 Deploy in the same region as your SES identity (default `us-east-2`).
 
 ```bash
-SUPABASE_URL=https://<ref>.supabase.co \
-SUPABASE_PUBLISHABLE_KEY=sb_publishable_... \
-SENDER_EMAIL=noreply@your-domain.com \
-ALLOWED_EMAILS=you@example.com \
-./scripts/deploy.sh
+SENDER_EMAIL=noreply@your-domain.com ./scripts/deploy.sh
 ```
 
-Once the Supabase project exists, fill in its URL and key as the defaults near the top of `deploy.sh`, so a plain `./scripts/deploy.sh` works. With `APP_DOMAIN` set, the sender defaults to `noreply@<APP_DOMAIN>`.
+The stack creates its own Cognito user pool, which is protected from deletion and kept if the stack is ever deleted. Cognito's invitation and password-reset emails go out through the same SES identity as the app's email. With `APP_DOMAIN` set, the sender defaults to `noreply@<APP_DOMAIN>`. `ALLOWED_EMAILS` can further limit who may use the API.
+
+### Accounts
+
+Sign-up is by invitation only. Invite yourself (and anyone else) after the first deploy:
+
+```bash
+./scripts/invite-user.sh you@example.com
+```
+
+Cognito emails a temporary password. Sign in with it and you're asked to choose your own. **Forgot password?** emails a 6-digit code. Settings has **Change password**.
 
 ### Custom domain
 
@@ -99,12 +108,6 @@ APP_CERT_ARN=arn:aws:acm:us-east-1:...:certificate/... ./scripts/deploy.sh
 ```
 
 Point DNS at the `CloudFrontUrl` output; at Cloudflare that's a CNAME set to DNS only (grey cloud). Later deploys remember the domain. Don't add the domain to CloudFront by hand.
-
-### One-time Supabase settings
-
-1. **Authentication > URL Configuration:** set *Site URL* to the website URL `deploy.sh` prints, and add `<that URL>/**` to *Redirect URLs*.
-2. **Authentication > Sign In / Providers > Email:** keep Email on. After creating your account, consider turning off *Allow new users to sign up*.
-3. Optional: in **Authentication > Emails > SMTP Settings**, point to your SES SMTP endpoint so sign-up and reset emails come from your domain.
 
 ## Printing tips
 
@@ -119,7 +122,8 @@ cd backend && npm install && npm test
 ```
 
 The tests cover:
-- token checks and per-user isolation;
+- Cognito token checks (wrong pool, wrong app client, access tokens, expired tokens, unconfirmed email) and per-user isolation;
+- Cognito's invitation and reset emails;
 - validation and import;
 - tagging and copying lists;
 - invitations, including SES sandbox rejections;

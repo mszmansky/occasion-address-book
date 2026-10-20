@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApi, householdEmails } from '../src/lib/api.mjs';
-import { createSupabaseVerifier } from '../src/lib/auth.mjs';
-import { createMemoryRepo, createFakeMailer, createTokenFactory, SUPABASE_URL } from './helpers.mjs';
+import { createCognitoVerifier } from '../src/lib/auth.mjs';
+import { createMemoryRepo, createFakeMailer, createTokenFactory, REGION, USER_POOL_ID, CLIENT_ID } from './helpers.mjs';
 
 async function setup({ mailer = createFakeMailer(), allowedEmails = '*' } = {}) {
   const repo = createMemoryRepo();
@@ -11,7 +11,7 @@ async function setup({ mailer = createFakeMailer(), allowedEmails = '*' } = {}) 
   const api = createApi({
     repo,
     mailer,
-    verify: createSupabaseVerifier({ supabaseUrl: SUPABASE_URL, allowedEmails, jwks: tokens.jwks }),
+    verify: createCognitoVerifier({ region: REGION, userPoolId: USER_POOL_ID, clientId: CLIENT_ID, allowedEmails, jwks: tokens.jwks }),
     appUrl: 'https://cards.example.com',
     now: () => clock,
     log: { error() {} },
@@ -44,10 +44,18 @@ const smiths = {
   groups: 'Family, Christmas, family',
 };
 
-test('requires a valid token', async () => {
-  const { call } = await setup();
+test('requires a valid Cognito ID token from this pool and app client', async () => {
+  const { call, tokens } = await setup();
   assert.equal((await call('GET', '/households', undefined, { token: null })).status, 401);
   assert.equal((await call('GET', '/households', undefined, { token: 'nope' })).status, 401);
+  // Another pool, another app client, an access token, or an expired token are all refused.
+  assert.equal((await call('GET', '/households', undefined, { token: await tokens.sign({}, { issuer: 'https://cognito-idp.us-east-2.amazonaws.com/us-east-2_Other' }) })).status, 401);
+  assert.equal((await call('GET', '/households', undefined, { token: await tokens.sign({}, { audience: 'other-client' }) })).status, 401);
+  assert.equal((await call('GET', '/households', undefined, { token: await tokens.sign({ token_use: 'access' }) })).status, 401);
+  assert.equal((await call('GET', '/households', undefined, { token: await tokens.sign({}, { expiresIn: '-1m' }) })).status, 401);
+  // An unconfirmed email is refused.
+  assert.equal((await call('GET', '/households', undefined, { claims: { email_verified: false } })).status, 403);
+  assert.equal((await call('GET', '/households')).status, 200);
 });
 
 test('allow list blocks other accounts', async () => {

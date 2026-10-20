@@ -1,6 +1,6 @@
 // Thin DynamoDB data layer (single-table design).
 //
-//   PK = USER#<supabase user id>
+//   PK = USER#<Cognito user id (sub)>
 //   SK = PROFILE                     user settings: name, return address, print offsets
 //        HH#<householdId>            household: label name, address, members, groups
 //        OCC#<occasionId>            occasion: Christmas cards 2026, Graduation party...

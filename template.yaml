@@ -1,16 +1,16 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Occasion address book - households, occasions, labels and envelopes, SES invitations, Supabase sign-in.
+Description: Occasion address book - households, occasions, labels and envelopes, SES invitations, Cognito sign-in.
 
 Parameters:
-  SupabaseUrl:
-    Type: String
-    AllowedPattern: '^https://[a-z0-9-]+\.supabase\.co$'
-    Description: Supabase project URL. Access tokens from this project are accepted by the API.
   AllowedEmails:
     Type: String
     Default: '*'
-    Description: Comma-separated emails allowed to use the app, or * for any signed-in Supabase user.
+    Description: Comma-separated emails allowed to use the app, or * for anyone with an account.
+  SesIdentity:
+    Type: String
+    AllowedPattern: '^[^\s]+$'
+    Description: The SES identity (verified domain or email address) Cognito sends sign-in emails through.
   SenderEmail:
     Type: String
     AllowedPattern: '^[^\s@]+@[^\s@]+\.[^\s@]+$'
@@ -61,7 +61,6 @@ Globals:
     Environment:
       Variables:
         TABLE_NAME: !Ref Table
-        SUPABASE_URL: !Ref SupabaseUrl
         ALLOWED_EMAILS: !Ref AllowedEmails
         SENDER_EMAIL: !Ref SenderEmail
         SES_CONFIGURATION_SET: !Ref SesConfigurationSet
@@ -90,6 +89,81 @@ Resources:
       SSESpecification:
         SSEEnabled: true
 
+  # ---------- Sign-in (Cognito) ----------
+  # Invite-only: people are added with scripts/invite-user.sh and get an email with a temporary
+  # password. Sign-in emails go through SES in the app's style (CognitoMessageFunction).
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub ${AWS::StackName}-users
+      UserPoolTier: LITE
+      DeletionProtection: ACTIVE
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      UsernameConfiguration: { CaseSensitive: false }
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate: [email]   # the old address stays until the new one is confirmed
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireUppercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          TemporaryPasswordValidityDays: 30
+      MfaConfiguration: 'OPTIONAL'
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - { Name: verified_email, Priority: 1 }
+      EmailConfiguration:
+        EmailSendingAccount: DEVELOPER
+        SourceArn: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesIdentity}
+        From: !Sub Occasion Address Book <${SenderEmail}>
+        ConfigurationSet: !If [HasConfigSet, !Ref SesConfigurationSet, !Ref AWS::NoValue]
+      LambdaConfig:
+        CustomMessage: !GetAtt CognitoMessageFunction.Arn
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: web
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AuthSessionValidity: 5
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits: { AccessToken: minutes, IdToken: minutes, RefreshToken: days }
+
+  # Builds the invitation, password-reset and email-change emails in the app's style.
+  CognitoMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/cognito-message.handler
+      Timeout: 5
+
+  CognitoMessagePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt CognitoMessageFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
+
+  CognitoMessageLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CognitoMessageFunction}
+      RetentionInDays: 30
+
   # ---------- API ----------
   HttpApi:
     Type: AWS::Serverless::HttpApi
@@ -112,6 +186,10 @@ Resources:
     Properties:
       Handler: src/handlers/api.handler
       Timeout: 60 # an invitation batch sends up to 25 emails
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref UserPool
+          COGNITO_CLIENT_ID: !Ref UserPoolClient
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref Table }
         - Statement:
@@ -254,13 +332,17 @@ Resources:
 
 Outputs:
   AppUrl:
-    Description: Website URL (add it to Supabase Auth > URL Configuration)
+    Description: Website URL
     Value: !If [HasAppDomain, !Sub 'https://${AppDomain}', !Sub 'https://${Distribution.DomainName}']
   CloudFrontUrl:
     Description: The CloudFront address (point your domain's DNS here)
     Value: !GetAtt Distribution.DomainName
   ApiUrl:
     Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
   WebBucketName:
     Value: !Ref WebBucket
   DistributionId:
