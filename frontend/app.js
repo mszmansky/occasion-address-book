@@ -4,6 +4,7 @@ import {
 } from './print-core.js';
 import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
+  defaultFormalName, householdLastName,
 } from './csv-core.js';
 
 const cfg = window.APP_CONFIG ?? {};
@@ -358,6 +359,7 @@ function householdModal(h) {
   h ??= { members: [{}], address: {}, groups: state.group ? [state.group] : [] };
   const p = h.pendingUpdate;
   const req = h.addressRequest;
+  const suggestedFormal = defaultFormalName(h.greeting, householdLastName({ ...h, members: splitMembers(h.members ?? []) }));
   const pendingBox = p ? `<div class="pending-box">
       <div><b>They sent ${p.unchanged ? 'a confirmation' : 'a new address'}</b> <span class="muted small">${fmtDate(p.receivedAt)}</span></div>
       <div class="compare">
@@ -372,7 +374,7 @@ function householdModal(h) {
     ${pendingBox}
     <label>Name on envelope<input name="labelName" required maxlength="120" value="${val(h.labelName)}" placeholder="The Smith Family"></label>
     <div class="grid-2">
-      <label>Formal name <span class="muted">(optional)</span><input name="formalName" maxlength="160" value="${val(h.formalName)}" placeholder="Mr. and Mrs. John Smith"></label>
+      <label>Formal name <span class="muted">(optional)</span><input name="formalName" maxlength="160" value="${val(h.formalName || suggestedFormal)}" ${!h.formalName && suggestedFormal ? 'data-auto="1"' : ''} placeholder="Mr. and Mrs. John Smith"></label>
       <label>Greeting in emails <span class="muted">(optional)</span><input name="greeting" maxlength="120" value="${val(h.greeting)}" placeholder="John and Mary"></label>
     </div>
     <fieldset><legend>Mailing address</legend>${addressFields(h.address)}
@@ -397,6 +399,18 @@ function householdModal(h) {
       <button type="button" class="btn" data-action="request-address" data-id="${esc(h.id)}" ${allEmails(h).length ? '' : 'disabled title="Add an email address first"'}>${MAIL} Ask them to confirm address</button>`}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save</button></div>`,
   });
+}
+
+function refreshFormalName(form) {
+  const field = form?.elements.formalName;
+  if (!field || (field.value.trim() && !field.dataset.auto)) return;
+  const lastName = householdLastName({
+    labelName: form.elements.labelName.value,
+    members: [...form.querySelectorAll('[data-m=lastName]')].map((i) => ({ lastName: i.value })),
+  });
+  const suggestion = defaultFormalName(form.elements.greeting.value, lastName);
+  field.value = suggestion;
+  if (suggestion) field.dataset.auto = '1'; else delete field.dataset.auto;
 }
 
 function readHousehold(form) {
@@ -1070,6 +1084,7 @@ document.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  if (e.target.name === 'formalName') delete e.target.dataset.auto; // typed by hand: never replace it
   const k = e.target.dataset?.input;
   if (k === 'search') { state.search = e.target.value; renderHouseholdList(); }
   if (k === 'occ-search') { state.occSearch = e.target.value; renderRecipientRows(); }
@@ -1090,6 +1105,8 @@ document.addEventListener('change', (e) => {
       toast(`Split into ${names.length} people`);
     }
   }
+  // Formal name follows the greeting and last name until it's typed by hand.
+  if (['greeting', 'labelName'].includes(t.name) || t.dataset?.m === 'lastName' || t.dataset?.m === 'firstName') refreshFormalName(t.form);
   const k = t.dataset?.input;
   if (k === 'group') { state.group = t.value; renderHouseholdList(); }
   if (k === 'occ-group') { state.occGroup = t.value; renderRecipientRows(); }

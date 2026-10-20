@@ -68,3 +68,21 @@ test('two first names in one field become two people', async () => {
   assert.deepEqual(households[0].members.map((m) => [m.firstName, m.lastName]), [['Todd', 'Abbott'], ['Kim', 'Abbott']]);
   assert.equal(parseHousehold(households[0]).members.length, 2);
 });
+
+test('formal name defaults to "Mr. and Mrs. <Last>" when the greeting has two first names', async () => {
+  const { defaultFormalName, householdLastName } = await import('../../frontend/csv-core.js');
+  assert.equal(defaultFormalName('Peter and Paula', 'Bartlett'), 'Mr. and Mrs. Bartlett');
+  assert.equal(defaultFormalName('Peter & Paula', 'Bartlett'), 'Mr. and Mrs. Bartlett');
+  assert.equal(defaultFormalName('Peter', 'Bartlett'), '');
+  assert.equal(defaultFormalName('Tom, Ann and Joe', 'Smith'), '');
+  assert.equal(defaultFormalName('Peter and Paula', ''), '');
+  assert.equal(householdLastName({ labelName: 'The Joneses' }), 'Jones');
+  assert.equal(householdLastName({ labelName: 'The Smith Family' }), 'Smith');
+  assert.equal(householdLastName({ labelName: 'X', members: [{ firstName: 'A' }, { lastName: 'Lee' }] }), 'Lee');
+
+  const rows = parseCsv('Title,First Names,Last Name,Formal\nTodd and Kim Abbott,Todd and Kim,Abbott,\nRose Smith,Rose,Smith,\nAl and Jo Wu,Al and Jo,Wu,Dr. and Mr. Wu\n');
+  const map = guessMapping(rows[0]);
+  map[0] = 'labelName';
+  const { households } = buildHouseholds(rows.slice(1), map);
+  assert.deepEqual(households.map((h) => h.formalName), ['Mr. and Mrs. Abbott', undefined, 'Dr. and Mr. Wu']);
+});

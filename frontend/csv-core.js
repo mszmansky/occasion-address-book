@@ -24,6 +24,27 @@ export function splitMembers(members = []) {
   });
 }
 
+/** The household's last name: the first person's, else from the envelope name ("The Bartletts", "The Smith Family"). */
+export function householdLastName(h) {
+  const fromPeople = (h.members ?? []).find((m) => m.lastName?.trim())?.lastName.trim();
+  if (fromPeople) return fromPeople;
+  const label = String(h.labelName ?? '').trim();
+  const plural = /^the\s+/i.test(label) && !/\s(family|household)$/i.test(label); // "The Bartletts" names the family in the plural
+  const last = label.replace(/^the\s+/i, '').replace(/\s+(family|household)$/i, '').split(/\s+/).at(-1) ?? '';
+  if (!plural) return last;
+  if (/(s|x|z|ch|sh)es$/i.test(last)) return last.slice(0, -2); // Joneses, Foxes
+  return last.replace(/s$/i, '');
+}
+
+/**
+ * Suggested formal name: "Mr. and Mrs. Bartlett" when the greeting is exactly two first names
+ * ("Peter and Paula"); otherwise '' (no suggestion).
+ */
+export function defaultFormalName(greeting, lastName) {
+  const names = splitFirstNames(greeting);
+  return names?.length === 2 && lastName ? `Mr. and Mrs. ${lastName}` : '';
+}
+
 /** RFC 4180-ish CSV parser: quoted fields, doubled quotes, CRLF/LF, a leading BOM. */
 export function parseCsv(text) {
   const rows = [];
@@ -117,10 +138,11 @@ export function buildHouseholds(rows, mapping) {
         members.push(parts.length > 1 ? { firstName: parts.slice(0, -1).join(' '), lastName: parts.at(-1) } : { firstName: full });
       }
     }
+    const greeting = v.greeting || (coupleFirst && coupleFirst !== labelName ? coupleFirst.replace(' & ', ' and ') : undefined);
     households.push({
       labelName,
-      formalName: v.formalName || undefined,
-      greeting: v.greeting || (coupleFirst && coupleFirst !== labelName ? coupleFirst.replace(' & ', ' and ') : undefined),
+      formalName: v.formalName || defaultFormalName(greeting, householdLastName({ labelName, members })) || undefined,
+      greeting,
       address: { line1: v.line1, line2: v.line2, city: v.city, state: v.state, zip: v.zip, country: v.country },
       emails: (v.email ?? '').split(/[;,\s]+/).filter(Boolean).slice(0, 10),
       phone: v.phone || undefined,
