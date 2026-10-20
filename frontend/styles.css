@@ -510,6 +510,7 @@ dialog::backdrop { background: rgba(15, 17, 20, .45); }
   font-size: 12px; color: var(--ink-2); padding: 8px 10px; border-bottom: 1px solid var(--line);
 }
 .imp-map td, .imp-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.imp-map td { vertical-align: middle; }
 .imp-map tr:last-child td, .imp-table tr:last-child td { border-bottom: 0; }
 .imp-map td:last-child { width: 46%; }
 .imp-map select { width: 100%; }

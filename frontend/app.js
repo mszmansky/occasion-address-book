@@ -468,7 +468,7 @@ async function readCsvFile(file) {
     <div class="imp-scroll short"><table class="imp-map"><thead><tr><th>Column</th><th>Example</th><th>Holds</th></tr></thead><tbody>
     ${Array.from({ length: cols }, (_, i) => `<tr>
       <td class="imp-col">${esc(importRows.header?.[i] || `Column ${i + 1}`)}</td>
-      <td class="imp-sample">${esc(sample[i] ?? '')}</td>
+      <td><div class="imp-sample">${esc(sample[i] ?? '')}</div></td>
       <td><select data-map="${i}"><option value="">Don't import</option>${FIELDS.map((f) => `<option value="${f.key}" ${mapping[i] === f.key ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select></td>
     </tr>`).join('')}
     </tbody></table></div>
