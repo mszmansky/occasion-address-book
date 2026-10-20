@@ -302,7 +302,7 @@ function householdCard(h) {
   ].filter(Boolean).join('');
   const note = h.notes?.trim();
   return `<button class="hh-card${note ? ' has-note' : ''}" data-action="edit-household" data-id="${esc(h.id)}">
-    ${note ? `<span class="hh-note" title="${esc(note)}"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="6.3" r="1.1" fill="currentColor"/><path d="M10 9v5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="sr">Note: ${esc(note)}</span></span>` : ''}
+    ${note ? `<span class="hh-note" data-action="show-note" data-note="${esc(note)}" title="Show note"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="6.3" r="1.1" fill="currentColor"/><path d="M10 9v5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="sr">Note: ${esc(note)}</span></span>` : ''}
     <span class="hh-name">${esc(h.labelName)}</span>
     ${h.formalName ? `<span class="small muted">${esc(h.formalName)}</span>` : ''}
     <span class="hh-addr">${lines.map(esc).join('<br>') || '<span class="muted">—</span>'}</span>
@@ -311,6 +311,35 @@ function householdCard(h) {
     ${(h.groups ?? []).length || badges ? `<span class="chips">${badges}${(h.groups ?? []).map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</span>` : ''}
   </button>`;
 }
+
+// ---------- note bubble (the "i" on a card) ----------
+let noteTip = null;
+function hideNoteTip() {
+  noteTip?.remove();
+  noteTip = null;
+}
+function showNoteTip(icon) {
+  const again = noteTip?.dataset.for === icon.closest('[data-id]')?.dataset.id;
+  hideNoteTip();
+  if (again) return; // a second click on the same "i" closes it
+  noteTip = document.createElement('div');
+  noteTip.className = 'note-tip';
+  noteTip.setAttribute('role', 'tooltip');
+  noteTip.dataset.for = icon.closest('[data-id]')?.dataset.id ?? '';
+  noteTip.textContent = icon.dataset.note;
+  document.body.appendChild(noteTip);
+  // Below the icon, right edges aligned, kept inside the window.
+  const r = icon.getBoundingClientRect();
+  const w = noteTip.offsetWidth;
+  const left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+  let top = r.bottom + 6;
+  if (top + noteTip.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - noteTip.offsetHeight - 6);
+  noteTip.style.left = `${left}px`;
+  noteTip.style.top = `${top}px`;
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideNoteTip(); });
+window.addEventListener('scroll', hideNoteTip, true);
+window.addEventListener('resize', hideNoteTip);
 
 // ---------- modal ----------
 function openModal(title, body, { form, foot = '', wide = false } = {}) {
@@ -958,6 +987,7 @@ async function alignTest(what) {
 
 // ---------- events ----------
 document.addEventListener('click', async (e) => {
+  if (!e.target.closest('.note-tip, .hh-note')) hideNoteTip();
   const el = e.target.closest('[data-action]');
   if (!e.target.closest('.user-menu')) setUserMenu(false);
   if (!el) return;
@@ -1019,6 +1049,7 @@ document.addEventListener('click', async (e) => {
       break;
     case 'request-address': requestAddressModal(hhById().get(id)); break;
     case 'pending-only': state.pendingOnly = !state.pendingOnly; render(); break;
+    case 'show-note': showNoteTip(el); break;
     case 'import': importModal(); break;
     case 'imp-row': showImportRow(importRows.at + Number(el.dataset.step)); break;
     case 'export': download(`address-book-${new Date().toISOString().slice(0, 10)}.csv`, householdsToCsv([...state.households].sort(byName))); break;

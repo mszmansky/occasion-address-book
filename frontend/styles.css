@@ -768,3 +768,11 @@ legend { font-weight: 600; font-size: 13px; color: var(--ink-2); padding: 0 6px;
 .hh-card.has-note .hh-name { padding-right: 24px; }
 .hh-note { position: absolute; top: 10px; right: 10px; display: flex; color: var(--ink-3); }
 .hh-card:hover .hh-note { color: var(--accent); }
+.hh-note { cursor: pointer; padding: 2px; border-radius: 50%; }
+.hh-note:hover { background: var(--surface-2); }
+.note-tip {
+  position: fixed; z-index: 50; max-width: min(300px, calc(100vw - 16px));
+  background: var(--ink); color: var(--bg); border-radius: 8px; padding: 8px 11px;
+  font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .2);
+}
