@@ -47,3 +47,24 @@ test('export imports back the same', () => {
   assert.deepEqual(h.groups, ['Family']);
   assert.equal(h.notes, 'Says "hi", always');
 });
+
+test('two first names in one field become two people', async () => {
+  const { splitFirstNames, splitMembers } = await import('../../frontend/csv-core.js');
+  assert.deepEqual(splitFirstNames('Peter and Paula'), ['Peter', 'Paula']);
+  assert.deepEqual(splitFirstNames('Peter & Paula'), ['Peter', 'Paula']);
+  assert.deepEqual(splitFirstNames('Peter AND Paula'), ['Peter', 'Paula']);
+  assert.deepEqual(splitFirstNames('Tom, Ann and Joe'), ['Tom', 'Ann', 'Joe']);
+  assert.deepEqual(splitFirstNames('Tom, Ann, & Joe'), ['Tom', 'Ann', 'Joe']);
+  assert.deepEqual(splitFirstNames('Mary Ann and Bob'), ['Mary Ann', 'Bob']);
+  for (const one of ['Peter', 'Mary Ann', 'Andy', 'Alexandra', 'Sandra', '', 'Peter and', ' and Paula']) {
+    assert.equal(splitFirstNames(one), null, one);
+  }
+  assert.deepEqual(splitMembers([{ id: 'a1', firstName: 'Peter and Paula', lastName: 'Bartlett', email: 'p@x.com' }]),
+    [{ id: 'a1', firstName: 'Peter', lastName: 'Bartlett', email: 'p@x.com' }, { firstName: 'Paula', lastName: 'Bartlett' }]);
+
+  // The importer does it too.
+  const rows = parseCsv('Title,First Names,Last Name,Address,City,State,Zip\nTodd and Kim Abbott,Todd and Kim,Abbott,12 Elm St,Troy,MI,48083\n');
+  const { households } = buildHouseholds(rows.slice(1), guessMapping(rows[0]));
+  assert.deepEqual(households[0].members.map((m) => [m.firstName, m.lastName]), [['Todd', 'Abbott'], ['Kim', 'Abbott']]);
+  assert.equal(parseHousehold(households[0]).members.length, 2);
+});

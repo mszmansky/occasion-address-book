@@ -2,7 +2,9 @@ import { createAuth } from './auth.js';
 import {
   addressLines, buildEnvelopes, buildLabels, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES,
 } from './print-core.js';
-import { parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv } from './csv-core.js';
+import {
+  parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
+} from './csv-core.js';
 
 const cfg = window.APP_CONFIG ?? {};
 const root = document.getElementById('root');
@@ -379,7 +381,7 @@ function householdModal(h) {
     </fieldset>
     <fieldset><legend>People</legend>
       <div class="member-head small muted"><span>First</span><span>Last</span><span>Email</span><span>Phone</span><span>Birthday</span><span></span></div>
-      <div data-members>${(h.members?.length ? h.members : [{}]).map(memberRow).join('')}</div>
+      <div data-members>${(h.members?.length ? splitMembers(h.members) : [{}]).map(memberRow).join('')}</div>
       <button type="button" class="btn sm" data-action="add-member">+ Person</button>
     </fieldset>
     <div class="grid-2">
@@ -1075,6 +1077,19 @@ document.addEventListener('input', (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  // "Peter and Paula" typed into one First box becomes two people sharing the last name.
+  if (t.dataset?.m === 'firstName') {
+    const names = splitFirstNames(t.value);
+    const row = t.closest('[data-member]');
+    if (names && row) {
+      const box = row.parentElement;
+      const room = 20 - box.children.length;
+      const last = row.querySelector('[data-m=lastName]').value.trim();
+      t.value = names[0];
+      row.insertAdjacentHTML('afterend', names.slice(1, 1 + room).map((firstName) => memberRow({ firstName, lastName: last })).join(''));
+      toast(`Split into ${names.length} people`);
+    }
+  }
   const k = t.dataset?.input;
   if (k === 'group') { state.group = t.value; renderHouseholdList(); }
   if (k === 'occ-group') { state.occGroup = t.value; renderRecipientRows(); }

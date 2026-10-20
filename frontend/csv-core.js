@@ -1,5 +1,29 @@
 // CSV import/export for households. Pure functions (unit tested in Node).
 
+/**
+ * Splits a first-name field that holds more than one person: "Peter and Paula", "Peter & Paula",
+ * "Tom, Ann and Joe". Returns the names, or null when it's one person (including "Mary Ann").
+ * Each part must look like a first name (at most three words), so odd text is left alone.
+ */
+export function splitFirstNames(value) {
+  const parts = String(value ?? '').split(/\s*(?:,\s*(?:and\s+|&\s*)?|\s+and\s+|\s*&\s*|\s*\+\s*)/i).map((x) => x.trim());
+  if (parts.length < 2 || parts.length > 10) return null;
+  if (parts.some((x) => !x || x.split(/\s+/).length > 3)) return null;
+  return parts;
+}
+
+/**
+ * One person per first name: { firstName: "Peter and Paula", lastName: "Bartlett", email } becomes
+ * Peter Bartlett (keeping the email, phone and birthday) and Paula Bartlett. Others pass through.
+ */
+export function splitMembers(members = []) {
+  return members.flatMap((m) => {
+    const names = splitFirstNames(m.firstName);
+    if (!names) return [m];
+    return names.map((firstName, i) => (i === 0 ? { ...m, firstName } : { firstName, lastName: m.lastName }));
+  });
+}
+
 /** RFC 4180-ish CSV parser: quoted fields, doubled quotes, CRLF/LF, a leading BOM. */
 export function parseCsv(text) {
   const rows = [];
@@ -100,7 +124,7 @@ export function buildHouseholds(rows, mapping) {
       address: { line1: v.line1, line2: v.line2, city: v.city, state: v.state, zip: v.zip, country: v.country },
       emails: (v.email ?? '').split(/[;,\s]+/).filter(Boolean).slice(0, 10),
       phone: v.phone || undefined,
-      members,
+      members: splitMembers(members).slice(0, 20),
       groups: v.groups ? v.groups.split(/[;,|]/).map((g) => g.trim()).filter(Boolean) : [],
       notes: v.notes || undefined,
     });
