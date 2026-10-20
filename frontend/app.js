@@ -300,7 +300,9 @@ function householdCard(h) {
     h.pendingUpdate && '<span class="pill due-soon">New address to review</span>',
     !isMailable(h.address) && '<span class="pill unknown">No mailing address</span>',
   ].filter(Boolean).join('');
-  return `<button class="hh-card" data-action="edit-household" data-id="${esc(h.id)}">
+  const note = h.notes?.trim();
+  return `<button class="hh-card${note ? ' has-note' : ''}" data-action="edit-household" data-id="${esc(h.id)}">
+    ${note ? `<span class="hh-note" title="${esc(note)}"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="6.3" r="1.1" fill="currentColor"/><path d="M10 9v5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="sr">Note: ${esc(note)}</span></span>` : ''}
     <span class="hh-name">${esc(h.labelName)}</span>
     ${h.formalName ? `<span class="small muted">${esc(h.formalName)}</span>` : ''}
     <span class="hh-addr">${lines.map(esc).join('<br>') || '<span class="muted">—</span>'}</span>

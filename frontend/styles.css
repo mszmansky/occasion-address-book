@@ -762,3 +762,9 @@ legend { font-weight: 600; font-size: 13px; color: var(--ink-2); padding: 0 6px;
 .imp-nav { display: inline-flex; align-items: center; gap: 2px; font-weight: 600; }
 .imp-nav .btn { padding: 0 8px; font-size: 16px; line-height: 22px; }
 .imp-nav [data-imp-pos] { min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* "i" on cards with a note; hovering shows the note */
+.hh-card { position: relative; }
+.hh-card.has-note .hh-name { padding-right: 24px; }
+.hh-note { position: absolute; top: 10px; right: 10px; display: flex; color: var(--ink-3); }
+.hh-card:hover .hh-note { color: var(--accent); }
