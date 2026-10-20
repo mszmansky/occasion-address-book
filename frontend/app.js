@@ -460,20 +460,39 @@ async function readCsvFile(file) {
   if (!rows.length) return modalError('That file is empty.');
   const header = looksLikeHeader(rows[0]);
   const cols = Math.max(...rows.map((r) => r.length));
-  importRows = { header: header ? rows[0] : null, data: header ? rows.slice(1) : rows, cols };
+  importRows = { header: header ? rows[0] : null, data: header ? rows.slice(1) : rows, cols, at: 0 };
   const mapping = header ? guessMapping(rows[0]) : Array(cols).fill('');
   const sample = importRows.data[0] ?? [];
+  const many = importRows.data.length > 1;
   modal.querySelector('[data-import-step]').innerHTML = `
     <p class="small muted" style="margin:0">${plural(importRows.data.length, 'row')} found. Check what each column holds:</p>
-    <div class="imp-scroll short"><table class="imp-map"><thead><tr><th>Column</th><th>Example</th><th>Holds</th></tr></thead><tbody>
+    <div class="imp-scroll short"><table class="imp-map"><thead><tr><th>Column</th><th class="imp-ex-head">${many ? `<span class="imp-nav">
+      <button type="button" class="btn ghost sm" data-action="imp-row" data-step="-1" aria-label="Previous row" disabled>‹</button>
+      <span data-imp-pos>Row 1 of ${importRows.data.length.toLocaleString('en-US')}</span>
+      <button type="button" class="btn ghost sm" data-action="imp-row" data-step="1" aria-label="Next row">›</button></span>` : 'Example'}</th><th>Holds</th></tr></thead><tbody>
     ${Array.from({ length: cols }, (_, i) => `<tr>
       <td class="imp-col">${esc(importRows.header?.[i] || `Column ${i + 1}`)}</td>
-      <td><div class="imp-sample">${esc(sample[i] ?? '')}</div></td>
+      <td><div class="imp-sample" data-sample="${i}" title="${esc(sample[i] ?? '')}">${esc(sample[i] ?? '')}</div></td>
       <td><select data-map="${i}"><option value="">Don't import</option>${FIELDS.map((f) => `<option value="${f.key}" ${mapping[i] === f.key ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select></td>
     </tr>`).join('')}
     </tbody></table></div>
     <p class="small" data-import-summary></p>`;
   updateImportSummary();
+}
+
+// Steps the Example column through the file's rows.
+function showImportRow(at) {
+  const total = importRows.data.length;
+  importRows.at = Math.min(Math.max(0, at), total - 1);
+  const row = importRows.data[importRows.at] ?? [];
+  modal.querySelectorAll('[data-sample]').forEach((el) => {
+    const v = row[Number(el.dataset.sample)] ?? '';
+    el.textContent = v;
+    el.title = v;
+  });
+  modal.querySelector('[data-imp-pos]').textContent = `Row ${(importRows.at + 1).toLocaleString('en-US')} of ${total.toLocaleString('en-US')}`;
+  modal.querySelector('[data-step="-1"]').disabled = importRows.at === 0;
+  modal.querySelector('[data-step="1"]').disabled = importRows.at === total - 1;
 }
 
 function currentMapping() {
@@ -983,6 +1002,7 @@ document.addEventListener('click', async (e) => {
     case 'request-address': requestAddressModal(hhById().get(id)); break;
     case 'pending-only': state.pendingOnly = !state.pendingOnly; render(); break;
     case 'import': importModal(); break;
+    case 'imp-row': showImportRow(importRows.at + Number(el.dataset.step)); break;
     case 'export': download(`address-book-${new Date().toISOString().slice(0, 10)}.csv`, householdsToCsv([...state.households].sort(byName))); break;
     // occasions
     case 'add-occasion': occasionModal(); break;
