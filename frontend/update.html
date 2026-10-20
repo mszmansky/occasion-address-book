@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>Confirm your address</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+</head>
+<body>
+  <main class="auth"><div class="auth-card" id="card"><p class="muted">Loading…</p></div></main>
+  <script type="module">
+    // Opened from an address-check email. The token after #t= is the only credential; it stays in the
+    // URL fragment so it never reaches server logs or other sites.
+    const card = document.getElementById('card');
+    const cfg = window.APP_CONFIG ?? {};
+    const token = new URLSearchParams(location.hash.slice(1)).get('t') ?? '';
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    const endpoint = `${String(cfg.apiUrl ?? '').replace(/\/$/, '')}/public/address/${encodeURIComponent(token)}`;
+    const fail = (msg) => { card.innerHTML = `<h1>Sorry</h1><p class="muted">${esc(msg)}</p>`; };
+    const lines = (a) => [a.line1, a.line2, [[a.city, a.state].filter(Boolean).join(', '), a.zip].filter(Boolean).join(' '), a.country].filter(Boolean);
+
+    async function call(method, body) {
+      const res = await fetch(endpoint, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? 'Something went wrong. Please try again.');
+      return json;
+    }
+
+    function done(unchanged, from) {
+      card.innerHTML = `<h1>Thank you!</h1><p>${unchanged ? 'You confirmed your address.' : 'Your address was sent.'} ${esc(from || 'They')} will see it in their address book.</p>
+        <p class="small muted">You can close this page. If you need to change something, open the link again before it expires.</p>`;
+    }
+
+    async function start() {
+      if (!token) return fail('This link is incomplete. Copy the whole link from the email and try again.');
+      let d;
+      try { d = await call('GET'); } catch (e) { return fail(e.message); }
+      const a = d.address ?? {};
+      const has = lines(a).length > 0;
+      const from = d.fromName || 'Your friend';
+      card.innerHTML = `
+        <div class="brand"><span>${esc(from)}</span></div>
+        <h1>Is this the right address for ${esc(d.labelName)}?</h1>
+        <p class="muted small" style="margin:0">${esc(from)} uses it for cards and invitations. Only they will see what you send.</p>
+        ${has ? `<div class="pending-box" style="margin-top:16px"><div>${lines(a).map(esc).join('<br>')}</div></div>
+          <div class="row-gap" style="margin-top:12px"><button class="btn primary" id="same">Yes, that's right</button><button class="btn" id="change">No, update it</button></div>` : ''}
+        <form id="form" class="stack" ${has ? 'hidden' : ''} style="margin-top:16px">
+          <label>Street address<input name="line1" autocomplete="address-line1" maxlength="120" required value="${esc(a.line1)}"></label>
+          <label>Apt, suite, unit <span class="muted">(optional)</span><input name="line2" autocomplete="address-line2" maxlength="120" value="${esc(a.line2)}"></label>
+          <div class="grid-3">
+            <label>City<input name="city" autocomplete="address-level2" maxlength="80" required value="${esc(a.city)}"></label>
+            <label>State<input name="state" autocomplete="address-level1" maxlength="40" value="${esc(a.state)}"></label>
+            <label>ZIP<input name="zip" autocomplete="postal-code" maxlength="20" value="${esc(a.zip)}"></label>
+          </div>
+          <label>Country <span class="muted">(if not the US)</span><input name="country" autocomplete="country-name" maxlength="60" value="${esc(a.country)}"></label>
+          <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2" maxlength="500" placeholder="e.g. We moved in June!"></textarea></label>
+          <p class="error" id="err" hidden></p>
+          <button class="btn primary" type="submit">Send my address</button>
+        </form>`;
+      const form = document.getElementById('form');
+      const err = document.getElementById('err');
+      document.getElementById('change')?.addEventListener('click', () => { form.hidden = false; form.line1.focus(); });
+      document.getElementById('same')?.addEventListener('click', async (e) => {
+        e.target.disabled = true;
+        try { await call('POST', { unchanged: true }); done(true, from); } catch (x) { e.target.disabled = false; alert(x.message); }
+      });
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = form.elements;
+        const address = Object.fromEntries(['line1', 'line2', 'city', 'state', 'zip', 'country'].map((k) => [k, f[k].value.trim()]));
+        const btn = form.querySelector('button[type=submit]');
+        btn.disabled = true; err.hidden = true;
+        try { await call('POST', { address, note: f.note.value.trim() }); done(false, from); } catch (x) { err.textContent = x.message; err.hidden = false; btn.disabled = false; }
+      });
+    }
+    start();
+  </script>
+</body>
+</html>

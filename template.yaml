@@ -1,0 +1,269 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Occasion address book - households, occasions, labels and envelopes, SES invitations, Supabase sign-in.
+
+Parameters:
+  SupabaseUrl:
+    Type: String
+    AllowedPattern: '^https://[a-z0-9-]+\.supabase\.co$'
+    Description: Supabase project URL. Access tokens from this project are accepted by the API.
+  AllowedEmails:
+    Type: String
+    Default: '*'
+    Description: Comma-separated emails allowed to use the app, or * for any signed-in Supabase user.
+  SenderEmail:
+    Type: String
+    AllowedPattern: '^[^\s@]+@[^\s@]+\.[^\s@]+$'
+    Description: SES-verified address (or an address on an SES-verified domain) that invitations are sent from.
+  SesConfigurationSet:
+    Type: String
+    Default: ''
+    Description: Optional SES configuration set name for delivery tracking.
+  DevOrigin:
+    Type: String
+    Default: http://localhost:8080
+    Description: Extra origin allowed to call the API, for running the website locally.
+  AppDomain:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[a-z0-9.-]+\.[a-z]{2,}$'
+    Description: Optional custom domain for the website.
+  AppAltDomain:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[a-z0-9.-]+\.[a-z]{2,}$'
+    Description: Optional second domain (e.g. www.), redirected to AppDomain.
+  AppCertificateArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws[a-zA-Z-]*:acm:us-east-1:\d{12}:certificate/.+$'
+    ConstraintDescription: must be an ACM certificate ARN in us-east-1 (CloudFront only uses certificates from that region)
+    Description: ACM certificate in us-east-1 covering the custom domain(s). Required when AppDomain is set.
+
+Conditions:
+  HasConfigSet: !Not [!Equals [!Ref SesConfigurationSet, '']]
+  HasAppDomain: !Not [!Equals [!Ref AppDomain, '']]
+  HasAltDomain: !Not [!Equals [!Ref AppAltDomain, '']]
+
+Rules:
+  CustomDomainNeedsCertificate:
+    RuleCondition: !Not [!Equals [!Ref AppDomain, '']]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref AppCertificateArn, '']]
+        AssertDescription: Set AppCertificateArn (an ACM certificate in us-east-1) when using a custom domain.
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    MemorySize: 256
+    CodeUri: backend/
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref Table
+        SUPABASE_URL: !Ref SupabaseUrl
+        ALLOWED_EMAILS: !Ref AllowedEmails
+        SENDER_EMAIL: !Ref SenderEmail
+        SES_CONFIGURATION_SET: !Ref SesConfigurationSet
+        APP_URL: !If [HasAppDomain, !Sub 'https://${AppDomain}', !Sub 'https://${Distribution.DomainName}']
+
+Resources:
+  # ---------- Data ----------
+  # Single table. Address-update link tokens carry a "ttl" attribute so DynamoDB removes them after they expire.
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  # ---------- API ----------
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 20
+      CorsConfiguration:
+        AllowOrigins:
+          - !Sub https://${Distribution.DomainName}
+          - !Ref DevOrigin
+          - !If [HasAppDomain, !Sub 'https://${AppDomain}', !Ref AWS::NoValue]
+          - !If [HasAltDomain, !Sub 'https://${AppAltDomain}', !Ref AWS::NoValue]
+        AllowHeaders: [authorization, content-type]
+        AllowMethods: [GET, POST, PUT, DELETE, OPTIONS]
+        MaxAge: 600
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/api.handler
+      Timeout: 60 # an invitation batch sends up to 25 emails
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref Table }
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource:
+                - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*
+                - !If
+                  - HasConfigSet
+                  - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/${SesConfigurationSet}
+                  - !Ref AWS::NoValue
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunction}
+      RetentionInDays: 30
+
+  # ---------- Website ----------
+  WebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+  WebOac:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-web
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [W1030] # AppCertificateArn is only used when AppDomain is set, and the Rule requires it then
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Occasion address book
+        DefaultRootObject: index.html
+        Aliases: !If
+          - HasAppDomain
+          - !If [HasAltDomain, [!Ref AppDomain, !Ref AppAltDomain], [!Ref AppDomain]]
+          - !Ref AWS::NoValue
+        ViewerCertificate: !If
+          - HasAppDomain
+          - AcmCertificateArn: !Ref AppCertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - !Ref AWS::NoValue
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: web
+            DomainName: !GetAtt WebBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt WebOac.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        DefaultCacheBehavior:
+          TargetOriginId: web
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6          # Managed-CachingOptimized
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # Managed-SecurityHeadersPolicy
+          FunctionAssociations: !If
+            - HasAltDomain
+            - - EventType: viewer-request
+                FunctionARN: !GetAtt AltDomainRedirect.FunctionMetadata.FunctionARN
+            - !Ref AWS::NoValue
+        CustomErrorResponses:
+          - { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html }
+          - { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: /index.html }
+
+  # Sends visitors on the second domain (e.g. www.) to the main one, so everyone uses one
+  # address and only has to sign in once.
+  AltDomainRedirect:
+    Type: AWS::CloudFront::Function
+    Condition: HasAltDomain
+    Properties:
+      Name: !Sub ${AWS::StackName}-alt-domain-redirect
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Redirect the alternate domain to the main domain
+        Runtime: cloudfront-js-2.0
+      FunctionCode: !Sub |
+        function handler(event) {
+          var request = event.request;
+          var host = request.headers.host ? request.headers.host.value : '';
+          if (host === '${AppDomain}') return request;
+          var parts = [];
+          var qs = request.querystring;
+          for (var key in qs) {
+            var item = qs[key];
+            var values = item.multiValue ? item.multiValue : [item];
+            for (var i = 0; i < values.length; i++) {
+              parts.push(encodeURIComponent(key) + (values[i].value === '' ? '' : '=' + encodeURIComponent(values[i].value)));
+            }
+          }
+          return {
+            statusCode: 301,
+            statusDescription: 'Moved Permanently',
+            headers: { location: { value: 'https://${AppDomain}' + request.uri + (parts.length ? '?' + parts.join('&') : '') } },
+          };
+        }
+
+  WebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub ${WebBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+Outputs:
+  AppUrl:
+    Description: Website URL (add it to Supabase Auth > URL Configuration)
+    Value: !If [HasAppDomain, !Sub 'https://${AppDomain}', !Sub 'https://${Distribution.DomainName}']
+  CloudFrontUrl:
+    Description: The CloudFront address (point your domain's DNS here)
+    Value: !GetAtt Distribution.DomainName
+  ApiUrl:
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+  WebBucketName:
+    Value: !Ref WebBucket
+  DistributionId:
+    Value: !Ref Distribution
+  TableName:
+    Value: !Ref Table
