@@ -830,3 +830,33 @@ label > span.hint { display: block; }
   .book-chip { max-width: 210px; }
   .book-menu .menu { left: auto; right: 0; }
 }
+
+/* Groups: chips with an ×, a box to type more, and a suggestion list */
+.chip-input {
+  position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 4px; padding: 5px 6px; min-height: 42px; cursor: text;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+}
+.chip-input:focus-within { outline: 2px solid var(--focus); outline-offset: -1px; border-color: transparent; }
+.chip-tag {
+  display: inline-flex; align-items: center; gap: 2px; padding: 3px 4px 3px 11px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line); font-size: 14px; color: var(--ink); line-height: 1.3; max-width: 100%;
+}
+.chip-tag > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-x {
+  border: 0; background: none; color: var(--ink-3); cursor: pointer; width: 20px; height: 20px; border-radius: 50%;
+  display: inline-grid; place-items: center; font-size: 15px; line-height: 1; padding: 0;
+}
+.chip-x:hover, .chip-x:focus-visible { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
+.chip-x:disabled { display: none; }
+.chip-input .chip-text {
+  flex: 1 1 120px; min-width: 120px; border: 0 !important; outline: none; background: transparent; margin: 0 !important;
+  padding: 4px 6px !important; font-size: 15px; box-shadow: none;
+}
+.chip-suggest {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; max-height: 240px; overflow: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.14);
+}
+.chip-option { padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+.chip-option[aria-selected=true], .chip-option:hover { background: var(--surface-2); }
+.chip-option.new { color: var(--ink-2); }

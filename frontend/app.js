@@ -489,6 +489,107 @@ function memberRow(m = {}) {
   </div>`;
 }
 
+// ----- Groups: one rounded chip per group with an ×, a box to add more, and suggestions from the groups in use -----
+const groupChip = (g) => `<span class="chip-tag" data-chip="${esc(g)}"><span>${esc(g)}</span><button type="button" class="chip-x" data-action="chip-remove" aria-label="Remove ${esc(g)}" title="Remove">×</button></span>`;
+
+function groupChipsField(groups) {
+  return `<div class="chip-input" data-chips>
+    ${groups.map(groupChip).join('')}
+    <input type="text" class="chip-text" data-chip-text maxlength="40" autocomplete="off" placeholder="${groups.length ? 'Add group' : 'Family, Neighbors, Work…'}"
+      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="group-suggest" aria-labelledby="groups-label">
+    <div class="chip-suggest" id="group-suggest" role="listbox" hidden></div>
+  </div>`;
+}
+
+const groupValues = (root) => {
+  const box = root.querySelector('[data-chips]');
+  if (!box) return [];
+  addTypedGroup(box); // a group typed but not yet entered still counts when saving
+  return [...box.querySelectorAll('[data-chip]')].map((c) => c.dataset.chip);
+};
+
+function addGroupChip(box, raw) {
+  const name = String(raw ?? '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (!name) return;
+  const have = [...box.querySelectorAll('[data-chip]')].map((c) => c.dataset.chip.toLowerCase());
+  if (have.includes(name.toLowerCase())) return;
+  if (have.length >= 20) { toast('At most 20 groups per household', true); return; }
+  // Reuse the spelling of an existing group ("family" becomes "Family").
+  const known = allGroups().find((g) => g.toLowerCase() === name.toLowerCase()) ?? name;
+  box.querySelector('[data-chip-text]').insertAdjacentHTML('beforebegin', groupChip(known));
+  box.querySelector('[data-chip-text]').placeholder = 'Add group';
+}
+
+function addTypedGroup(box) {
+  const input = box.querySelector('[data-chip-text]');
+  if (input?.value.trim()) { addGroupChip(box, input.value); input.value = ''; }
+  hideGroupSuggest(box);
+}
+
+function showGroupSuggest(box) {
+  const input = box.querySelector('[data-chip-text]');
+  const list = box.querySelector('.chip-suggest');
+  const q = input.value.trim().toLowerCase();
+  const have = new Set([...box.querySelectorAll('[data-chip]')].map((c) => c.dataset.chip.toLowerCase()));
+  const matches = allGroups().filter((g) => !have.has(g.toLowerCase()))
+    .filter((g) => !q || g.toLowerCase().includes(q))
+    .sort((a, b) => (b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q)) || a.localeCompare(b))
+    .slice(0, 8);
+  const exact = matches.some((g) => g.toLowerCase() === q) || have.has(q); // already a chip: nothing to add
+  const items = [...matches.map((g) => ({ value: g, label: esc(g) })), ...(q && !exact ? [{ value: input.value.trim(), label: `Add "<b>${esc(input.value.trim())}</b>"`, isNew: true }] : [])];
+  if (!items.length) return hideGroupSuggest(box);
+  list.innerHTML = items.map((it, i) => `<div class="chip-option${it.isNew ? ' new' : ''}" role="option" id="group-opt-${i}" data-value="${esc(it.value)}" aria-selected="${i === 0 && q ? 'true' : 'false'}">${it.label}</div>`).join('');
+  list.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+  return undefined;
+}
+
+function hideGroupSuggest(box) {
+  const list = box?.querySelector('.chip-suggest');
+  if (!list) return;
+  list.hidden = true;
+  list.innerHTML = '';
+  box.querySelector('[data-chip-text]')?.setAttribute('aria-expanded', 'false');
+}
+
+function moveGroupHighlight(box, step) {
+  const opts = [...box.querySelectorAll('.chip-option')];
+  if (!opts.length) return;
+  const cur = opts.findIndex((o) => o.getAttribute('aria-selected') === 'true');
+  const next = cur < 0 ? (step > 0 ? 0 : opts.length - 1) : (cur + step + opts.length) % opts.length;
+  opts.forEach((o, i) => o.setAttribute('aria-selected', String(i === next)));
+  opts[next].scrollIntoView({ block: 'nearest' });
+}
+
+function onGroupKey(e) {
+  const input = e.target;
+  const box = input.closest('[data-chips]');
+  const list = box.querySelector('.chip-suggest');
+  const open = !list.hidden;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!open) showGroupSuggest(box);
+    moveGroupHighlight(box, e.key === 'ArrowDown' ? 1 : -1);
+  } else if (e.key === 'Enter' || e.key === ',' || (e.key === 'Tab' && input.value.trim())) {
+    // Enter / comma / Tab add a chip (Enter never submits the form from here).
+    const picked = open && box.querySelector('.chip-option[aria-selected=true]');
+    if (!picked && !input.value.trim()) { if (e.key !== 'Tab') e.preventDefault(); return; }
+    e.preventDefault();
+    addGroupChip(box, picked ? picked.dataset.value : input.value);
+    input.value = '';
+    hideGroupSuggest(box);
+  } else if (e.key === 'Backspace' && !input.value) {
+    // Backspace in the empty box removes the last chip.
+    const chips = box.querySelectorAll('[data-chip]');
+    chips[chips.length - 1]?.remove();
+    showGroupSuggest(box);
+  } else if (e.key === 'Escape' && open) {
+    e.preventDefault(); // close the suggestions, not the dialog
+    e.stopPropagation();
+    hideGroupSuggest(box);
+  }
+}
+
 function householdModal(h) {
   const isNew = !h;
   h ??= { members: [{}], address: {}, groups: state.group ? [state.group] : [] };
@@ -525,8 +626,10 @@ function householdModal(h) {
       <label>Household email <span class="muted">(shared, optional)</span><input name="emails" value="${val((h.emails ?? []).join(', '))}" placeholder="smiths@example.com"></label>
       <label>Home phone <span class="muted">(optional)</span><input name="phone" type="tel" maxlength="30" value="${val(h.phone)}"></label>
     </div>
-    <label>Groups <span class="muted">(comma separated)</span><input name="groups" list="group-list" value="${val((h.groups ?? []).join(', '))}" placeholder="Family, Neighbors, Work">
-      <datalist id="group-list">${allGroups().map((g) => `<option value="${esc(g)}">`).join('')}</datalist></label>
+    <div>
+      <div class="label-like" id="groups-label">Groups</div>
+      ${groupChipsField(h.groups ?? [])}
+    </div>
     <label>Notes<textarea name="notes" rows="2" maxlength="2000">${esc(h.notes ?? '')}</textarea></label>`, {
     form: isNew ? 'household-new' : `household-${h.id}`,
     wide: true,
@@ -567,7 +670,7 @@ function readHousehold(form) {
     members,
     emails: form.emails.value.trim(),
     phone: form.phone.value.trim(),
-    groups: form.groups.value,
+    groups: groupValues(form),
     notes: form.notes.value.trim(),
   };
 }
@@ -1476,6 +1579,12 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'remove-member': el.closest('[data-member]').remove(); break;
+    case 'chip-remove': {
+      const box = el.closest('[data-chips]');
+      el.closest('[data-chip]').remove();
+      box.querySelector('[data-chip-text]').focus();
+      break;
+    }
     case 'delete-household': {
       const h = hhById().get(id);
       if (!confirm(`Delete ${h.labelName}? They'll also be removed from every occasion.`)) return;
@@ -1565,7 +1674,35 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+document.addEventListener('keydown', (e) => { if (e.target.matches?.('[data-chip-text]')) onGroupKey(e); }, true);
+document.addEventListener('mousedown', (e) => {
+  // Picking a suggestion: keep focus in the box.
+  const opt = e.target.closest('.chip-option');
+  if (opt) {
+    e.preventDefault();
+    const box = opt.closest('[data-chips]');
+    addGroupChip(box, opt.dataset.value);
+    box.querySelector('[data-chip-text]').value = '';
+    hideGroupSuggest(box);
+    showGroupSuggest(box);
+  } else if (e.target.matches?.('[data-chips]')) {
+    e.preventDefault();
+    e.target.querySelector('[data-chip-text]').focus();
+  }
+});
+document.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-chip-text]')) showGroupSuggest(e.target.closest('[data-chips]')); });
+document.addEventListener('focusout', (e) => { if (e.target.matches?.('[data-chip-text]')) hideGroupSuggest(e.target.closest('[data-chips]')); });
+
 document.addEventListener('input', (e) => {
+  if (e.target.matches?.('[data-chip-text]')) {
+    const box = e.target.closest('[data-chips]');
+    if (e.target.value.includes(',')) { // pasted "Family, Work"
+      const parts = e.target.value.split(',');
+      e.target.value = parts.pop();
+      parts.forEach((g) => addGroupChip(box, g));
+    }
+    showGroupSuggest(box);
+  }
   if (e.target.name === 'formalName') delete e.target.dataset.auto; // typed by hand: never replace it
   const k = e.target.dataset?.input;
   if (k === 'search') { state.search = e.target.value; renderHouseholdList(); }
