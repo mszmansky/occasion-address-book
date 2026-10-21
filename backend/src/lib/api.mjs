@@ -187,7 +187,7 @@ export function householdEmails(h) {
 const strip = ({ PK, SK, GSI1PK, GSI1SK, ...rest }) => rest;
 const fullName = (p) => [p.firstName, p.lastName].filter(Boolean).join(' ');
 
-export function createApi({ repo, verify, mailer, appUrl, now = () => new Date(), log = console, pause = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function createApi({ repo, verify, mailer, appUrl, files, now = () => new Date(), log = console, pause = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const routes = [];
   const route = (method, pattern, fn, { open = false } = {}) => {
     const keys = [];
@@ -218,13 +218,62 @@ export function createApi({ repo, verify, mailer, appUrl, now = () => new Date()
   const publicHousehold = (h) => strip(h);
 
   // ---------- profile ----------
-  route('GET', '/me', async ({ user }) => ({ profile: strip(await getProfile(user)), linkDays: LINK_DAYS }));
+  // The profile as the app sees it: the stored photo becomes a link that works for an hour.
+  async function publicProfile(p) {
+    const { avatar, ...rest } = strip(p);
+    return { ...rest, avatarUrl: avatar && files ? await files.signDownload(avatar.key, { name: 'avatar', type: avatar.type }) : undefined };
+  }
+
+  route('GET', '/me', async ({ user }) => ({ profile: await publicProfile(await getProfile(user)), linkDays: LINK_DAYS }));
 
   route('PUT', '/me', async ({ user, body }) => {
     const current = await getProfile(user);
     const updated = { ...current, ...parseProfile(body, current), updatedAt: nowIso() };
     await repo.put(updated);
-    return { profile: strip(updated) };
+    return { profile: await publicProfile(updated) };
+  });
+
+  // ---------- profile photo (same as Vehicle Maintenance) ----------
+  // The browser crops the photo to a square JPEG, asks for an upload link, PUTs the file straight
+  // to the private bucket, then calls complete so the API can check it arrived and is small enough.
+  const AVATAR_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+  const AVATAR_MAX = 5 * 1024 * 1024;
+  const avatarKey = (sub, id, type) => `avatars/${sub}/${id}.${AVATAR_TYPES[type]}`;
+  const needFiles = () => { if (!files) throw new HttpError(503, 'Photo storage is not set up'); };
+
+  route('POST', '/me/avatar', async ({ user, body }) => {
+    needFiles();
+    const type = String(body.type ?? '');
+    if (!AVATAR_TYPES[type]) throw new HttpError(400, 'Use a JPEG, PNG or WebP image');
+    const size = num(body.size, 'File size', { min: 1, max: Number.MAX_SAFE_INTEGER, required: true });
+    if (size > AVATAR_MAX) throw new HttpError(400, 'Profile photos can be up to 5 MB');
+    const id = newId();
+    return { id, uploadUrl: await files.signUpload(avatarKey(user.sub, id, type), { type, size }) };
+  });
+
+  route('POST', '/me/avatar/:aid/complete', async ({ user, params, body }) => {
+    needFiles();
+    if (!/^[a-f0-9]{16}$/.test(params.aid)) throw new HttpError(400, 'Invalid upload');
+    const type = String(body.type ?? '');
+    if (!AVATAR_TYPES[type]) throw new HttpError(400, 'Use a JPEG, PNG or WebP image');
+    const key = avatarKey(user.sub, params.aid, type);
+    const size = await files.size(key);
+    if (size === null) throw new HttpError(409, 'The upload did not finish. Please try again.');
+    if (size > AVATAR_MAX) { await files.remove([key]); throw new HttpError(400, 'Profile photos can be up to 5 MB'); }
+    const profile = await getProfile(user);
+    const old = profile.avatar?.key;
+    const updated = { ...profile, avatar: { key, type, updatedAt: nowIso() } };
+    await repo.put(updated);
+    if (old && old !== key) await files.remove([old]);
+    return { profile: await publicProfile(updated) };
+  });
+
+  route('DELETE', '/me/avatar', async ({ user }) => {
+    const profile = await getProfile(user);
+    if (profile.avatar && files) await files.remove([profile.avatar.key]);
+    const { avatar, ...rest } = profile;
+    await repo.put(rest);
+    return { profile: await publicProfile(rest) };
   });
 
   // ---------- households ----------

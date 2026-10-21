@@ -61,6 +61,7 @@ Globals:
     Environment:
       Variables:
         TABLE_NAME: !Ref Table
+        FILES_BUCKET: !Ref FilesBucket
         ALLOWED_EMAILS: !Ref AllowedEmails
         SENDER_EMAIL: !Ref SenderEmail
         SES_CONFIGURATION_SET: !Ref SesConfigurationSet
@@ -88,6 +89,56 @@ Resources:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
         SSEEnabled: true
+
+  # ---------- Profile photos ----------
+  # Private and encrypted; the browser uploads and views through short-lived signed links.
+  FilesBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: CleanUp
+            Status: Enabled
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Sub https://${Distribution.DomainName}
+              - !Ref DevOrigin
+              - !If [HasAppDomain, !Sub 'https://${AppDomain}', !Ref AWS::NoValue]
+              - !If [HasAltDomain, !Sub 'https://${AppAltDomain}', !Ref AWS::NoValue]
+            AllowedMethods: [PUT, GET]
+            AllowedHeaders: [content-type]
+            MaxAge: 3000
+
+  FilesBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FilesBucket
+      PolicyDocument:
+        Statement:
+          - Sid: HttpsOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt FilesBucket.Arn
+              - !Sub ${FilesBucket.Arn}/*
+            Condition:
+              Bool: { 'aws:SecureTransport': 'false' }
 
   # ---------- Sign-in (Cognito) ----------
   # Invite-only: people are added with scripts/invite-user.sh and get an email with a temporary
@@ -192,6 +243,7 @@ Resources:
           COGNITO_CLIENT_ID: !Ref UserPoolClient
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref Table }
+        - S3CrudPolicy: { BucketName: !Ref FilesBucket }
         - Statement:
             - Effect: Allow
               Action: ses:SendEmail
@@ -345,6 +397,9 @@ Outputs:
     Value: !Ref UserPoolClient
   WebBucketName:
     Value: !Ref WebBucket
+  FilesBucketName:
+    Description: Private bucket holding profile photos
+    Value: !Ref FilesBucket
   DistributionId:
     Value: !Ref Distribution
   TableName:

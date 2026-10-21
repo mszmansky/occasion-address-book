@@ -51,6 +51,7 @@ const allGroups = () => [...new Set(state.households.flatMap((h) => h.groups ?? 
 const peopleNames = (h) => (h.members ?? []).map((m) => [m.firstName, m.lastName].filter(Boolean).join(' ')).join(', ');
 const PENCIL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10.6 2.6a1.6 1.6 0 0 1 2.3 0l.5.5a1.6 1.6 0 0 1 0 2.3L6 12.8l-3.3.8.8-3.3 7.1-7.7zM9.5 3.8l2.7 2.7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/></svg>';
 const MAIL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="m2.5 4.5 5.5 4 5.5-4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+const TRASH = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.75c0-.4.3-.75.75-.75h1.5c.4 0 .75.35.75.75V4M4 4l.6 9.1c.05.5.45.9 1 .9h4.8c.55 0 .95-.4 1-.9L12 4M6.75 6.75v4.5M9.25 6.75v4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const LOGO = '<img class="logo" src="icon-192.png" width="64" height="64" alt="">';
 
@@ -225,13 +226,24 @@ function render() {
   if (state.view === 'occasions' && state.occasionId && state.occ) renderRecipientRows();
 }
 
+function initials(p, email) {
+  const fromName = [p?.firstName, p?.lastName].filter(Boolean).map((x) => x[0]).join('');
+  return (fromName || (email || '?')[0]).toUpperCase();
+}
+
+// The profile photo in a circle, or initials when there's no photo (same as Vehicle Maintenance).
+function avatarHtml(p, email, size) {
+  return p?.avatarUrl
+    ? `<img class="avatar" src="${esc(p.avatarUrl)}" alt="" width="${size}" height="${size}">`
+    : `<span class="avatar avatar-initials" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px" aria-hidden="true">${esc(initials(p, email))}</span>`;
+}
+
 function userChip(email) {
   const p = state.me?.profile;
   const name = [p?.firstName, p?.lastName].filter(Boolean).join(' ');
-  const initials = (name ? name.split(' ').map((x) => x[0]).join('') : (email || '?')[0]).toUpperCase().slice(0, 2);
   return `<div class="user-menu">
     <button type="button" class="user-chip" data-action="toggle-user-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="user-menu-list">
-      <span class="avatar avatar-initials" style="width:32px;height:32px;font-size:13px" aria-hidden="true">${esc(initials)}</span>
+      ${avatarHtml(p, email, 32)}
       <span class="user-text">${name ? `<span class="user-name">${esc(name)}</span>` : ''}<span class="user-email">${esc(email)}</span></span>
       ${CHEVRON}
     </button>
@@ -984,6 +996,18 @@ function profileTab() {
   const email = state.session?.user?.email ?? p.email;
   openModal('Settings', `
     ${settingsTabs('profile')}
+    <div class="avatar-row">
+      <div class="avatar-edit">
+        <div data-avatar-preview>${avatarHtml(p, email, 72)}</div>
+        ${p.avatarUrl ? `<button type="button" class="avatar-remove" data-action="remove-avatar" title="Remove photo" aria-label="Remove photo">${TRASH}</button>` : ''}
+      </div>
+      <div class="avatar-actions">
+        <label class="btn sm">
+          <input type="file" data-avatar-input accept="image/jpeg,image/png,image/webp,image/heic,.heic" hidden>
+          ${p.avatarUrl ? 'Change photo' : 'Upload photo'}
+        </label>
+      </div>
+    </div>
     <div class="grid-2">
       <label>First name<input name="firstName" maxlength="60" value="${val(p.firstName)}" autocomplete="given-name"></label>
       <label>Last name<input name="lastName" maxlength="60" value="${val(p.lastName)}" autocomplete="family-name"></label>
@@ -995,6 +1019,61 @@ function profileTab() {
       <div class="email-change" data-email-change ${state.pendingEmail ? '' : 'hidden'}>${emailChangeBody(state.pendingEmail)}</div>
       <p class="hint">Replies to your invitations and address checks come here.</p>
     </div>`, { form: 'settings-profile', foot: saveFoot('Save profile') });
+  modal.querySelector('[data-avatar-input]').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) uploadAvatar(file);
+  });
+}
+
+// Profile photos are cropped to a centered square and saved as a 400px JPEG before upload.
+async function squareJpeg(file, size = 400) {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, size, size);
+  ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+  bitmap.close?.();
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not process that image'))), 'image/jpeg', 0.88));
+}
+
+async function uploadAvatar(file) {
+  const preview = modal.querySelector('[data-avatar-preview]');
+  preview?.classList.add('busy');
+  try {
+    let blob;
+    try { blob = await squareJpeg(file); } catch { throw new Error("That image couldn't be read. Try a JPEG or PNG."); }
+    const { id, uploadUrl } = await api('/me/avatar', { method: 'POST', body: { type: 'image/jpeg', size: blob.size } });
+    const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: blob });
+    if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+    state.me.profile = (await api(`/me/avatar/${id}/complete`, { method: 'POST', body: { type: 'image/jpeg' } })).profile;
+    toast('Photo updated');
+    profileTabKeepingInput();
+    render();
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    preview?.classList.remove('busy');
+  }
+}
+
+async function removeAvatar(btn) {
+  await withBusy(btn, async () => {
+    state.me.profile = (await api('/me/avatar', { method: 'DELETE' })).profile;
+    toast('Photo removed');
+    profileTabKeepingInput();
+    render();
+  });
+}
+
+// Re-draws the Profile tab (new photo, new email) without losing names typed but not yet saved.
+function profileTabKeepingInput() {
+  const names = ['firstName', 'lastName', 'emailFromName'];
+  const typed = modal.open ? Object.fromEntries(names.map((n) => [n, modal.querySelector(`[name=${n}]`)?.value])) : null;
+  profileTab();
+  if (typed) for (const n of names) if (typed[n] !== undefined) modal.querySelector(`[name=${n}]`).value = typed[n];
 }
 
 function returnAddressTab() {
@@ -1108,7 +1187,7 @@ async function confirmEmailChange(btn) {
     if (rememberedEmail()) rememberEmail(state.session?.user?.email);
     state.me = await api('/me'); // the profile follows the new sign-in email
     toast('Your sign-in email is changed');
-    profileTab();
+    profileTabKeepingInput();
     render();
   });
 }
@@ -1217,6 +1296,7 @@ document.addEventListener('click', async (e) => {
     case 'settings': setUserMenu(false); mfaEnrollment = null; settingsModal('profile'); break;
     case 'align-test': await withBusy(el, () => alignTest(el.dataset.what)); break;
     case 'settings-tab': settingsModal(el.dataset.tab); break;
+    case 'remove-avatar': await removeAvatar(el); break;
     case 'show-email-change': {
       const box = modal.querySelector('[data-email-change]');
       box.hidden = !box.hidden;

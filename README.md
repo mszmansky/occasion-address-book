@@ -39,6 +39,8 @@ Browser ── Cognito user pool (sign-in from the browser, no SDK: frontend/aut
    │
    ├── CloudFront ── S3 (static site: frontend/)
    │
+   ├── S3 (private: profile photos, through short-lived signed links)
+   │
    └── API Gateway HTTP API ── Lambda "api" ── DynamoDB (single table, TTL on link tokens)
                                    │  verifies Cognito ID tokens against the user pool's JWKS
                                    └─ SES (invitations, address checks, "they replied" notices)
@@ -55,6 +57,7 @@ Browser ── Cognito user pool (sign-in from the browser, no SDK: frontend/aut
 | `backend/src/handlers/cognito-message.mjs` | Cognito's invitation, password-reset and email-change emails |
 | `frontend/auth.js` | Cognito sign-in from the browser (shared with Vehicle Maintenance) |
 | `scripts/invite-user.sh` | Invite someone (Cognito emails a temporary password) |
+| `backend/src/lib/files.mjs` | Profile photos in a private S3 bucket: signed upload/view links (shared with Vehicle Maintenance) |
 | `frontend/print-core.js` | Label and envelope layout (unit tested) |
 | `frontend/csv-core.js` | CSV parsing, column guessing, export (unit tested) |
 | `frontend/app.js` | The single-page app (vanilla JS, no build step) |
@@ -99,7 +102,7 @@ Sign-up is by invitation only. Invite yourself (and anyone else) after the first
 Cognito emails a temporary password. Sign in with it and you're asked to choose your own. **Forgot password?** emails a 6-digit code.
 
 **Settings** (account menu) has four tabs:
-- **Profile:** your name, the name invitations come from, and your sign-in email (changing it emails a 6-digit code to the new address).
+- **Profile:** a profile photo (cropped to a square, shown in a circle here and beside your name at the top), your name, the name invitations come from, and your sign-in email (changing it emails a 6-digit code to the new address).
 - **Return address:** printed on envelopes and return-address labels.
 - **Security:** change password, and two-step verification with an authenticator app.
 - **Printer:** label and envelope alignment offsets, with alignment test pages.

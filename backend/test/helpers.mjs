@@ -58,3 +58,16 @@ export async function createTokenFactory() {
     .sign(privateKey);
   return { jwks, sign };
 }
+
+// Stand-in for S3: "uploads" are recorded by calling put(key, size) in tests.
+export function createFakeFiles() {
+  const objects = new Map();
+  return {
+    objects,
+    put(key, size) { objects.set(key, size); },
+    async signUpload(key, { type, size }) { return `https://s3.example/${key}?put&type=${encodeURIComponent(type)}&size=${size}`; },
+    async signDownload(key) { return `https://s3.example/${key}?get`; },
+    async size(key) { return objects.has(key) ? objects.get(key) : null; },
+    async remove(keys) { for (const k of keys) objects.delete(k); },
+  };
+}

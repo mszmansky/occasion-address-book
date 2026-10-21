@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApi, householdEmails } from '../src/lib/api.mjs';
 import { createCognitoVerifier } from '../src/lib/auth.mjs';
-import { createMemoryRepo, createFakeMailer, createTokenFactory, REGION, USER_POOL_ID, CLIENT_ID } from './helpers.mjs';
+import { createMemoryRepo, createFakeMailer, createFakeFiles, createTokenFactory, REGION, USER_POOL_ID, CLIENT_ID } from './helpers.mjs';
 
-async function setup({ mailer = createFakeMailer(), allowedEmails = '*' } = {}) {
+async function setup({ mailer = createFakeMailer(), allowedEmails = '*', files = createFakeFiles() } = {}) {
   const repo = createMemoryRepo();
   const tokens = await createTokenFactory();
   let clock = new Date('2026-11-01T15:00:00Z');
@@ -13,6 +13,7 @@ async function setup({ mailer = createFakeMailer(), allowedEmails = '*' } = {}) 
     mailer,
     verify: createCognitoVerifier({ region: REGION, userPoolId: USER_POOL_ID, clientId: CLIENT_ID, allowedEmails, jwks: tokens.jwks }),
     appUrl: 'https://cards.example.com',
+    files,
     now: () => clock,
     log: { error() {} },
     pause: async () => {},
@@ -27,7 +28,7 @@ async function setup({ mailer = createFakeMailer(), allowedEmails = '*' } = {}) 
     });
     return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
   };
-  return { repo, mailer, tokens, call, setClock: (d) => { clock = new Date(d); } };
+  return { repo, mailer, files, tokens, call, setClock: (d) => { clock = new Date(d); } };
 }
 
 const smiths = {
@@ -216,4 +217,38 @@ test('profile print offsets are bounded', async () => {
   assert.equal(ok.body.profile.print.envelopeOffsetY, 0);
   assert.equal(ok.body.profile.returnAddress.state, 'MI');
   assert.equal((await call('PUT', '/me', { print: { labelOffsetY: 3 } })).status, 400);
+});
+
+test('profile photo: upload, replace, remove, and private to its owner', async () => {
+  const { call, files } = await setup();
+  assert.match((await call('POST', '/me/avatar', { type: 'image/gif', size: 10 })).body.error, /JPEG, PNG or WebP/);
+  assert.match((await call('POST', '/me/avatar', { type: 'image/jpeg', size: 6 * 1024 * 1024 })).body.error, /up to 5 MB/);
+
+  const first = (await call('POST', '/me/avatar', { type: 'image/jpeg', size: 1000 })).body;
+  assert.match(first.uploadUrl, /avatars\/user-1\/[a-f0-9]{16}\.jpg\?put/);
+  // Completing before the browser's upload arrived is refused.
+  assert.equal((await call('POST', `/me/avatar/${first.id}/complete`, { type: 'image/jpeg' })).status, 409);
+  files.put(`avatars/user-1/${first.id}.jpg`, 1000);
+  let profile = (await call('POST', `/me/avatar/${first.id}/complete`, { type: 'image/jpeg' })).body.profile;
+  assert.match(profile.avatarUrl, new RegExp(`avatars/user-1/${first.id}\\.jpg\\?get`));
+  assert.equal(profile.avatar, undefined, 'the storage key is not sent to the browser');
+  assert.ok((await call('GET', '/me')).body.profile.avatarUrl);
+
+  // A new photo replaces the old file.
+  const second = (await call('POST', '/me/avatar', { type: 'image/jpeg', size: 900 })).body;
+  files.put(`avatars/user-1/${second.id}.jpg`, 900);
+  await call('POST', `/me/avatar/${second.id}/complete`, { type: 'image/jpeg' });
+  assert.deepEqual([...files.objects.keys()], [`avatars/user-1/${second.id}.jpg`]);
+
+  // Saving other settings keeps the photo.
+  profile = (await call('PUT', '/me', { firstName: 'Mike' })).body.profile;
+  assert.ok(profile.avatarUrl);
+
+  // Another user can't complete someone else's upload into their own profile.
+  const other = { claims: { sub: 'user-2', email: 'other@example.com' } };
+  assert.equal((await call('POST', `/me/avatar/${second.id}/complete`, { type: 'image/jpeg' }, other)).status, 409);
+
+  profile = (await call('DELETE', '/me/avatar')).body.profile;
+  assert.equal(profile.avatarUrl, undefined);
+  assert.equal(files.objects.size, 0);
 });
