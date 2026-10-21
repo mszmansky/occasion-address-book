@@ -945,3 +945,10 @@ label > span.hint { display: block; }
   /* Long footers (Delete, Confirm address, Cancel, Save) wrap instead of running off the screen. */
   .modal-foot { flex-wrap: wrap; }
 }
+
+.modal-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head-actions { display: flex; align-items: center; gap: 4px; flex: none; margin-left: 12px; }
+.share-menu { position: relative; }
+.btn.icon-only { padding-left: 8px; padding-right: 8px; display: inline-flex; align-items: center; }
+.share-menu .btn[aria-expanded=true] { background: var(--surface-2); }
+.share-menu .menu { min-width: 170px; }

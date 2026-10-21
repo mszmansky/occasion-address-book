@@ -7,6 +7,7 @@ import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
   defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact,
 } from './csv-core.js';
+import { householdToVcard, fileBaseName } from './vcard-core.js';
 
 const cfg = window.APP_CONFIG ?? {};
 const root = document.getElementById('root');
@@ -57,6 +58,8 @@ const MAIL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"
 const TRASH = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.75c0-.4.3-.75.75-.75h1.5c.4 0 .75.35.75.75V4M4 4l.6 9.1c.05.5.45.9 1 .9h4.8c.55 0 .95-.4 1-.9L12 4M6.75 6.75v4.5M9.25 6.75v4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const BOOK_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 2.75A1.75 1.75 0 0 1 4.75 1h7.5c.41 0 .75.34.75.75v10.5a.75.75 0 0 1-.75.75H4.75a.75.75 0 0 0 0 1.5H13M3 2.75v10.5A1.75 1.75 0 0 0 4.75 15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 4.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
 const REQUIRED = '<span class="req" aria-hidden="true" title="Required">*</span>';
+// The standard share icon: a box with an arrow coming up out of it.
+const SHARE_ICON = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 1.75v8.5M5.25 4.5 8 1.75l2.75 2.75M5.5 6.5H4.25c-.7 0-1.25.55-1.25 1.25v5.5c0 .7.55 1.25 1.25 1.25h7.5c.7 0 1.25-.55 1.25-1.25v-5.5c0-.7-.55-1.25-1.25-1.25H10.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const LOGO = '<img class="logo" src="icon-192.png" width="64" height="64" alt="">';
 
@@ -657,10 +660,10 @@ window.addEventListener('scroll', hideNoteTip, true);
 window.addEventListener('resize', hideNoteTip);
 
 // ---------- modal ----------
-function openModal(title, body, { form, foot = '', wide = false } = {}) {
+function openModal(title, body, { form, foot = '', wide = false, head = '' } = {}) {
   modal.style.width = wide ? 'min(760px, calc(100vw - 32px))' : '';
   modal.innerHTML = `<form data-form="${form}" novalidate>
-    <div class="modal-head"><h2>${title}</h2><button type="button" class="btn ghost sm" data-action="close" aria-label="Close">✕</button></div>
+    <div class="modal-head"><h2>${title}</h2><div class="head-actions">${head}<button type="button" class="btn ghost sm" data-action="close" aria-label="Close">✕</button></div></div>
     <div class="modal-body stack">${body}<p class="error" data-error hidden></p></div>
     <div class="modal-foot">${foot}</div>
   </form>`;
@@ -831,6 +834,53 @@ function showHouseholdTab(id, { focus = true } = {}) {
   if (focus) modal.querySelector(`[data-hh-panel="${id}"]`)?.querySelector('input:not([type=checkbox]):not([disabled]), textarea:not([disabled])')?.focus();
 }
 
+// Share one household as a vCard or a CSV: the system share sheet (AirDrop, Mail, Messages…) where the
+// browser has one, plus plain downloads. What's on screen is shared, including edits not yet saved.
+function shareMenu() {
+  const canShareSheet = typeof navigator.share === 'function';
+  const items = (verb) => `<button type="button" role="menuitem" data-action="hh-share" data-how="${verb}" data-kind="vcf">vCard (.vcf)</button>
+      <button type="button" role="menuitem" data-action="hh-share" data-how="${verb}" data-kind="csv">CSV (.csv)</button>`;
+  return `<div class="share-menu">
+    <button type="button" class="btn ghost sm icon-only" data-action="toggle-share-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="share-menu-list" title="Share" aria-label="Share">${SHARE_ICON}</button>
+    <div class="menu" id="share-menu-list" role="menu" hidden>
+      ${canShareSheet ? `<div class="menu-label">Share</div>${items('share')}<hr><div class="menu-label">Download</div>` : '<div class="menu-label">Download</div>'}
+      ${items('download')}
+    </div>
+  </div>`;
+}
+
+// Escape closes an open share menu before it closes the dialog.
+modal.addEventListener('cancel', (e) => {
+  const menu = modal.querySelector('#share-menu-list');
+  if (menu && !menu.hidden) { e.preventDefault(); setShareMenu(false); modal.querySelector('[data-action=toggle-share-menu]')?.focus(); }
+});
+
+function setShareMenu(open) {
+  const btn = modal.querySelector('[data-action=toggle-share-menu]');
+  const menu = modal.querySelector('#share-menu-list');
+  if (!btn || !menu) return;
+  menu.hidden = !open;
+  btn.setAttribute('aria-expanded', String(open));
+}
+
+async function shareHousehold(how, kind) {
+  setShareMenu(false);
+  const form = modal.querySelector('form');
+  const saved = hhById().get(form.dataset.form.replace(/^household-/, '')) ?? {};
+  const h = { ...saved, ...readHousehold(form) };
+  if (!h.labelName) { showHouseholdTab('greetings'); return modalError('Enter the Household Greeting.'); }
+  const name = `${fileBaseName(h)}.${kind}`;
+  const text = kind === 'vcf' ? householdToVcard(h) : householdsToCsv([h]);
+  const type = kind === 'vcf' ? 'text/vcard' : 'text/csv';
+  if (how === 'share') {
+    const file = new File([text], name, { type });
+    if (navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: h.labelName }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+  }
+  download(name, text, type);
+}
+
 function householdModal(h) {
   const isNew = !h;
   h ??= { members: [{}], address: {}, groups: state.filters.people.groups.length === 1 ? [...state.filters.people.groups] : [] };
@@ -877,6 +927,7 @@ function householdModal(h) {
     </div>`, {
     form: isNew ? 'household-new' : `household-${h.id}`,
     wide: true,
+    head: isNew ? '' : shareMenu(),
     foot: `<div class="left-actions">${isNew ? '' : `<button type="button" class="btn danger" data-action="delete-household" data-id="${esc(h.id)}">Delete</button>
       <button type="button" class="btn" data-action="request-address" data-id="${esc(h.id)}" ${allEmails(h).length ? '' : 'disabled title="Add an email address first"'}>${MAIL} Confirm address</button>`}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button>${NEXT_BTN}<button class="btn primary">Save</button></div>`,
@@ -1779,6 +1830,7 @@ document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-action]');
   if (!e.target.closest('.user-menu')) setUserMenu(false);
   if (!e.target.closest('.book-menu')) setBookMenu(false);
+  if (!e.target.closest('.share-menu')) setShareMenu(false);
   if (!el) return;
   const { action, id } = el.dataset;
   switch (action) {
@@ -1798,6 +1850,8 @@ document.addEventListener('click', async (e) => {
     case 'align-test': await withBusy(el, () => alignTest(el.dataset.what)); break;
     case 'settings-tab': settingsModal(el.dataset.tab); break;
     case 'hh-tab': showHouseholdTab(el.dataset.tab); break;
+    case 'toggle-share-menu': setShareMenu(modal.querySelector('#share-menu-list').hidden); break;
+    case 'hh-share': await shareHousehold(el.dataset.how, el.dataset.kind); break;
     case 'hh-next': {
       const at = HOUSEHOLD_TABS.findIndex(([t]) => t === modal.querySelector('[data-action=hh-tab][aria-selected=true]')?.dataset.tab);
       showHouseholdTab(HOUSEHOLD_TABS[Math.min(at + 1, HOUSEHOLD_TABS.length - 1)][0]);
