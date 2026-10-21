@@ -86,3 +86,16 @@ test('formal name defaults to "Mr. and Mrs. <Last>" when the greeting has two fi
   const { households } = buildHouseholds(rows.slice(1), map);
   assert.deepEqual(households.map((h) => h.formalName), ['Mr. and Mrs. Abbott', undefined, 'Dr. and Mr. Wu']);
 });
+
+test('a household imported before the formal-name default still prints "Mr. and Mrs. <Last>"', async () => {
+  const { effectiveFormalName } = await import('../../frontend/csv-core.js');
+  const { envelopeName } = await import('../../frontend/print-core.js');
+  const abbotts = { labelName: 'Todd and Kim Abbott', greeting: 'Todd and Kim', members: [{ firstName: 'Todd and Kim', lastName: 'Abbott' }] };
+  assert.equal(effectiveFormalName(abbotts), 'Mr. and Mrs. Abbott');
+  assert.equal(envelopeName({ ...abbotts, formalName: effectiveFormalName(abbotts) }, 'formal'), 'Mr. and Mrs. Abbott');
+  assert.equal(envelopeName({ ...abbotts, formalName: effectiveFormalName(abbotts) }, 'label'), 'Todd and Kim Abbott');
+  // A saved formal name always wins; a single person has none and keeps the envelope name.
+  assert.equal(effectiveFormalName({ ...abbotts, formalName: 'Dr. and Mrs. Todd Abbott' }), 'Dr. and Mrs. Todd Abbott');
+  const rose = { labelName: 'Grandma Rose', greeting: 'Rose', members: [{ firstName: 'Rose', lastName: 'Smith' }] };
+  assert.equal(envelopeName({ ...rose, formalName: effectiveFormalName(rose) }, 'formal'), 'Grandma Rose');
+});

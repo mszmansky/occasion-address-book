@@ -4,7 +4,7 @@ import {
 } from './print-core.js';
 import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
-  defaultFormalName, householdLastName,
+  defaultFormalName, householdLastName, effectiveFormalName,
 } from './csv-core.js';
 
 const cfg = window.APP_CONFIG ?? {};
@@ -304,7 +304,7 @@ function householdCard(h) {
   return `<button class="hh-card${note ? ' has-note' : ''}" data-action="edit-household" data-id="${esc(h.id)}">
     ${note ? `<span class="hh-note" data-action="show-note" data-note="${esc(note)}" title="Show note"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="6.3" r="1.1" fill="currentColor"/><path d="M10 9v5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="sr">Note: ${esc(note)}</span></span>` : ''}
     <span class="hh-name">${esc(h.labelName)}</span>
-    ${h.formalName ? `<span class="small muted">${esc(h.formalName)}</span>` : ''}
+    ${effectiveFormalName(h) ? `<span class="small muted">${esc(effectiveFormalName(h))}</span>` : ''}
     <span class="hh-addr">${lines.map(esc).join('<br>') || '<span class="muted">—</span>'}</span>
     ${peopleNames(h) ? `<span class="small">${esc(peopleNames(h))}</span>` : ''}
     ${allEmails(h).length ? `<span class="small muted hh-email">${MAIL} ${esc(allEmails(h).join(', '))}</span>` : ''}
@@ -711,8 +711,8 @@ async function setMailed(ids, mailed) {
 function nameStyleOptions(current, householdIds = []) {
   const byId = hhById();
   const pool = [...householdIds.map((id) => byId.get(id)).filter(Boolean), ...state.households];
-  const ex = pool.find((h) => h.formalName && h.formalName !== h.labelName);
-  const [everyday, formal] = ex ? [ex.labelName, ex.formalName] : ['The Smith Family', 'Mr. and Mrs. John Smith'];
+  const ex = pool.find((h) => effectiveFormalName(h) && effectiveFormalName(h) !== h.labelName);
+  const [everyday, formal] = ex ? [ex.labelName, effectiveFormalName(ex)] : ['The Smith Family', 'Mr. and Mrs. John Smith'];
   return `<option value="label" ${current !== 'formal' ? 'selected' : ''}>Name on envelope, e.g. "${esc(everyday)}"</option>
       <option value="formal" ${current === 'formal' ? 'selected' : ''}>Formal name, e.g. "${esc(formal)}"</option>`;
 }
@@ -867,7 +867,8 @@ async function makePdf(form) {
         ? (a, b) => String(a.address.zip ?? '').localeCompare(String(b.address.zip ?? '')) || byName(a, b)
         : byName);
       if (!households.length) throw new Error(skipped.length ? 'Nobody chosen has a complete mailing address.' : 'Nobody to print for.');
-      const items = households.map((h) => addressLines(envelopeName(h, f.nameStyle.value), h.address));
+      // Formal: the saved formal name, else the same "Mr. and Mrs. <Last>" suggestion the edit screen shows.
+      const items = households.map((h) => addressLines(envelopeName({ ...h, formalName: effectiveFormalName(h) }, f.nameStyle.value), h.address));
       doc = what === 'labels'
         ? buildLabels(JsPDF, items, { start: Number(f.start.value) || 1, offsetX: print.labelOffsetX, offsetY: print.labelOffsetY, outline })
         : buildEnvelopes(JsPDF, items, {

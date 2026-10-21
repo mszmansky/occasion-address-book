@@ -45,6 +45,15 @@ export function defaultFormalName(greeting, lastName) {
   return names?.length === 2 && lastName ? `Mr. and Mrs. ${lastName}` : '';
 }
 
+/**
+ * The formal name to use for a household: the one saved, else the "Mr. and Mrs. <Last>" suggestion
+ * (the same one the edit screen shows), else ''.
+ */
+export function effectiveFormalName(h) {
+  if (h.formalName?.trim()) return h.formalName.trim();
+  return defaultFormalName(h.greeting, householdLastName({ ...h, members: splitMembers(h.members ?? []) }));
+}
+
 /** RFC 4180-ish CSV parser: quoted fields, doubled quotes, CRLF/LF, a leading BOM. */
 export function parseCsv(text) {
   const rows = [];
