@@ -812,10 +812,10 @@ function onGroupKey(e) {
 }
 
 // The household editor's sections. All of them belong to one form, so Save keeps every tab's changes.
-const HOUSEHOLD_TABS = [['greetings', 'Greetings'], ['address', 'Address'], ['people', 'People'], ['more', 'Groups<span class="wide-only"> & notes</span>']];
+const HOUSEHOLD_TABS = [['greetings', 'Greetings'], ['address', 'Address'], ['people', 'People'], ['more', 'Groups & Notes']];
 
 function householdTabs(active, { people = 0, pending = false } = {}) {
-  return `<div class="tabs settings-tabs" role="tablist">${HOUSEHOLD_TABS.map(([id, label]) => `
+  return `<div class="tabs settings-tabs hh-tabs" role="tablist">${HOUSEHOLD_TABS.map(([id, label]) => `
     <button type="button" role="tab" class="tab" data-action="hh-tab" data-tab="${id}" aria-selected="${id === active}">${label}${
       id === 'people' && people ? `<span class="count">${people}</span>` : ''}${id === 'address' && pending ? '<span class="tab-dot" title="Address update to review"></span>' : ''}</button>`).join('')}</div>`;
 }

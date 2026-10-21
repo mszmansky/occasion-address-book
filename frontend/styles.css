@@ -940,7 +940,8 @@ label > span.hint { display: block; }
 .hh-panel[inert] { visibility: hidden; }
 .tab-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 6px; vertical-align: middle; }
 @media (max-width: 520px) {
-  .wide-only { display: none; }
+  .hh-tabs .tab { padding-left: 4px; padding-right: 4px; font-size: 13px; }
+  .hh-tabs { justify-content: space-between; }
   /* Long footers (Delete, Confirm address, Cancel, Save) wrap instead of running off the screen. */
   .modal-foot { flex-wrap: wrap; }
 }
