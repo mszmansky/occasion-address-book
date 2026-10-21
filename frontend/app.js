@@ -631,7 +631,7 @@ function householdModal(h) {
     form: isNew ? 'household-new' : `household-${h.id}`,
     wide: true,
     foot: `<div class="left-actions">${isNew ? '' : `<button type="button" class="btn danger" data-action="delete-household" data-id="${esc(h.id)}">Delete</button>
-      <button type="button" class="btn" data-action="request-address" data-id="${esc(h.id)}" ${allEmails(h).length ? '' : 'disabled title="Add an email address first"'}>${MAIL} Ask them to confirm address</button>`}</div>
+      <button type="button" class="btn" data-action="request-address" data-id="${esc(h.id)}" ${allEmails(h).length ? '' : 'disabled title="Add an email address first"'}>${MAIL} Confirm address</button>`}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save</button></div>`,
   });
   if (!canEdit()) {
