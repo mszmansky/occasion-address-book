@@ -417,3 +417,75 @@ test('shares saved by earlier versions move over at sign-in', async () => {
   await call('DELETE', `/shares/${encodeURIComponent('ann@example.com')}`);
   assert.equal(await repo.get('SHARED#ann@example.com', 'BOOK'), null);
 });
+
+test('Trash bin: delete moves to the bin, restore brings everything back, 30 days then gone', async () => {
+  const { call, repo, setClock } = await setup();
+  const lees = (await call('POST', '/households', { labelName: 'The Lees', address: { city: 'Troy', state: 'MI' } })).body.household;
+  const rose = (await call('POST', '/households', { labelName: 'Grandma Rose' })).body.household;
+  const cards = (await call('POST', '/occasions', { name: 'Christmas cards' })).body.occasion;
+  const party = (await call('POST', '/occasions', { name: 'Party' })).body.occasion;
+  await call('PUT', `/occasions/${cards.id}/tags`, { add: [lees.id, rose.id] });
+  await call('PUT', `/occasions/${party.id}/tags`, { add: [lees.id] });
+  await call('POST', `/occasions/${cards.id}/mailed`, { householdIds: [lees.id], mailed: true });
+
+  // Delete a household: gone from lists and occasion lists, but in the bin.
+  assert.equal((await call('DELETE', `/households/${lees.id}`)).body.trashed, true);
+  assert.deepEqual((await call('GET', '/households')).body.households.map((h) => h.labelName), ['Grandma Rose']);
+  assert.equal((await call('GET', `/occasions/${cards.id}`)).body.tags.length, 1);
+  let bin = (await call('GET', '/trash')).body;
+  assert.equal(bin.days, 30);
+  assert.deepEqual(bin.items.map((i) => [i.type, i.name, i.detail, i.deletedBy]), [['household', 'The Lees', 'Troy, MI', 'mike@example.com']]);
+
+  // Delete an occasion with its list.
+  await call('DELETE', `/occasions/${party.id}`);
+  assert.deepEqual((await call('GET', '/occasions')).body.occasions.map((o) => o.name), ['Christmas cards']);
+  bin = (await call('GET', '/trash')).body.items;
+  assert.deepEqual(bin.map((i) => [i.type, i.name]), [['occasion', 'Party'], ['household', 'The Lees']]);
+
+  // Restore the household: back on Christmas cards (still mailed); not on Party, which is in the bin.
+  let r = (await call('POST', `/trash/household/${lees.id}/restore`)).body;
+  assert.deepEqual([r.household.labelName, r.relinked], ['The Lees', 1]);
+  const tags = (await call('GET', `/occasions/${cards.id}`)).body.tags;
+  assert.ok(tags.find((t) => t.householdId === lees.id).mailedAt);
+  assert.equal((await call('POST', `/trash/household/${lees.id}/restore`)).status, 404, 'already out of the bin');
+
+  // Restore the occasion: its list comes back for households that exist.
+  r = (await call('POST', `/trash/occasion/${party.id}/restore`)).body;
+  assert.equal(r.relinked, 1);
+  assert.deepEqual((await call('GET', `/occasions/${party.id}`)).body.tags.map((t) => t.householdId), [lees.id]);
+
+  // Delete forever, and empty the bin.
+  await call('DELETE', `/households/${rose.id}`);
+  await call('DELETE', `/occasions/${cards.id}`);
+  await call('DELETE', `/trash/household/${rose.id}`);
+  assert.deepEqual((await call('GET', '/trash')).body.items.map((i) => i.name), ['Christmas cards']);
+  assert.equal((await call('DELETE', '/trash')).body.emptied, 1);
+  assert.equal((await call('GET', '/trash')).body.items.length, 0);
+
+  // After 30 days an item is gone, even before DynamoDB's own clean-up runs.
+  await call('DELETE', `/households/${lees.id}`);
+  const row = [...repo.rows.values()].find((x) => x.SK.startsWith('TRASH#'));
+  assert.ok(row.ttl > 0, 'DynamoDB removes it on its own via ttl');
+  setClock('2026-11-30T15:00:00Z');
+  assert.equal((await call('GET', '/trash')).body.items.length, 1, 'still there on day 29');
+  setClock('2026-12-01T15:00:01Z'); // 30 days after it was deleted
+  assert.equal((await call('GET', '/trash')).body.items.length, 0);
+  assert.equal((await call('POST', `/trash/household/${lees.id}/restore`)).status, 404);
+  assert.equal([...repo.rows.values()].filter((x) => x.SK.startsWith('TRASH#')).length, 0, 'purged');
+});
+
+test('Trash bin in a shared book: editors restore, view only can look', async () => {
+  const { call } = await setup();
+  const kim = { claims: { sub: 'user-kim', email: 'kim@example.com' }, book: 'user-1' };
+  const joe = { claims: { sub: 'user-joe', email: 'joe@example.com' }, book: 'user-1' };
+  await call('POST', '/shares', { email: 'kim@example.com', role: 'edit' });
+  await call('POST', '/shares', { email: 'joe@example.com', role: 'view' });
+  const h = (await call('POST', '/households', { labelName: 'The Lees' })).body.household;
+  await call('DELETE', `/households/${h.id}`, undefined, kim);
+  assert.equal((await call('GET', '/trash')).body.items[0].deletedBy, 'kim@example.com');
+  assert.equal((await call('GET', '/trash', undefined, joe)).body.items.length, 1);
+  assert.equal((await call('POST', `/trash/household/${h.id}/restore`, undefined, joe)).status, 403);
+  assert.equal((await call('DELETE', '/trash', undefined, joe)).status, 403);
+  assert.equal((await call('POST', `/trash/household/${h.id}/restore`, undefined, kim)).status, 200);
+  assert.equal((await call('GET', '/trash', undefined, { claims: { sub: 'user-kim', email: 'kim@example.com' } })).body.items.length, 0, "Kim's own book has its own bin");
+});

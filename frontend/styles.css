@@ -902,3 +902,17 @@ label > span.hint { display: block; }
 @media (max-width: 760px) {
   .filter-panel { position: fixed; left: 14px; right: 14px; top: 120px; width: auto; }
 }
+
+/* Trash bin */
+.trash-list { display: grid; border: 1px solid var(--line); border-radius: var(--radius); padding: 0 12px; }
+.trash-row { display: grid; grid-template-columns: 92px 1fr auto auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.trash-row:last-child { border-bottom: 0; }
+.trash-row .pill { justify-self: start; }
+.trash-what { min-width: 0; }
+.trash-name { font-weight: 600; overflow-wrap: anywhere; }
+.trash-soon { color: var(--overdue); font-weight: 600; }
+.trash-actions { display: flex; gap: 4px; align-items: center; }
+@media (max-width: 600px) {
+  .trash-row { grid-template-columns: 1fr auto; }
+  .trash-row .pill { grid-column: 1 / -1; }
+}

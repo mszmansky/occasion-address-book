@@ -324,6 +324,7 @@ function userChip(email) {
     </button>
     <div class="menu" id="user-menu-list" role="menu" hidden>
       <button type="button" role="menuitem" data-action="settings">Settings</button>
+      <button type="button" role="menuitem" data-action="trash">Trash bin</button>
       <hr>
       <button type="button" role="menuitem" data-action="signout">Sign out</button>
     </div>
@@ -545,6 +546,49 @@ function householdCard(h) {
     ${allEmails(h).length ? `<span class="small muted hh-email">${MAIL} ${esc(allEmails(h).join(', '))}</span>` : ''}
     ${(h.groups ?? []).length || badges ? `<span class="chips">${badges}${(h.groups ?? []).map((g) => `<span class="chip">${esc(g)}</span>`).join('')}</span>` : ''}
   </button>`;
+}
+
+// ---------- Trash bin: deleted households and occasions, kept 30 days ----------
+const TRASH_DAYS = 30;
+const daysLeft = (iso) => Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000));
+
+async function trashModal() {
+  let res;
+  try { res = await api('/trash'); } catch (e) { toast(e.message, true); return; }
+  const items = res.items;
+  const row = (t) => {
+    const left = daysLeft(t.expiresAt);
+    return `<div class="trash-row">
+      <span class="pill ${t.type === 'household' ? 'unknown' : 'due-soon'}">${t.type === 'household' ? 'Household' : 'Occasion'}</span>
+      <div class="trash-what"><div class="trash-name">${esc(t.name)}</div>
+        <div class="small muted">${[t.detail, `Deleted ${fmtDate(t.deletedAt)}${t.deletedBy && t.deletedBy !== state.session?.user?.email ? ` by ${esc(t.deletedBy)}` : ''}`].filter(Boolean).map(esc).join(' · ')}</div></div>
+      <span class="small ${left <= 3 ? 'trash-soon' : 'muted'}">${left === 0 ? 'Deleted today' : `${plural(left, 'day')} left`}</span>
+      ${canEdit() ? `<span class="trash-actions"><button type="button" class="btn sm" data-action="trash-restore" data-type="${t.type}" data-id="${esc(t.id)}" data-name="${esc(t.name)}">Restore</button>
+        <button type="button" class="btn sm ghost danger" data-action="trash-forever" data-type="${t.type}" data-id="${esc(t.id)}" data-name="${esc(t.name)}" title="Delete forever" aria-label="Delete ${esc(t.name)} forever">${TRASH}</button></span>` : ''}
+    </div>`;
+  };
+  openModal('Trash bin', items.length
+    ? `<div class="trash-list">${items.map(row).join('')}</div>`
+    : '<p class="muted" style="margin:0">The Trash bin is empty.</p>', {
+    form: 'trash',
+    wide: true,
+    foot: `<div>${items.length && canEdit() ? '<button type="button" class="btn danger" data-action="trash-empty">Empty trash bin</button>' : ''}</div>
+      <div class="right"><button type="button" class="btn" data-action="close">Close</button></div>`,
+  });
+}
+
+async function restoreFromTrash(btn) {
+  const { type, id, name } = btn.dataset;
+  await withBusy(btn, async () => {
+    const res = await api(`/trash/${type}/${encodeURIComponent(id)}/restore`, { method: 'POST' });
+    if (type === 'household') upsertHousehold(res.household); else await refreshOccasions();
+    if (state.occasionId) await openOccasion(state.occasionId, { quiet: true });
+    toast(type === 'household'
+      ? `${name} restored${res.relinked ? `, back on ${plural(res.relinked, 'occasion list')}` : ''}`
+      : `"${name}" restored${res.relinked ? ` with ${plural(res.relinked, 'household')} on its list` : ''}`);
+    render();
+    await trashModal();
+  });
 }
 
 // ---------- note bubble (the "i" on a card) ----------
@@ -1726,12 +1770,12 @@ document.addEventListener('click', async (e) => {
     }
     case 'delete-household': {
       const h = hhById().get(id);
-      if (!confirm(`Delete ${h.labelName}? They'll also be removed from every occasion.`)) return;
+      if (!confirm(`Move ${h.labelName} to the Trash bin? You can restore them for ${TRASH_DAYS} days.`)) return;
       await withBusy(el, async () => {
         await api(`/households/${id}`, { method: 'DELETE' });
         state.households = state.households.filter((x) => x.id !== id);
         if (state.occ) state.occ.tags = state.occ.tags.filter((t) => t.householdId !== id);
-        closeModal(); toast('Deleted'); render();
+        closeModal(); toast(`${h.labelName} moved to the Trash bin`); render();
       });
       break;
     }
@@ -1766,12 +1810,32 @@ document.addEventListener('click', async (e) => {
       await openOccasion(id); render(); window.scrollTo(0, 0);
       break;
     case 'edit-occasion': occasionModal(state.occ.occasion); break;
-    case 'delete-occasion':
-      if (!confirm(`Delete "${state.occ.occasion.name}"? The households stay in your address book.`)) return;
+    case 'trash': setUserMenu(false); await trashModal(); break;
+    case 'trash-restore': await restoreFromTrash(el); break;
+    case 'trash-forever': {
+      if (!confirm(`Delete "${el.dataset.name}" forever? This can't be undone.`)) break;
       await withBusy(el, async () => {
+        await api(`/trash/${el.dataset.type}/${encodeURIComponent(el.dataset.id)}`, { method: 'DELETE' });
+        toast(`"${el.dataset.name}" deleted forever`);
+        await trashModal();
+      });
+      break;
+    }
+    case 'trash-empty':
+      if (!confirm("Empty the Trash bin? Everything in it is deleted forever. This can't be undone.")) break;
+      await withBusy(el, async () => {
+        const res = await api('/trash', { method: 'DELETE' });
+        toast(`Deleted ${plural(res.emptied, 'item')} forever`);
+        await trashModal();
+      });
+      break;
+    case 'delete-occasion':
+      if (!confirm(`Move "${state.occ.occasion.name}" to the Trash bin? You can restore it, with its list, for ${TRASH_DAYS} days.`)) return;
+      await withBusy(el, async () => {
+        const name = state.occ.occasion.name;
         await api(`/occasions/${state.occasionId}`, { method: 'DELETE' });
         state.occasionId = null; state.occ = null;
-        await refreshOccasions(); closeModal(); toast('Deleted'); render();
+        await refreshOccasions(); closeModal(); toast(`"${name}" moved to the Trash bin`); render();
       });
       break;
     case 'occ-filter': state.occFilter = el.dataset.filter; render(); break;

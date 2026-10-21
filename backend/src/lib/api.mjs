@@ -8,6 +8,7 @@ import { userPk } from './repo.mjs';
 import { buildAddressReceived, buildAddressRequest, buildInvite, buildShareNotice } from './email.mjs';
 
 export const LINK_DAYS = 30;          // address-update links expire after this many days
+export const TRASH_DAYS = 30;         // deleted households and occasions stay in the Trash bin this long
 export const INVITE_BATCH = 25;       // invitations sent per request (the page sends larger lists in batches)
 export const IMPORT_MAX = 500;        // households per import request
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -475,11 +476,12 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
     return { household: publicHousehold(item) };
   }, { write: true });
 
+  // Deleting moves the household to the Trash bin, with its places on occasion lists so a restore puts them back.
   route('DELETE', '/households/:id', async ({ user, params }) => {
-    await mustGet(user, `HH#${params.id}`, 'Household');
+    const h = await mustGet(user, `HH#${params.id}`, 'Household');
     const tags = (await repo.query(bk(user), 'TAG#')).filter((t) => t.householdId === params.id);
-    await repo.batchDel([{ PK: bk(user), SK: `HH#${params.id}` }, ...tags]);
-    return { deleted: true };
+    await toTrash(user, 'household', h, tags);
+    return { deleted: true, trashed: true };
   }, { write: true });
 
   // A reply from the household's address-update link: take it, or throw it away.
@@ -570,11 +572,96 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
     return { occasion: strip(item) };
   }, { write: true });
 
+  // Deleting moves the occasion, with its list (and who was mailed / invited), to the Trash bin.
   route('DELETE', '/occasions/:id', async ({ user, params }) => {
-    await mustGet(user, `OCC#${params.id}`, 'Occasion');
+    const o = await mustGet(user, `OCC#${params.id}`, 'Occasion');
     const tags = await repo.query(bk(user), `TAG#${params.id}#`);
-    await repo.batchDel([{ PK: bk(user), SK: `OCC#${params.id}` }, ...tags]);
+    await toTrash(user, 'occasion', o, tags);
+    return { deleted: true, trashed: true };
+  }, { write: true });
+
+  // ---------- Trash bin ----------
+  //   <book> / TRASH#household#<id>   or   TRASH#occasion#<id>
+  // holds the deleted item and the occasion-list rows that went with it. The "ttl" attribute makes
+  // DynamoDB remove it after TRASH_DAYS; since that can lag a day or two, expired items are also
+  // hidden and purged here.
+  const TYPES = { household: 'HH', occasion: 'OCC' };
+  const trashSk = (type, id) => `TRASH#${type}#${id}`;
+  const expired = (t) => Date.parse(t.expiresAt) <= now().getTime();
+
+  async function toTrash(user, type, item, tags) {
+    const deletedAt = nowIso();
+    const expires = new Date(now().getTime() + TRASH_DAYS * 86_400_000);
+    await repo.put({
+      PK: bk(user), SK: trashSk(type, item.id), type, id: item.id, item: strip(item), tags: tags.map(strip),
+      deletedAt, deletedBy: user.email, expiresAt: expires.toISOString(), ttl: Math.floor(expires.getTime() / 1000),
+    });
+    await repo.batchDel([{ PK: bk(user), SK: item.SK }, ...tags]);
+  }
+
+  async function trashList(user) {
+    const rows = await repo.query(bk(user), 'TRASH#');
+    const gone = rows.filter(expired);
+    if (gone.length) await repo.batchDel(gone);
+    return rows.filter((t) => !expired(t));
+  }
+
+  const trashView = (t) => ({
+    type: t.type, id: t.id, deletedAt: t.deletedAt, deletedBy: t.deletedBy, expiresAt: t.expiresAt,
+    name: t.type === 'household' ? t.item.labelName : t.item.name,
+    detail: t.type === 'household'
+      ? [t.item.address?.city, t.item.address?.state].filter(Boolean).join(', ')
+      : `${t.tags.length} ${t.tags.length === 1 ? 'household' : 'households'} on the list`,
+  });
+
+  async function mustGetTrash(user, params) {
+    if (!TYPES[params.type]) throw new HttpError(404, 'Not found');
+    const t = await repo.get(bk(user), trashSk(params.type, params.id));
+    if (!t || expired(t)) throw new HttpError(404, 'That item is no longer in the Trash bin');
+    return t;
+  }
+
+  route('GET', '/trash', async ({ user }) => ({
+    items: (await trashList(user)).map(trashView).sort((a, b) => b.deletedAt.localeCompare(a.deletedAt) || a.name.localeCompare(b.name)),
+    days: TRASH_DAYS,
+  }));
+
+  // Restore: the item comes back with the occasion-list rows whose other half still exists.
+  route('POST', '/trash/:type/:id/restore', async ({ user, params }) => {
+    const t = await mustGetTrash(user, params);
+    const sk = `${TYPES[t.type]}#${t.id}`;
+    if (await repo.get(bk(user), sk)) throw new HttpError(409, 'It has already been restored');
+    const live = t.type === 'household'
+      ? new Set((await repo.query(bk(user), 'OCC#')).map((o) => o.id))
+      : new Set((await repo.query(bk(user), 'HH#')).map((h) => h.id));
+    const otherId = (g) => (t.type === 'household' ? g.occasionId : g.householdId);
+    const tags = t.tags.filter((g) => live.has(otherId(g)))
+      .map((g) => ({ PK: bk(user), SK: `TAG#${g.occasionId}#${g.householdId}`, ...g }));
+    // A link to something that's also in the bin goes with that item, so restoring it later relinks them.
+    const otherType = t.type === 'household' ? 'occasion' : 'household';
+    const handOff = [];
+    for (const g of t.tags.filter((x) => !live.has(otherId(x)))) {
+      const other = handOff.find((o) => o.id === otherId(g)) ?? await repo.get(bk(user), trashSk(otherType, otherId(g)));
+      if (!other || expired(other)) continue;
+      if (!other.tags.some((x) => x.occasionId === g.occasionId && x.householdId === g.householdId)) other.tags.push(g);
+      if (!handOff.includes(other)) handOff.push(other);
+    }
+    const item = { PK: bk(user), SK: sk, ...t.item, updatedAt: nowIso() };
+    await repo.batchPut([item, ...tags, ...handOff]);
+    await repo.del(bk(user), trashSk(t.type, t.id));
+    return { restored: trashView(t), [t.type]: strip(item), relinked: tags.length };
+  }, { write: true });
+
+  route('DELETE', '/trash/:type/:id', async ({ user, params }) => {
+    const t = await mustGetTrash(user, params);
+    await repo.del(bk(user), trashSk(t.type, t.id));
     return { deleted: true };
+  }, { write: true });
+
+  route('DELETE', '/trash', async ({ user }) => {
+    const rows = await repo.query(bk(user), 'TRASH#');
+    if (rows.length) await repo.batchDel(rows);
+    return { emptied: rows.length };
   }, { write: true });
 
   const tagItem = (user, oid, hid) => ({

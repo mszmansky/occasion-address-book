@@ -24,6 +24,7 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
   You can search, and narrow the list with **Filter** (the funnel button): several groups (in *any* or *all* of them), cities, states, ZIP prefix, has/no email, has/missing mailing address, and address updates to review. Each active filter shows as a chip you can remove; **Clear all** resets. The same Filter is on each occasion's list, so e.g. *everyone in Michigan in the Christmas group* can be added with **Add all shown to the list**.
 - **Import / export CSV.** Bring in a list from Excel, Numbers or Google Sheets. Columns are guessed from the headers ("First Name", "Spouse", "Zip Code"…) and can be changed before importing. The app's own export imports back unchanged; its People column keeps each person's email, e.g. `John Smith <john@x.com>; Mary Smith`.
 - **Occasions.** Create one ("Christmas cards 2026"), tick who it's for and track who's been mailed. You can tick households one at a time, or everyone shown after a search or group filter. A new occasion can start from an earlier one's list, so next year's cards begin with this year's list.
+- **Trash bin.** Deleting a household or occasion moves it to the Trash bin (account menu) for 30 days. **Restore** brings a household back onto the occasion lists it was on, and an occasion back with its list (including who was mailed and invited); links between two items that are both in the bin come back with whichever is restored second. **Delete forever** and **Empty trash bin** are there too. After 30 days items are removed automatically (DynamoDB TTL on the item, and the app also hides and purges anything past 30 days since TTL can lag a day or two). Each address book, shared or not, has its own bin; View-only people can look but not restore.
 - **Printing.** Makes a PDF in the browser (jsPDF):
   - Avery 5160 / 8160 address labels, 30 per sheet, with "start at label N" for a partly used sheet;
   - A7 envelopes (5¼ × 7¼ in), one per page, with your return address in the corner;
@@ -75,6 +76,7 @@ PK = USER#<Cognito user id (sub)>
   SK = HH#<id>                   household
   SK = OCC#<id>                  occasion
   SK = TAG#<occasionId>#<hhId>   household on an occasion's list (mailedAt, invitedAt)
+  SK = TRASH#<household|occasion>#<id>  a deleted item and its occasion-list rows, removed by TTL after 30 days
 PK = TOKEN#<sha256(token)>, SK = TOKEN    address-check link, removed by TTL after 30 days
 ```
 
