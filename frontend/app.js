@@ -272,7 +272,7 @@ function renderPeople() {
     </div>
   </div>
   ${pending ? `<div class="notice"><span><b>${plural(pending, 'household')}</b> sent back ${pending === 1 ? 'an address' : 'addresses'} to review.</span>
-    <button class="btn sm" data-action="pending-only">${state.pendingOnly ? 'Show everyone' : 'Show them'}</button></div>` : ''}
+    <button class="btn sm" data-action="pending-only">${state.pendingOnly ? 'Show everyone' : (pending === 1 ? 'Show it' : 'Show them')}</button></div>` : ''}
   <div class="filters">
     <input type="search" data-input="search" placeholder="Search names, streets, cities, emails…" value="${val(state.search)}" aria-label="Search">
     ${groups.length ? `<select data-input="group" aria-label="Group"><option value="">All groups</option>${groups.map((g) => `<option ${g === state.group ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>` : ''}
