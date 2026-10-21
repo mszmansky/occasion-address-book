@@ -2,6 +2,7 @@ import { createAuth } from './auth.js';
 import {
   addressLines, buildEnvelopes, buildLabels, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES,
 } from './print-core.js';
+import { activeCount, emptyFilter, filterChips, filterOptions, matchesFilter } from './filter-core.js';
 import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
   defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact,
@@ -35,8 +36,9 @@ const state = {
   me: null, households: [], occasions: [], loading: true,
   view: 'people',                 // 'people' | 'occasions'
   occasionId: null, occ: null,    // open occasion: { occasion, tags }
-  search: '', group: '', pendingOnly: false,
-  occFilter: 'all', occSearch: '', occGroup: '',
+  search: '',
+  filters: { people: emptyFilter(), occ: emptyFilter() }, // the Filter panel, per screen
+  occFilter: 'all', occSearch: '',
 };
 
 // ---------- utils ----------
@@ -108,7 +110,8 @@ async function switchBook(id) {
   if ((id || '') === (state.bookId || '')) return;
   state.bookId = id || '';
   storeBook(state.bookId);
-  Object.assign(state, { occasionId: null, occ: null, households: [], occasions: [], search: '', group: '', pendingOnly: false });
+  Object.assign(state, { occasionId: null, occ: null, households: [], occasions: [], search: '', filters: { people: emptyFilter(), occ: emptyFilter() } });
+  closeFilterPanel();
   await loadAll();
   window.scrollTo(0, 0);
 }
@@ -280,6 +283,7 @@ function render() {
   if (!state.session) return renderAuth();
   const email = state.session.user?.email ?? '';
   const pending = state.households.filter((h) => h.pendingUpdate).length;
+  filterPanelScope = null; // a full redraw removes an open Filter panel
   root.innerHTML = `
   <header class="topbar">
     <div class="brand">${LOGO}<span>${APP_NAME}</span></div>
@@ -336,7 +340,6 @@ function setUserMenu(open) {
 
 // ---------- address book ----------
 function renderPeople() {
-  const groups = allGroups();
   const pending = state.households.filter((h) => h.pendingUpdate).length;
   if (!state.households.length && !isOwner()) {
     const b = state.me.book;
@@ -361,11 +364,12 @@ function renderPeople() {
     </div>
   </div>
   ${pending ? `<div class="notice"><span><b>${plural(pending, 'household')}</b> sent back ${pending === 1 ? 'an address' : 'addresses'} to review.</span>
-    <button class="btn sm" data-action="pending-only">${state.pendingOnly ? 'Show everyone' : (pending === 1 ? 'Show it' : 'Show them')}</button></div>` : ''}
+    <button class="btn sm" data-action="pending-only">${state.filters.people.review ? 'Show everyone' : (pending === 1 ? 'Show it' : 'Show them')}</button></div>` : ''}
   <div class="filters">
     <input type="search" data-input="search" placeholder="Search names, streets, cities, emails…" value="${val(state.search)}" aria-label="Search">
-    ${groups.length ? `<select data-input="group" aria-label="Group"><option value="">All groups</option>${groups.map((g) => `<option ${g === state.group ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>` : ''}
+    ${filterButton('people')}
   </div>
+  <div class="filter-chips" id="fchips-people">${filterChipsHtml('people')}</div>
   <div id="hh-list" class="hh-grid"></div>`;
 }
 
@@ -379,11 +383,148 @@ function matchesSearch(h, q) {
 
 const byName = (a, b) => sortKey(a).localeCompare(sortKey(b)) || a.labelName.localeCompare(b.labelName);
 
+// ---------- Filter (funnel button, panel, and chips for what's on) ----------
+const FUNNEL = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2 3h12l-4.6 5.4v4.1L6.6 14V8.4L2 3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+let filterPanelScope = null; // 'people' (Address book) or 'occ' (an occasion's list) while the panel is open
+
+function filterButton(scope) {
+  const n = activeCount(state.filters[scope]);
+  return `<div class="filter-wrap" data-filter-wrap="${scope}">
+    <button type="button" class="btn filter-btn${n ? ' on' : ''}" data-action="filter-toggle" data-scope="${scope}" aria-haspopup="dialog" aria-expanded="${filterPanelScope === scope}" title="Filter">
+      ${FUNNEL}<span>Filter</span>${n ? `<span class="filter-count">${n}</span>` : ''}
+    </button>
+  </div>`;
+}
+
+function filterChipsHtml(scope) {
+  const chips = filterChips(state.filters[scope]);
+  if (!chips.length) return '';
+  return chips.map((c, i) => (c.remove
+    ? `<span class="chip-tag"><span>${esc(c.label)}</span><button type="button" class="chip-x" data-action="filter-chip-remove" data-scope="${scope}" data-i="${i}" aria-label="Remove ${esc(c.label)}" title="Remove">×</button></span>`
+    : `<span class="chip-tag plain"><span>${esc(c.label)}</span></span>`)).join('')
+    + `<button type="button" class="link small" data-action="filter-clear" data-scope="${scope}">Clear all</button>`;
+}
+
+function setFilter(scope, patch) {
+  state.filters[scope] = { ...state.filters[scope], ...patch };
+  refreshFilterUI(scope);
+}
+
+// Re-draws the button badge, the chips and the list, without touching the search box or the open panel.
+function refreshFilterUI(scope) {
+  const wrap = document.querySelector(`[data-filter-wrap="${scope}"]`);
+  if (wrap) {
+    const n = activeCount(state.filters[scope]);
+    const btn = wrap.querySelector('.filter-btn');
+    btn.classList.toggle('on', Boolean(n));
+    btn.querySelector('.filter-count')?.remove();
+    if (n) btn.insertAdjacentHTML('beforeend', `<span class="filter-count">${n}</span>`);
+  }
+  const chips = document.getElementById(`fchips-${scope}`);
+  if (chips) chips.innerHTML = filterChipsHtml(scope);
+  if (scope === 'people') renderHouseholdList(); else renderRecipientRows();
+  const panel = document.querySelector('.filter-panel');
+  if (panel && filterPanelScope === scope) {
+    panel.querySelector('[data-match-count]').textContent = matchSummary(scope);
+    syncFilterPanel(panel, scope);
+  }
+}
+
+function matchSummary(scope) {
+  const n = state.households.filter((h) => matchesFilter(h, state.filters[scope])).length;
+  return n === 1 ? '1 household matches' : `${plural(n, 'household')} match`;
+}
+
+function checklist(name, options, chosen, { search = false } = {}) {
+  if (!options.length) return '<p class="muted small" style="margin:0">None yet</p>';
+  const picked = new Set(chosen.map((v) => v.toLowerCase()));
+  return `${search && options.length > 8 ? `<input type="search" class="fp-search" data-fp-search="${name}" placeholder="Find…" aria-label="Find">` : ''}
+    <div class="fp-list" data-fp-list="${name}">${options.map((o) => `<label class="check fp-opt" data-label="${esc(o.value.toLowerCase())}">
+      <input type="checkbox" data-f="${name}" value="${esc(o.value)}" ${picked.has(o.value.toLowerCase()) ? 'checked' : ''}>
+      <span>${esc(o.value)}</span><span class="fp-n">${o.count}</span></label>`).join('')}</div>`;
+}
+
+const radios = (name, value, choices) => `<div class="seg fp-seg" role="radiogroup">${choices.map(([v, l]) => `<label><input type="radio" name="fp-${name}" data-f="${name}" value="${v}" ${(value ?? '') === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
+
+function toggleFilterPanel(scope) {
+  if (filterPanelScope === scope) { closeFilterPanel(); return; }
+  closeFilterPanel();
+  const wrap = document.querySelector(`[data-filter-wrap="${scope}"]`);
+  if (!wrap) return;
+  filterPanelScope = scope;
+  const f = state.filters[scope];
+  const o = filterOptions(state.households);
+  wrap.insertAdjacentHTML('beforeend', `<div class="filter-panel" role="dialog" aria-label="Filter households">
+    <div class="fp-body">
+      <section><div class="fp-head"><h3>Groups</h3>${o.groups.length > 1 ? radios('groupMode', f.groupMode, [['any', 'Any'], ['all', 'All']]) : ''}</div>${checklist('groups', o.groups, f.groups)}</section>
+      <section><h3>City</h3>${checklist('cities', o.cities, f.cities, { search: true })}</section>
+      <section><h3>State</h3>${checklist('states', o.states, f.states, { search: true })}</section>
+      <section><h3>ZIP starts with</h3><input type="text" class="fp-zip" data-f="zip" value="${val(f.zip)}" inputmode="numeric" maxlength="10" placeholder="e.g. 480"></section>
+      <section><h3>Email</h3>${radios('email', f.email, [['', 'Any'], ['yes', 'Has email'], ['no', 'No email']])}</section>
+      <section><h3>Mailing address</h3>${radios('address', f.address, [['', 'Any'], ['complete', 'Has one'], ['missing', 'Missing']])}</section>
+      <section><label class="check"><input type="checkbox" data-f="review" ${f.review ? 'checked' : ''}> Sent back an address to review</label></section>
+    </div>
+    <div class="fp-foot"><span class="small muted" data-match-count>${matchSummary(scope)}</span>
+      <span class="fp-buttons"><button type="button" class="btn sm ghost" data-action="filter-clear" data-scope="${scope}">Clear all</button>
+      <button type="button" class="btn sm primary" data-action="filter-done">Done</button></span></div>
+  </div>`);
+  wrap.querySelector('.filter-btn').setAttribute('aria-expanded', 'true');
+}
+
+// Ticks the boxes to match the filter (e.g. after a chip is removed while the panel is open).
+function syncFilterPanel(panel, scope) {
+  const f = state.filters[scope];
+  for (const name of ['groups', 'cities', 'states']) {
+    const on = new Set(f[name].map((v) => v.toLowerCase()));
+    panel.querySelectorAll(`[data-f="${name}"]`).forEach((cb) => { cb.checked = on.has(cb.value.toLowerCase()); });
+  }
+  for (const name of ['groupMode', 'email', 'address']) panel.querySelectorAll(`[data-f="${name}"]`).forEach((r) => { r.checked = r.value === (f[name] ?? ''); });
+  const rv = panel.querySelector('[data-f=review]'); if (rv) rv.checked = Boolean(f.review);
+  const zip = panel.querySelector('[data-f=zip]'); if (zip && document.activeElement !== zip) zip.value = f.zip ?? '';
+}
+
+function readFilterPanel(panel) {
+  const vals = (name) => [...panel.querySelectorAll(`[data-f="${name}"]:checked`)].map((cb) => cb.value);
+  const radio = (name) => panel.querySelector(`[data-f="${name}"]:checked`)?.value ?? '';
+  return {
+    groups: vals('groups'), groupMode: radio('groupMode') || 'any', cities: vals('cities'), states: vals('states'),
+    zip: panel.querySelector('[data-f=zip]').value.trim(), email: radio('email'), address: radio('address'),
+    review: panel.querySelector('[data-f=review]').checked,
+  };
+}
+
+function closeFilterPanel() {
+  document.querySelector('.filter-panel')?.remove();
+  document.querySelectorAll('.filter-btn[aria-expanded=true]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+  filterPanelScope = null;
+}
+
+document.addEventListener('change', (e) => {
+  const panel = e.target.closest?.('.filter-panel');
+  if (panel && e.target.dataset.f && filterPanelScope) setFilter(filterPanelScope, readFilterPanel(panel));
+});
+document.addEventListener('input', (e) => {
+  const panel = e.target.closest?.('.filter-panel');
+  if (!panel) return;
+  if (e.target.dataset.f === 'zip' && filterPanelScope) setFilter(filterPanelScope, readFilterPanel(panel));
+  const list = e.target.dataset.fpSearch;
+  if (list) {
+    const q = e.target.value.trim().toLowerCase();
+    panel.querySelectorAll(`[data-fp-list="${list}"] .fp-opt`).forEach((row) => { row.hidden = Boolean(q) && !row.dataset.label.includes(q); });
+  }
+});
+document.addEventListener('mousedown', (e) => {
+  if (filterPanelScope && !e.target.closest('.filter-panel, .filter-btn, .filter-chips')) closeFilterPanel();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && filterPanelScope && !modal.open) { closeFilterPanel(); document.querySelector('.filter-btn')?.focus(); }
+});
+
 function renderHouseholdList() {
   const el = document.getElementById('hh-list');
   if (!el) return;
   const list = state.households
-    .filter((h) => matchesSearch(h, state.search) && (!state.group || h.groups?.includes(state.group)) && (!state.pendingOnly || h.pendingUpdate))
+    .filter((h) => matchesSearch(h, state.search) && matchesFilter(h, state.filters.people))
     .sort(byName);
   el.innerHTML = list.map(householdCard).join('') || '<p class="muted">No households match.</p>';
 }
@@ -593,7 +734,7 @@ function onGroupKey(e) {
 
 function householdModal(h) {
   const isNew = !h;
-  h ??= { members: [{}], address: {}, groups: state.group ? [state.group] : [] };
+  h ??= { members: [{}], address: {}, groups: state.filters.people.groups.length === 1 ? [...state.filters.people.groups] : [] };
   const p = h.pendingUpdate;
   const req = h.addressRequest;
   const suggestedFormal = defaultFormalName(h.greeting, householdLastName({ ...h, members: splitMembers(h.members ?? []) }));
@@ -831,7 +972,6 @@ function renderOccasion() {
   const invited = [...tags.values()].filter((t) => t.invitedAt).length;
   const noAddr = onList.filter((h) => !isMailable(h.address)).length;
   const withEmail = onList.filter((h) => allEmails(h).length).length;
-  const groups = allGroups();
   const when = [o.date && fmtDate(o.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }), o.time].filter(Boolean).join(' at ');
   return `
   <button class="link back" data-action="view" data-view="occasions">← Occasions</button>
@@ -855,8 +995,9 @@ function renderOccasion() {
       ${[['all', 'Everyone'], ['on', 'On the list'], ['off', 'Not on the list'], ['unmailed', 'Not mailed yet']].map(([k, l]) => `<button type="button" data-action="occ-filter" data-filter="${k}" aria-pressed="${state.occFilter === k}">${l}</button>`).join('')}
     </div>
     <input type="search" data-input="occ-search" placeholder="Search…" value="${val(state.occSearch)}" aria-label="Search">
-    ${groups.length ? `<select data-input="occ-group" aria-label="Group"><option value="">All groups</option>${groups.map((g) => `<option ${g === state.occGroup ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>` : ''}
+    ${filterButton('occ')}
   </div>
+  <div class="filter-chips" id="fchips-occ">${filterChipsHtml('occ')}</div>
   <div class="bulk small"><span data-shown></span>
     ${canEdit() ? `<button class="link" data-action="bulk-tag" data-add="1">Add all shown to the list</button>
     <button class="link" data-action="bulk-tag" data-add="">Remove all shown</button>` : ''}
@@ -873,8 +1014,7 @@ function shownRecipients() {
     if (state.occFilter === 'on' && !t) return false;
     if (state.occFilter === 'off' && t) return false;
     if (state.occFilter === 'unmailed' && (!t || t.mailedAt)) return false;
-    if (state.occGroup && !h.groups?.includes(state.occGroup)) return false;
-    return matchesSearch(h, state.occSearch);
+    return matchesFilter(h, state.filters.occ) && matchesSearch(h, state.occSearch);
   }).sort(byName);
 }
 
@@ -1606,7 +1746,16 @@ document.addEventListener('click', async (e) => {
       });
       break;
     case 'request-address': requestAddressModal(hhById().get(id)); break;
-    case 'pending-only': state.pendingOnly = !state.pendingOnly; render(); break;
+    case 'pending-only': setFilter('people', { review: !state.filters.people.review }); render(); break;
+    case 'filter-toggle': toggleFilterPanel(el.dataset.scope); break;
+    case 'filter-done': closeFilterPanel(); break;
+    case 'filter-clear': setFilter(el.dataset.scope, emptyFilter()); closeFilterPanel(); break;
+    case 'filter-chip-remove': {
+      const { scope } = el.dataset;
+      const chip = filterChips(state.filters[scope])[Number(el.dataset.i)];
+      if (chip?.remove) setFilter(scope, chip.remove);
+      break;
+    }
     case 'show-note': showNoteTip(el); break;
     case 'import': importModal(); break;
     case 'imp-row': showImportRow(importRows.at + Number(el.dataset.step)); break;
@@ -1614,7 +1763,7 @@ document.addEventListener('click', async (e) => {
     // occasions
     case 'add-occasion': occasionModal(); break;
     case 'open-occasion':
-      state.occFilter = 'all'; state.occSearch = ''; state.occGroup = '';
+      state.occFilter = 'all'; state.occSearch = ''; state.filters.occ = emptyFilter(); closeFilterPanel();
       await openOccasion(id); render(); window.scrollTo(0, 0);
       break;
     case 'edit-occasion': occasionModal(state.occ.occasion); break;
@@ -1727,7 +1876,6 @@ document.addEventListener('change', (e) => {
   // Formal name follows the greeting and last name until it's typed by hand.
   if (['greeting', 'labelName'].includes(t.name) || t.dataset?.m === 'lastName' || t.dataset?.m === 'firstName') refreshFormalName(t.form);
   const k = t.dataset?.input;
-  if (k === 'group') { state.group = t.value; renderHouseholdList(); }
   if (t.dataset?.shareRole) {
     const { email } = t.dataset;
     t.disabled = true;
@@ -1736,7 +1884,6 @@ document.addEventListener('change', (e) => {
       .catch((err) => { toast(err.message, true); renderShareList(); })
       .finally(() => { t.disabled = false; });
   }
-  if (k === 'occ-group') { state.occGroup = t.value; renderRecipientRows(); }
   if (k === 'csv-file' && t.files?.[0]) readCsvFile(t.files[0]).catch((err) => modalError(err.message));
   if (t.dataset?.map !== undefined) updateImportSummary();
   if (t.name === 'what' && t.form?.dataset.form === 'print') syncPrintForm();

@@ -21,7 +21,7 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
 
   Email and phone belong to each person; if people share an email, it goes on each of them (invitations and address checks still send one email per household). Households saved before this keep working: their old shared email and home phone move onto the people the next time you open and save them.
 
-  You can search and filter by group.
+  You can search, and narrow the list with **Filter** (the funnel button): several groups (in *any* or *all* of them), cities, states, ZIP prefix, has/no email, has/missing mailing address, and address updates to review. Each active filter shows as a chip you can remove; **Clear all** resets. The same Filter is on each occasion's list, so e.g. *everyone in Michigan in the Christmas group* can be added with **Add all shown to the list**.
 - **Import / export CSV.** Bring in a list from Excel, Numbers or Google Sheets. Columns are guessed from the headers ("First Name", "Spouse", "Zip Code"…) and can be changed before importing. The app's own export imports back unchanged; its People column keeps each person's email, e.g. `John Smith <john@x.com>; Mary Smith`.
 - **Occasions.** Create one ("Christmas cards 2026"), tick who it's for and track who's been mailed. You can tick households one at a time, or everyone shown after a search or group filter. A new occasion can start from an earlier one's list, so next year's cards begin with this year's list.
 - **Printing.** Makes a PDF in the browser (jsPDF):
@@ -61,6 +61,7 @@ Browser ── Cognito user pool (sign-in from the browser, no SDK: frontend/aut
 | `scripts/invite-user.sh` | Invite someone (Cognito emails a temporary password) |
 | `backend/src/lib/files.mjs` | Profile photos in a private S3 bucket: signed upload/view links (shared with Vehicle Maintenance) |
 | `frontend/print-core.js` | Label and envelope layout (unit tested) |
+| `frontend/filter-core.js` | Household filters (groups, city, state, ZIP, email, address, review) (unit tested) |
 | `frontend/csv-core.js` | CSV parsing, column guessing, export (unit tested) |
 | `frontend/app.js` | The single-page app (vanilla JS, no build step) |
 | `frontend/update.html` | Public "confirm your address" page |
