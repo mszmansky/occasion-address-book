@@ -55,6 +55,17 @@ const TRASH = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const LOGO = '<img class="logo" src="icon-192.png" width="64" height="64" alt="">';
 
+// Access to the address book in use: your own, or one shared with you (edit or view only).
+const canEdit = () => state.me?.book?.canEdit !== false;
+const isOwner = () => !state.me?.book || state.me.book.role === 'owner';
+const ROLE_LABEL = { edit: 'Can edit', view: 'View only' };
+
+function sharedNote() {
+  const b = state.me?.book;
+  if (!b || b.role === 'owner') return '';
+  return `<div class="shared-note">You're using <b>${esc(b.ownerName || b.ownerEmail)}</b>'s address book · ${ROLE_LABEL[b.role]}</div>`;
+}
+
 function toast(msg, isErr = false) {
   toastEl.textContent = msg;
   toastEl.className = `show${isErr ? ' err' : ''}`;
@@ -220,7 +231,7 @@ function render() {
     </nav>
     <div class="actions">${userChip(email)}</div>
   </header>
-  <main class="page">${state.loading && !state.me ? '<p class="boot">Loading your address book…</p>'
+  <main class="page">${sharedNote()}${state.loading && !state.me ? '<p class="boot">Loading your address book…</p>'
     : state.view === 'people' ? renderPeople() : state.occasionId && state.occ ? renderOccasion() : renderOccasions()}</main>`;
   if (state.view === 'people') renderHouseholdList();
   if (state.view === 'occasions' && state.occasionId && state.occ) renderRecipientRows();
@@ -271,16 +282,16 @@ function renderPeople() {
     return `<div class="panel empty">
       <h2>Start your address book</h2>
       <p>Add a household for each envelope you send: a family at one address, a couple, or one person. Then tag them for occasions like Christmas cards or a party, and print labels or envelopes.</p>
-      <div class="row-gap"><button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button><button class="btn" data-action="import">Import a spreadsheet (CSV)</button></div>
+      ${canEdit() ? '<div class="row-gap"><button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button><button class="btn" data-action="import">Import a spreadsheet (CSV)</button></div>' : ''}
     </div>`;
   }
   return `
   <div class="page-head">
     <h1>Address book <span class="muted count">${plural(state.households.length, 'household')}</span></h1>
     <div class="actions">
-      <button class="btn" data-action="import">Import CSV</button>
+      ${canEdit() ? '<button class="btn" data-action="import">Import CSV</button>' : ''}
       <button class="btn" data-action="export">Export CSV</button>
-      <button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button>
+      ${canEdit() ? '<button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button>' : ''}
     </div>
   </div>
   ${pending ? `<div class="notice"><span><b>${plural(pending, 'household')}</b> sent back ${pending === 1 ? 'an address' : 'addresses'} to review.</span>
@@ -358,7 +369,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') hideNoteTip();
   // N on the Address book screen: new household. Not while typing, with a dialog open, or with Cmd/Ctrl/Alt.
   if (e.key.toLowerCase() === 'n' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat
-    && state.session && state.view === 'people' && !modal.open
+    && state.session && state.view === 'people' && !modal.open && canEdit()
     && !e.target.closest?.('input, textarea, select, [contenteditable]')) {
     e.preventDefault();
     hideNoteTip();
@@ -458,6 +469,12 @@ function householdModal(h) {
       <button type="button" class="btn" data-action="request-address" data-id="${esc(h.id)}" ${allEmails(h).length ? '' : 'disabled title="Add an email address first"'}>${MAIL} Ask them to confirm address</button>`}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save</button></div>`,
   });
+  if (!canEdit()) {
+    // View only: everything shown, nothing changeable.
+    modal.querySelectorAll('.modal-body input, .modal-body textarea, .modal-body select, .modal-body button').forEach((el) => { el.disabled = true; });
+    modal.querySelectorAll('[data-action=add-member], [data-action=remove-member], .pending-box .row-gap').forEach((el) => el.remove());
+    modal.querySelector('.modal-foot').innerHTML = '<div class="small muted">View only</div><div class="right"><button type="button" class="btn" data-action="close">Close</button></div>';
+  }
 }
 
 function refreshFormalName(form) {
@@ -611,7 +628,7 @@ function renderOccasions() {
   return `
   <div class="page-head">
     <h1>Occasions</h1>
-    <div class="actions"><button class="btn primary" data-action="add-occasion">+ Occasion</button></div>
+    <div class="actions">${canEdit() ? '<button class="btn primary" data-action="add-occasion">+ Occasion</button>' : ''}</div>
   </div>
   ${state.occasions.length ? `<div class="occ-grid">${state.occasions.map((o) => `
     <button class="occ-card" data-action="open-occasion" data-id="${esc(o.id)}">
@@ -622,7 +639,7 @@ function renderOccasions() {
     </button>`).join('')}</div>` : `<div class="panel empty">
       <h2>Plan an occasion</h2>
       <p>Create an occasion like <b>Christmas cards 2026</b> or <b>Graduation party</b>, tick who it's for, then print labels or envelopes and email invitations.</p>
-      <button class="btn primary" data-action="add-occasion">+ Occasion</button></div>`}`;
+      ${canEdit() ? '<button class="btn primary" data-action="add-occasion">+ Occasion</button>' : ''}</div>`}`;
 }
 
 async function openOccasion(id, { quiet = false } = {}) {
@@ -654,8 +671,8 @@ function renderOccasion() {
     <div><h1>${esc(o.name)}</h1>
       <p class="muted" style="margin:2px 0 0">${[KIND_LABEL[o.kind], when, o.location].filter(Boolean).map(esc).join(' · ')}</p></div>
     <div class="actions">
-      <button class="btn" data-action="edit-occasion">${PENCIL} Edit</button>
-      <button class="btn" data-action="invites" ${withEmail ? '' : 'disabled title="Nobody on the list has an email address"'}>${MAIL} Email invitations…</button>
+      ${canEdit() ? `<button class="btn" data-action="edit-occasion">${PENCIL} Edit</button>
+      <button class="btn" data-action="invites" ${withEmail ? '' : 'disabled title="Nobody on the list has an email address"'}>${MAIL} Email invitations…</button>` : ''}
       <button class="btn primary" data-action="print" ${onList.length ? '' : 'disabled title="Tick households for this occasion first"'}>Print labels / envelopes…</button>
     </div>
   </div>
@@ -673,8 +690,8 @@ function renderOccasion() {
     ${groups.length ? `<select data-input="occ-group" aria-label="Group"><option value="">All groups</option>${groups.map((g) => `<option ${g === state.occGroup ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>` : ''}
   </div>
   <div class="bulk small"><span data-shown></span>
-    <button class="link" data-action="bulk-tag" data-add="1">Add all shown to the list</button>
-    <button class="link" data-action="bulk-tag" data-add="">Remove all shown</button>
+    ${canEdit() ? `<button class="link" data-action="bulk-tag" data-add="1">Add all shown to the list</button>
+    <button class="link" data-action="bulk-tag" data-add="">Remove all shown</button>` : ''}
   </div>
   <div class="panel tight"><table class="items rcpt">
     <thead><tr><th style="width:44px"><span class="sr">On the list</span></th><th>Household</th><th>Greeting</th><th>Address</th><th class="col-mailed">Mailed</th><th class="col-email">Email</th></tr></thead>
@@ -713,11 +730,11 @@ function renderRecipientRows() {
       : t.inviteError ? `<span class="pill overdue" title="${esc(t.inviteError)}">Failed</span>`
         : email ? '<span class="muted small">Not sent</span>' : '<span class="muted small">No email</span>';
     return `<tr class="${t ? 'on' : ''}">
-      <td><input type="checkbox" data-action="tag" data-id="${esc(h.id)}" ${t ? 'checked' : ''} aria-label="${esc(h.labelName)} on the list"></td>
+      <td><input type="checkbox" data-action="tag" data-id="${esc(h.id)}" ${t ? 'checked' : ''} ${canEdit() ? '' : 'disabled'} aria-label="${esc(h.labelName)} on the list"></td>
       <td><button class="link-btn" data-action="edit-household" data-id="${esc(h.id)}">${esc(h.labelName)}</button>${h.pendingUpdate ? ' <span class="pill due-soon">New address</span>' : ''}</td>
       <td class="col-greeting small">${esc(whoText(h))}</td>
       <td class="small">${isMailable(h.address) ? esc(addressLines('', h.address).join(', ')) : '<span class="pill unknown">No address</span>'}</td>
-      <td class="col-mailed">${t ? `<input type="checkbox" data-action="mailed" data-id="${esc(h.id)}" ${t.mailedAt ? 'checked' : ''} aria-label="Mailed">` : ''}</td>
+      <td class="col-mailed">${t ? `<input type="checkbox" data-action="mailed" data-id="${esc(h.id)}" ${t.mailedAt ? 'checked' : ''} ${canEdit() ? '' : 'disabled'} aria-label="Mailed">` : ''}</td>
       <td class="col-email">${emailCell}</td>
     </tr>`;
   }).join('') || '<tr><td colspan="6" class="muted">No households match.</td></tr>';
@@ -910,8 +927,8 @@ async function makePdf(form) {
     const after = modal.querySelector('[data-after]');
     after.hidden = false;
     after.innerHTML = `<span>${win ? 'The PDF opened in a new tab.' : `<a href="${url}" target="_blank" rel="noopener">Open the PDF</a> (your browser blocked the new tab).`}
-      ${lastPrinted.length ? `Once they're in the mail, mark ${plural(lastPrinted.length, 'household')} as mailed.` : ''}</span>
-      ${lastPrinted.length ? '<button type="button" class="btn sm primary" data-action="mark-printed">Mark mailed</button>' : ''}`;
+      ${lastPrinted.length && canEdit() ? `Once they're in the mail, mark ${plural(lastPrinted.length, 'household')} as mailed.` : ''}</span>
+      ${lastPrinted.length && canEdit() ? '<button type="button" class="btn sm primary" data-action="mark-printed">Mark mailed</button>' : ''}`;
   });
 }
 
@@ -972,7 +989,7 @@ async function sendInvites(form) {
 
 // ---------- settings ----------
 // Tabs across the top, like Vehicle Maintenance. Each tab saves only its own fields.
-const SETTINGS_TABS = [['profile', 'Profile'], ['return', 'Return address'], ['security', 'Security'], ['printer', 'Printer']];
+const SETTINGS_TABS = [['profile', 'Profile'], ['return', 'Return address'], ['security', 'Security'], ['printer', 'Printer'], ['sharing', 'Sharing']];
 let settingsTab = 'profile';
 let mfaEnrollment = null; // { qr, secret } while setting up an authenticator app
 
@@ -988,6 +1005,7 @@ function settingsModal(tab = settingsTab) {
   if (settingsTab === 'return') return returnAddressTab();
   if (settingsTab === 'security') return securityTab();
   if (settingsTab === 'printer') return printerTab();
+  if (settingsTab === 'sharing') return sharingTab();
   return profileTab();
 }
 
@@ -1080,9 +1098,71 @@ function returnAddressTab() {
   const p = state.me?.profile ?? {};
   openModal('Settings', `
     ${settingsTabs('return')}
-    <p style="margin:0">Printed in the corner of envelopes, and on return-address labels.</p>
+    <p style="margin:0">Printed in the corner of envelopes, and on return-address labels.${isOwner() ? '' : ' It belongs to the shared address book, so everyone using it prints the same one.'}</p>
     <label>Name<input name="returnName" maxlength="120" value="${val(p.returnName)}" placeholder="${val([p.firstName, p.lastName].filter(Boolean).join(' ') || 'The Szmansky Family')}"></label>
-    ${addressFields(p.returnAddress, 'r_')}`, { form: 'settings-return', foot: saveFoot('Save return address') });
+    ${addressFields(p.returnAddress, 'r_')}`, { form: 'settings-return', foot: canEdit() ? saveFoot('Save return address') : '<div class="small muted">View only</div><div class="right"><button type="button" class="btn" data-action="close">Close</button></div>' });
+  if (!canEdit()) modal.querySelectorAll('.modal-body input').forEach((el) => { el.disabled = true; });
+}
+
+// ----- sharing: the owner shares the address book and occasions, each person "Can edit" or "View only" -----
+let shares = [];
+const roleSelect = (name, role, extra = '') => `<select ${name} ${extra}>
+  <option value="edit" ${role === 'edit' ? 'selected' : ''}>Can edit</option>
+  <option value="view" ${role === 'view' ? 'selected' : ''}>View only</option></select>`;
+
+async function sharingTab() {
+  const b = state.me?.book;
+  if (!isOwner()) {
+    openModal('Settings', `
+      ${settingsTabs('sharing')}
+      <p style="margin:0">You're using <b>${esc(b.ownerName || b.ownerEmail)}</b>'s address book${b.ownerName ? ` (${esc(b.ownerEmail)})` : ''}.</p>
+      <p style="margin:0">Your access: <b>${ROLE_LABEL[b.role]}</b>. ${b.role === 'edit'
+    ? 'You can add and change households and occasions, print, and send invitations and address checks.'
+    : 'You can look up addresses and print labels and envelopes, but not change anything or send emails.'}</p>
+      <p class="hint">Only ${esc(b.ownerName || b.ownerEmail)} can change who it's shared with.</p>`, {
+      form: 'noop', foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button></div>',
+    });
+    return;
+  }
+  openModal('Settings', `
+    ${settingsTabs('sharing')}
+    <p style="margin:0">Share your address book and occasions with someone else. They see the same households and occasions you do, and changes either of you make show up for both.</p>
+    <div data-share-list class="share-list"><p class="muted small" style="margin:0">Loading…</p></div>
+    <fieldset class="stack"><legend>Share with someone</legend>
+      <div class="share-add">
+        <label>Email<input type="email" name="shareEmail" autocomplete="off" placeholder="partner@example.com"></label>
+        <label>Access${roleSelect('name="shareRole"', 'edit')}</label>
+      </div>
+      <p class="hint">If they don't have an account yet, they'll get an invitation email with a temporary password. While someone has your book shared with them, they work in it instead of their own.</p>
+    </fieldset>`, {
+    form: 'share',
+    foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button><button class="btn primary">Share</button></div>',
+  });
+  try { shares = (await api('/shares')).shares; } catch (e) { shares = []; modalError(e.message); }
+  renderShareList();
+}
+
+function renderShareList() {
+  const box = modal.querySelector('[data-share-list]');
+  if (!box) return;
+  box.innerHTML = shares.length ? shares.map((sh) => `
+    <div class="share-row">
+      <div><div>${esc(sh.email)}</div><div class="small muted">Shared ${fmtDate(sh.sharedAt)}${sh.invited ? ' · invited' : ''}</div></div>
+      ${roleSelect(`data-share-role="${esc(sh.email)}" aria-label="Access for ${esc(sh.email)}"`, sh.role)}
+      <button type="button" class="btn sm danger" data-action="unshare" data-email="${esc(sh.email)}">Stop sharing</button>
+    </div>`).join('') : '<p class="muted small" style="margin:0">Not shared with anyone yet.</p>';
+}
+
+async function addShare(form) {
+  const email = form.elements.shareEmail.value.trim();
+  if (!email) return modalError('Enter their email address');
+  return withBusy(form.querySelector('.btn.primary'), async () => {
+    const res = await api('/shares', { method: 'POST', body: { email, role: form.elements.shareRole.value } });
+    shares = res.shares;
+    form.elements.shareEmail.value = '';
+    renderShareList();
+    toast(res.share.invited ? `Shared, and invited ${res.share.email} to create an account` : `Shared with ${res.share.email}`);
+  });
 }
 
 function printerTab() {
@@ -1297,6 +1377,14 @@ document.addEventListener('click', async (e) => {
     case 'align-test': await withBusy(el, () => alignTest(el.dataset.what)); break;
     case 'settings-tab': settingsModal(el.dataset.tab); break;
     case 'remove-avatar': await removeAvatar(el); break;
+    case 'unshare':
+      if (!confirm(`Stop sharing your address book with ${el.dataset.email}? They'll go back to their own.`)) break;
+      await withBusy(el, async () => {
+        shares = (await api(`/shares/${encodeURIComponent(el.dataset.email)}`, { method: 'DELETE' })).shares;
+        renderShareList();
+        toast(`Stopped sharing with ${el.dataset.email}`);
+      });
+      break;
     case 'show-email-change': {
       const box = modal.querySelector('[data-email-change]');
       box.hidden = !box.hidden;
@@ -1440,6 +1528,14 @@ document.addEventListener('change', (e) => {
   if (['greeting', 'labelName'].includes(t.name) || t.dataset?.m === 'lastName' || t.dataset?.m === 'firstName') refreshFormalName(t.form);
   const k = t.dataset?.input;
   if (k === 'group') { state.group = t.value; renderHouseholdList(); }
+  if (t.dataset?.shareRole) {
+    const email = t.dataset.shareRole;
+    t.disabled = true;
+    api(`/shares/${encodeURIComponent(email)}`, { method: 'PUT', body: { role: t.value } })
+      .then((res) => { shares = res.shares; toast(`${email}: ${ROLE_LABEL[t.value]}`); })
+      .catch((err) => { toast(err.message, true); renderShareList(); })
+      .finally(() => { t.disabled = false; });
+  }
   if (k === 'occ-group') { state.occGroup = t.value; renderRecipientRows(); }
   if (k === 'csv-file' && t.files?.[0]) readCsvFile(t.files[0]).catch((err) => modalError(err.message));
   if (t.dataset?.map !== undefined) updateImportSummary();
@@ -1458,12 +1554,14 @@ document.addEventListener('submit', async (e) => {
   if (kind === 'print') return makePdf(form);
   if (kind === 'invites') return sendInvites(form);
   if (kind === 'import') return runImport(form.querySelector('[data-import-go]'));
+  if (kind === 'share') return addShare(form);
   if (kind === 'settings-password') return withBusy(form.querySelector('button[type=submit]'), () => changePassword(form));
   if (['settings-profile', 'settings-return', 'settings-printer'].includes(kind)) {
     const tab = kind.slice('settings-'.length);
     return withBusy(form.querySelector('.btn.primary'), async () => {
       const res = await api('/me', { method: 'PUT', body: readSettings(form, tab) });
       state.me.profile = res.profile;
+      state.me.book = res.book;
       closeModal();
       toast({ profile: 'Profile saved', return: 'Return address saved', printer: 'Printer settings saved' }[tab]);
       render();

@@ -4,7 +4,13 @@ import { createApi, householdEmails } from '../src/lib/api.mjs';
 import { createCognitoVerifier } from '../src/lib/auth.mjs';
 import { createMemoryRepo, createFakeMailer, createFakeFiles, createTokenFactory, REGION, USER_POOL_ID, CLIENT_ID } from './helpers.mjs';
 
-async function setup({ mailer = createFakeMailer(), allowedEmails = '*', files = createFakeFiles() } = {}) {
+function createFakeDirectory(existing = []) {
+  const users = new Set(existing);
+  const invited = [];
+  return { invited, async invite(email) { if (users.has(email)) return { invited: false, exists: true }; users.add(email); invited.push(email); return { invited: true }; } };
+}
+
+async function setup({ mailer = createFakeMailer(), allowedEmails = '*', files = createFakeFiles(), directory = createFakeDirectory(['kim@example.com']) } = {}) {
   const repo = createMemoryRepo();
   const tokens = await createTokenFactory();
   let clock = new Date('2026-11-01T15:00:00Z');
@@ -14,6 +20,7 @@ async function setup({ mailer = createFakeMailer(), allowedEmails = '*', files =
     verify: createCognitoVerifier({ region: REGION, userPoolId: USER_POOL_ID, clientId: CLIENT_ID, allowedEmails, jwks: tokens.jwks }),
     appUrl: 'https://cards.example.com',
     files,
+    directory,
     now: () => clock,
     log: { error() {} },
     pause: async () => {},
@@ -28,7 +35,7 @@ async function setup({ mailer = createFakeMailer(), allowedEmails = '*', files =
     });
     return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
   };
-  return { repo, mailer, files, tokens, call, setClock: (d) => { clock = new Date(d); } };
+  return { repo, mailer, files, directory, tokens, call, setClock: (d) => { clock = new Date(d); } };
 }
 
 const smiths = {
@@ -251,4 +258,86 @@ test('profile photo: upload, replace, remove, and private to its owner', async (
   profile = (await call('DELETE', '/me/avatar')).body.profile;
   assert.equal(profile.avatarUrl, undefined);
   assert.equal(files.objects.size, 0);
+});
+
+test('sharing: edit and view-only access to the owner\'s book', async () => {
+  const { call, mailer, directory } = await setup();
+  const kim = { claims: { sub: 'user-kim', email: 'kim@example.com' } };     // has an account already
+  const joe = { claims: { sub: 'user-joe', email: 'joe@example.com' } };     // doesn't yet
+  await call('PUT', '/me', { firstName: 'Mike', lastName: 'Szmansky', returnName: 'The Szmanskys', returnAddress: { line1: '1 Home Rd', city: 'Troy', state: 'MI', zip: '48083' } });
+  const h = (await call('POST', '/households', { labelName: 'The Lees' })).body.household;
+
+  // Only valid, other people; only the owner manages sharing.
+  assert.match((await call('POST', '/shares', { email: 'mike@example.com', role: 'edit' })).body.error, /your own email/);
+  assert.match((await call('POST', '/shares', { email: 'kim@example.com', role: 'admin' })).body.error, /Can edit/);
+
+  let res = await call('POST', '/shares', { email: 'Kim@Example.com', role: 'edit' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.share.invited, undefined, 'Kim already had an account');
+  assert.equal(mailer.sent.at(-1).to, 'kim@example.com');
+  assert.match(mailer.sent.at(-1).subject, /Mike Szmansky shared their address book/);
+  res = await call('POST', '/shares', { email: 'joe@example.com', role: 'view' });
+  assert.equal(res.body.share.invited, true);
+  assert.deepEqual(directory.invited, ['joe@example.com']);
+  assert.match(mailer.sent.at(-1).text, /temporary password/);
+  assert.deepEqual((await call('GET', '/shares')).body.shares.map((x) => [x.email, x.role]), [['joe@example.com', 'view'], ['kim@example.com', 'edit']]);
+
+  // Kim (edit) works in Mike's book, with Mike's return address and her own name.
+  await call('PUT', '/me', { firstName: 'Kim' }, kim);
+  let me = (await call('GET', '/me', undefined, kim)).body;
+  assert.deepEqual([me.book.role, me.book.canEdit, me.book.ownerName], ['edit', true, 'Mike Szmansky']);
+  assert.equal(me.profile.firstName, 'Kim');
+  assert.equal(me.profile.returnName, 'The Szmanskys');
+  assert.deepEqual((await call('GET', '/households', undefined, kim)).body.households.map((x) => x.labelName), ['The Lees']);
+  assert.equal((await call('POST', '/households', { labelName: 'The Abbotts' }, kim)).status, 200);
+  assert.equal((await call('GET', '/households')).body.households.length, 2, 'Mike sees what Kim added');
+  // Kim can edit the shared return address; Mike sees it.
+  await call('PUT', '/me', { returnAddress: { line1: '2 New Rd', city: 'Troy', state: 'MI', zip: '48083' } }, kim);
+  assert.equal((await call('GET', '/me')).body.profile.returnAddress.line1, '2 New Rd');
+  assert.equal((await call('GET', '/me', undefined, kim)).body.profile.firstName, 'Kim', 'her own name is untouched');
+  // But sharing settings are the owner's.
+  assert.equal((await call('GET', '/shares', undefined, kim)).status, 403);
+  assert.equal((await call('POST', '/shares', { email: 'x@example.com', role: 'edit' }, kim)).status, 403);
+
+  // Joe (view only) can read and print, but not change or send.
+  me = (await call('GET', '/me', undefined, joe)).body;
+  assert.deepEqual([me.book.role, me.book.canEdit], ['view', false]);
+  assert.equal((await call('GET', '/households', undefined, joe)).body.households.length, 2);
+  const occ = (await call('POST', '/occasions', { name: 'Cards' })).body.occasion;
+  assert.equal((await call('GET', `/occasions/${occ.id}`, undefined, joe)).status, 200);
+  for (const [m, path, body] of [['POST', '/households', { labelName: 'X' }], ['PUT', `/households/${h.id}`, { labelName: 'X' }],
+    ['DELETE', `/households/${h.id}`], ['POST', '/occasions', { name: 'X' }], ['PUT', `/occasions/${occ.id}/tags`, { add: [h.id] }],
+    ['POST', `/occasions/${occ.id}/mailed`, { householdIds: [h.id], mailed: true }], ['POST', `/households/${h.id}/address-request`, {}],
+    ['PUT', '/me', { returnName: 'Hacked' }]]) {
+    const r = await call(m, path, body, joe);
+    assert.equal(r.status, 403, `${m} ${path}`);
+    assert.equal(r.body.code, 'view_only');
+  }
+  assert.equal((await call('PUT', '/me', { firstName: 'Joe' }, joe)).status, 200, 'his own name is fine');
+
+  // Mike changes Joe to edit, then stops sharing with Kim.
+  await call('PUT', '/shares/joe@example.com', { role: 'edit' });
+  assert.equal((await call('POST', '/households', { labelName: 'Y' }, joe)).status, 200);
+  await call('DELETE', '/shares/kim@example.com');
+  me = (await call('GET', '/me', undefined, kim)).body;
+  assert.equal(me.book.role, 'owner', 'Kim is back in her own book');
+  assert.equal((await call('GET', '/households', undefined, kim)).body.households.length, 0);
+
+  // Someone already sharing another book can't be added to a second one.
+  const ann = { claims: { sub: 'user-ann', email: 'ann@example.com' } };
+  assert.match((await call('POST', '/shares', { email: 'joe@example.com', role: 'view' }, ann)).body.error, /already has another address book/);
+});
+
+test('sharing: an address check sent by a shared editor lands in the owner\'s book and notifies the sender', async () => {
+  const { call, mailer } = await setup();
+  const kim = { claims: { sub: 'user-kim', email: 'kim@example.com' } };
+  await call('POST', '/shares', { email: 'kim@example.com', role: 'edit' });
+  const h = (await call('POST', '/households', { labelName: 'The Lees', emails: ['lee@example.com'], address: { line1: '1 A', city: 'Troy', state: 'MI', zip: '48083' } })).body.household;
+  await call('POST', `/households/${h.id}/address-request`, {}, kim);
+  const token = /#t=([\w-]+)/.exec(mailer.sent.at(-1).text)[1];
+  assert.equal(mailer.sent.at(-1).replyTo, 'kim@example.com');
+  await call('POST', `/public/address/${token}`, { address: { line1: '9 New St', city: 'Troy', state: 'MI', zip: '48084' } }, { token: null });
+  assert.equal(mailer.sent.at(-1).to, 'kim@example.com');
+  const lees = (await call('GET', '/households')).body.households.find((x) => x.id === h.id);
+  assert.equal(lees.pendingUpdate.address.line1, '9 New St', 'the reply is in the shared book');
 });

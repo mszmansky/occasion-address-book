@@ -1,5 +1,6 @@
 import { createApi } from '../lib/api.mjs';
 import { createCognitoVerifier } from '../lib/auth.mjs';
+import { createCognitoDirectory } from '../lib/directory.mjs';
 import { createS3Files } from '../lib/files.mjs';
 import { createSesMailer } from '../lib/mailer.mjs';
 import { createDynamoRepo } from '../lib/repo.mjs';
@@ -13,5 +14,6 @@ export const handler = createApi({
   }),
   mailer: createSesMailer({ from: env.SENDER_EMAIL, configurationSet: env.SES_CONFIGURATION_SET }),
   appUrl: env.APP_URL,
+  directory: createCognitoDirectory({ userPoolId: env.COGNITO_USER_POOL_ID }),
   files: env.FILES_BUCKET ? createS3Files({ bucket: env.FILES_BUCKET }) : undefined,
 });

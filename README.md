@@ -106,6 +106,19 @@ Cognito emails a temporary password. Sign in with it and you're asked to choose 
 - **Return address:** printed on envelopes and return-address labels.
 - **Security:** change password, and two-step verification with an authenticator app.
 - **Printer:** label and envelope alignment offsets, with alignment test pages.
+- **Sharing:** share your address book and occasions with other people (see below).
+
+### Sharing
+
+The owner of an address book shares it from **Settings > Sharing** by email, choosing **Can edit** or **View only** for each person (changeable later; **Stop sharing** removes them).
+
+- Someone without an account gets a Cognito invitation with a temporary password; everyone gets an email saying the book was shared with them.
+- While a book is shared with someone, they work in it instead of their own, and a note at the top says whose book it is. Changes either person makes show up for both.
+- **Can edit:** everything the owner can do except change sharing. **View only:** look up, search, export and print; no changes and no emails. The API enforces this, not just the screens.
+- The return address belongs to the book, so everyone prints the same one. Name, photo, password, two-step verification and printer alignment stay personal.
+- A person can have one address book shared with them at a time.
+
+Stored as `USER#<owner> / SHARE#<email>` (the owner's list) and `SHARED#<email> / BOOK` (looked up when that person signs in).
 
 ### Custom domain
 

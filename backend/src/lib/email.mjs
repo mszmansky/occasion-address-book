@@ -155,3 +155,30 @@ export function buildCognitoMessage(triggerSource, { appUrl, codeParameter = '{#
         "If you didn't request this, you can ignore this email.");
   }
 }
+
+/** Tells someone an address book was shared with them (and, if new, that an invitation email is coming). */
+export function buildShareNotice({ ownerName, ownerEmail, role, invited, appUrl }) {
+  const APP = 'Occasions Address Book';
+  const who = ownerName || ownerEmail;
+  const access = role === 'edit'
+    ? 'You can add and update addresses, plan occasions, print labels and envelopes, and send invitations.'
+    : 'You can look up addresses and print labels and envelopes (view only).';
+  const signIn = invited
+    ? `You'll also get an email with a temporary password. Sign in to ${APP} with this email address and that password, then choose your own.`
+    : `Sign in to ${APP} with this email address to see it.`;
+  const subject = `${who} shared their address book with you`;
+  const p = (t) => `<p style="margin:0 0 14px">${t}</p>`;
+  const html = layout({
+    heading: `${who} shared their address book`,
+    inner: p(`${esc(who)}${ownerName ? ` (${esc(ownerEmail)})` : ''} shared their ${APP} with you: their addresses and occasions such as holiday cards and parties.`)
+      + p(esc(access)) + p(esc(signIn)) + (appUrl ? button(appUrl, `Open ${APP}`) : ''),
+    footer: "If you weren't expecting this, you can ignore this email.",
+  });
+  const text = `${who}${ownerName ? ` (${ownerEmail})` : ''} shared their ${APP} with you: their addresses and occasions such as holiday cards and parties.
+
+${access}
+
+${signIn}
+${appUrl ?? ''}`;
+  return { subject, html, text };
+}

@@ -245,6 +245,10 @@ Resources:
         - DynamoDBCrudPolicy: { TableName: !Ref Table }
         - S3CrudPolicy: { BucketName: !Ref FilesBucket }
         - Statement:
+            - Effect: Allow   # sharing: check whether someone has an account, and invite them if not
+              Action: [cognito-idp:AdminCreateUser, cognito-idp:AdminGetUser]
+              Resource: !GetAtt UserPool.Arn
+        - Statement:
             - Effect: Allow
               Action: ses:SendEmail
               Resource:

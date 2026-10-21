@@ -5,7 +5,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { HttpError } from './auth.mjs';
 import { userPk } from './repo.mjs';
-import { buildAddressReceived, buildAddressRequest, buildInvite } from './email.mjs';
+import { buildAddressReceived, buildAddressRequest, buildInvite, buildShareNotice } from './email.mjs';
 
 export const LINK_DAYS = 30;          // address-update links expire after this many days
 export const INVITE_BATCH = 25;       // invitations sent per request (the page sends larger lists in batches)
@@ -187,15 +187,32 @@ export function householdEmails(h) {
 const strip = ({ PK, SK, GSI1PK, GSI1SK, ...rest }) => rest;
 const fullName = (p) => [p.firstName, p.lastName].filter(Boolean).join(' ');
 
-export function createApi({ repo, verify, mailer, appUrl, files, now = () => new Date(), log = console, pause = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function createApi({ repo, verify, mailer, appUrl, files, directory, now = () => new Date(), log = console, pause = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const routes = [];
-  const route = (method, pattern, fn, { open = false } = {}) => {
+  // open: no sign-in (the address-check page). write: changes the shared book or sends email,
+  // so View-only people can't. owner: only the book's owner (sharing settings).
+  const route = (method, pattern, fn, { open = false, write = false, owner = false } = {}) => {
     const keys = [];
     const re = new RegExp(`^${pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return '([^/]+)'; })}$`);
-    routes.push({ method, re, keys, fn, open });
+    routes.push({ method, re, keys, fn, open, write, owner });
   };
   const nowIso = () => now().toISOString();
-  const pk = (user) => userPk(user.sub);
+  const pk = (user) => userPk(user.sub);   // the person: profile, photo, printer settings
+  const bk = (user) => user.book.pk;        // the address book they work in: their own, or one shared with them
+
+  // ---------- sharing ----------
+  //   USER#<owner> / SHARE#<email>   who the owner shares with, and how (edit or view)
+  //   SHARED#<email> / BOOK          the same share, found from the other person's side at sign-in
+  // Someone with a share works in the owner's book; their own (empty) book is set aside.
+  const sharePk = (email) => `SHARED#${email}`;
+  async function resolveBook(user) {
+    const m = await repo.get(sharePk(user.email), 'BOOK');
+    if (m && m.ownerSub !== user.sub) {
+      return { pk: userPk(m.ownerSub), ownerSub: m.ownerSub, role: m.role, ownerName: m.ownerName, ownerEmail: m.ownerEmail };
+    }
+    return { pk: userPk(user.sub), ownerSub: user.sub, role: 'owner' };
+  }
+  const canEdit = (user) => user.book.role === 'owner' || user.book.role === 'edit';
 
   async function getProfile(user) {
     const existing = await repo.get(pk(user), 'PROFILE');
@@ -210,7 +227,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
   const senderName = (p) => p.emailFromName || fullName(p) || '';
 
   async function mustGet(user, sk, what) {
-    const item = await repo.get(pk(user), sk);
+    const item = await repo.get(bk(user), sk);
     if (!item) throw new HttpError(404, `${what} not found`);
     return item;
   }
@@ -224,14 +241,96 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     return { ...rest, avatarUrl: avatar && files ? await files.signDownload(avatar.key, { name: 'avatar', type: avatar.type }) : undefined };
   }
 
-  route('GET', '/me', async ({ user }) => ({ profile: await publicProfile(await getProfile(user)), linkDays: LINK_DAYS }));
+  // The book's owner profile holds the return address (it belongs to the shared book).
+  async function bookProfile(user) {
+    return user.book.role === 'owner' ? getProfile(user) : (await repo.get(user.book.pk, 'PROFILE')) ?? {};
+  }
 
+  async function meResponse(user, own) {
+    const book = user.book.role === 'owner' ? own : await bookProfile(user);
+    return {
+      profile: { ...(await publicProfile(own)), returnName: book.returnName, returnAddress: book.returnAddress ?? {} },
+      book: user.book.role === 'owner'
+        ? { role: 'owner', canEdit: true }
+        : { role: user.book.role, canEdit: canEdit(user), ownerName: user.book.ownerName, ownerEmail: user.book.ownerEmail },
+      linkDays: LINK_DAYS,
+    };
+  }
+
+  route('GET', '/me', async ({ user }) => meResponse(user, await getProfile(user)));
+
+  // Name, photo and printer settings are the person's own; the return address is the book's.
   route('PUT', '/me', async ({ user, body }) => {
+    const { returnName, returnAddress, ...personal } = body;
     const current = await getProfile(user);
-    const updated = { ...current, ...parseProfile(body, current), updatedAt: nowIso() };
+    const updated = { ...current, ...parseProfile(personal, current), returnName: current.returnName, returnAddress: current.returnAddress, updatedAt: nowIso() };
+    if (returnName !== undefined || returnAddress !== undefined) {
+      if (!canEdit(user)) throw new HttpError(403, 'You have view-only access to this address book', 'view_only');
+      const book = user.book.role === 'owner' ? updated : { PK: user.book.pk, SK: 'PROFILE', ...(await bookProfile(user)) };
+      const parsed = parseProfile({ returnName, returnAddress }, book);
+      Object.assign(book, { returnName: parsed.returnName, returnAddress: parsed.returnAddress });
+      if (book !== updated) await repo.put({ ...book, updatedAt: nowIso() });
+    }
     await repo.put(updated);
-    return { profile: await publicProfile(updated) };
+    return meResponse(user, updated);
   });
+
+  // ---------- sharing (owner only) ----------
+  const shareView = (sh) => ({ email: sh.email, role: sh.role, sharedAt: sh.sharedAt, invited: sh.invited || undefined });
+  const parseRole = (r) => {
+    if (!['edit', 'view'].includes(r)) throw new HttpError(400, 'Choose "Can edit" or "View only"');
+    return r;
+  };
+
+  route('GET', '/shares', async ({ user }) => ({
+    shares: (await repo.query(pk(user), 'SHARE#')).map(shareView).sort((a, b) => a.email.localeCompare(b.email)),
+  }), { owner: true });
+
+  route('POST', '/shares', async ({ user, body }) => {
+    const email = (str(body.email, 'Email', { max: 254, required: true }) ?? '').toLowerCase();
+    if (!EMAIL.test(email)) throw new HttpError(400, `"${email}" is not a valid email`);
+    if (email === user.email) throw new HttpError(400, "That's your own email");
+    const role = parseRole(body.role);
+    const existing = await repo.get(sharePk(email), 'BOOK');
+    if (existing && existing.ownerSub !== user.sub) throw new HttpError(409, `${email} already has another address book shared with them`);
+    if ((await repo.query(pk(user), 'SHARE#')).length >= 20) throw new HttpError(400, 'You can share with at most 20 people');
+
+    const profile = await getProfile(user);
+    const ownerName = fullName(profile) || '';
+    // No account yet? Cognito emails them a temporary password (sign-up is invite-only).
+    let invited = false;
+    if (directory) invited = (await directory.invite(email)).invited;
+    const sharedAt = existing?.sharedAt ?? nowIso();
+    await repo.batchPut([
+      { PK: pk(user), SK: `SHARE#${email}`, email, role, sharedAt, invited: invited || undefined },
+      { PK: sharePk(email), SK: 'BOOK', email, role, ownerSub: user.sub, ownerEmail: user.email, ownerName, sharedAt },
+    ]);
+    if (!existing) {
+      try {
+        await mailer.send({ to: email, ...buildShareNotice({ ownerName, ownerEmail: user.email, role, invited, appUrl }), fromName: ownerName, replyTo: user.email });
+      } catch (e) {
+        log.error(e); // the share works either way; they'll see the book when they sign in
+      }
+    }
+    return { share: shareView({ email, role, sharedAt, invited }), shares: (await repo.query(pk(user), 'SHARE#')).map(shareView) };
+  }, { owner: true });
+
+  route('PUT', '/shares/:email', async ({ user, params, body }) => {
+    const email = params.email.toLowerCase();
+    const sh = await repo.get(pk(user), `SHARE#${email}`);
+    if (!sh) throw new HttpError(404, 'Not shared with that person');
+    const role = parseRole(body.role);
+    const m = await repo.get(sharePk(email), 'BOOK');
+    await repo.batchPut([{ ...sh, role }, ...(m ? [{ ...m, role }] : [])]);
+    return { shares: (await repo.query(pk(user), 'SHARE#')).map(shareView) };
+  }, { owner: true });
+
+  route('DELETE', '/shares/:email', async ({ user, params }) => {
+    const email = params.email.toLowerCase();
+    const m = await repo.get(sharePk(email), 'BOOK');
+    await repo.batchDel([{ PK: pk(user), SK: `SHARE#${email}` }, ...(m?.ownerSub === user.sub ? [{ PK: sharePk(email), SK: 'BOOK' }] : [])]);
+    return { shares: (await repo.query(pk(user), 'SHARE#')).map(shareView) };
+  }, { owner: true });
 
   // ---------- profile photo (same as Vehicle Maintenance) ----------
   // The browser crops the photo to a square JPEG, asks for an upload link, PUTs the file straight
@@ -265,7 +364,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     const updated = { ...profile, avatar: { key, type, updatedAt: nowIso() } };
     await repo.put(updated);
     if (old && old !== key) await files.remove([old]);
-    return { profile: await publicProfile(updated) };
+    return { profile: (await meResponse(user, updated)).profile };
   });
 
   route('DELETE', '/me/avatar', async ({ user }) => {
@@ -273,20 +372,20 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     if (profile.avatar && files) await files.remove([profile.avatar.key]);
     const { avatar, ...rest } = profile;
     await repo.put(rest);
-    return { profile: await publicProfile(rest) };
+    return { profile: (await meResponse(user, rest)).profile };
   });
 
   // ---------- households ----------
   route('GET', '/households', async ({ user }) => ({
-    households: (await repo.query(pk(user), 'HH#')).map(publicHousehold),
+    households: (await repo.query(bk(user), 'HH#')).map(publicHousehold),
   }));
 
   route('POST', '/households', async ({ user, body }) => {
     const id = newId();
-    const item = { PK: pk(user), SK: `HH#${id}`, id, ...parseHousehold(body), createdAt: nowIso(), updatedAt: nowIso() };
+    const item = { PK: bk(user), SK: `HH#${id}`, id, ...parseHousehold(body), createdAt: nowIso(), updatedAt: nowIso() };
     await repo.put(item);
     return { household: publicHousehold(item) };
-  });
+  }, { write: true });
 
   route('POST', '/households/import', async ({ user, body }) => {
     const list = body.households;
@@ -295,7 +394,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     const items = list.map((row, i) => {
       try {
         const id = newId();
-        return { PK: pk(user), SK: `HH#${id}`, id, ...parseHousehold(row), createdAt: nowIso(), updatedAt: nowIso() };
+        return { PK: bk(user), SK: `HH#${id}`, id, ...parseHousehold(row), createdAt: nowIso(), updatedAt: nowIso() };
       } catch (e) {
         if (e instanceof HttpError) throw new HttpError(400, `Row ${i + 1}: ${e.message}`);
         throw e;
@@ -303,21 +402,21 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     });
     await repo.batchPut(items);
     return { imported: items.length };
-  });
+  }, { write: true });
 
   route('PUT', '/households/:id', async ({ user, params, body }) => {
     const current = await mustGet(user, `HH#${params.id}`, 'Household');
     const item = { ...current, ...parseHousehold(body), updatedAt: nowIso() };
     await repo.put(item);
     return { household: publicHousehold(item) };
-  });
+  }, { write: true });
 
   route('DELETE', '/households/:id', async ({ user, params }) => {
     await mustGet(user, `HH#${params.id}`, 'Household');
-    const tags = (await repo.query(pk(user), 'TAG#')).filter((t) => t.householdId === params.id);
-    await repo.batchDel([{ PK: pk(user), SK: `HH#${params.id}` }, ...tags]);
+    const tags = (await repo.query(bk(user), 'TAG#')).filter((t) => t.householdId === params.id);
+    await repo.batchDel([{ PK: bk(user), SK: `HH#${params.id}` }, ...tags]);
     return { deleted: true };
-  });
+  }, { write: true });
 
   // A reply from the household's address-update link: take it, or throw it away.
   route('POST', '/households/:id/pending/:action', async ({ user, params }) => {
@@ -330,7 +429,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
       : { ...rest, updatedAt: nowIso() };
     await repo.put(item);
     return { household: publicHousehold(item) };
-  });
+  }, { write: true });
 
   // Emails the household a private link to confirm or correct their mailing address.
   route('POST', '/households/:id/address-request', async ({ user, params, body }) => {
@@ -344,7 +443,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     const token = randomBytes(24).toString('base64url');
     const expires = new Date(now().getTime() + LINK_DAYS * 86_400_000);
     await repo.put({
-      PK: tokenPk(token), SK: 'TOKEN', sub: user.sub, householdId: h.id, ownerEmail: user.email, fromName,
+      PK: tokenPk(token), SK: 'TOKEN', sub: user.book.ownerSub, householdId: h.id, ownerEmail: user.email, fromName,
       createdAt: nowIso(), expiresAt: expires.toISOString(), ttl: Math.floor(expires.getTime() / 1000),
     });
     const url = `${appUrl}/update.html#t=${token}`;
@@ -359,11 +458,11 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     const item = { ...h, addressRequest: { sentAt: nowIso(), sentTo: to, expiresAt: expires.toISOString() }, updatedAt: nowIso() };
     await repo.put(item);
     return { household: publicHousehold(item), sentTo: to };
-  });
+  }, { write: true });
 
   // ---------- occasions ----------
   route('GET', '/occasions', async ({ user }) => {
-    const [occasions, tags] = await Promise.all([repo.query(pk(user), 'OCC#'), repo.query(pk(user), 'TAG#')]);
+    const [occasions, tags] = await Promise.all([repo.query(bk(user), 'OCC#'), repo.query(bk(user), 'TAG#')]);
     const counts = {};
     for (const t of tags) {
       const c = (counts[t.occasionId] ??= { tagged: 0, mailed: 0, invited: 0 });
@@ -379,24 +478,24 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
 
   route('POST', '/occasions', async ({ user, body }) => {
     const id = newId();
-    const item = { PK: pk(user), SK: `OCC#${id}`, id, ...parseOccasion(body), createdAt: nowIso(), updatedAt: nowIso() };
+    const item = { PK: bk(user), SK: `OCC#${id}`, id, ...parseOccasion(body), createdAt: nowIso(), updatedAt: nowIso() };
     let tags = [];
     if (body.copyFrom) {
       // Start from last year's list: same households (those still in the address book), fresh mailed/invited state.
       const [from] = ids([body.copyFrom], 'Copy from');
       await mustGet(user, `OCC#${from}`, 'Occasion to copy from');
-      const [old, households] = await Promise.all([repo.query(pk(user), `TAG#${from}#`), repo.query(pk(user), 'HH#')]);
+      const [old, households] = await Promise.all([repo.query(bk(user), `TAG#${from}#`), repo.query(bk(user), 'HH#')]);
       const alive = new Set(households.map((h) => h.id));
       tags = old.filter((t) => alive.has(t.householdId)).map((t) => tagItem(user, id, t.householdId));
     }
     await repo.put(item);
     if (tags.length) await repo.batchPut(tags);
     return { occasion: strip(item), copied: tags.length };
-  });
+  }, { write: true });
 
   route('GET', '/occasions/:id', async ({ user, params }) => {
     const o = await mustGet(user, `OCC#${params.id}`, 'Occasion');
-    const tags = await repo.query(pk(user), `TAG#${params.id}#`);
+    const tags = await repo.query(bk(user), `TAG#${params.id}#`);
     return { occasion: strip(o), tags: tags.map(strip) };
   });
 
@@ -405,17 +504,17 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     const item = { ...current, ...parseOccasion(body), updatedAt: nowIso() };
     await repo.put(item);
     return { occasion: strip(item) };
-  });
+  }, { write: true });
 
   route('DELETE', '/occasions/:id', async ({ user, params }) => {
     await mustGet(user, `OCC#${params.id}`, 'Occasion');
-    const tags = await repo.query(pk(user), `TAG#${params.id}#`);
-    await repo.batchDel([{ PK: pk(user), SK: `OCC#${params.id}` }, ...tags]);
+    const tags = await repo.query(bk(user), `TAG#${params.id}#`);
+    await repo.batchDel([{ PK: bk(user), SK: `OCC#${params.id}` }, ...tags]);
     return { deleted: true };
-  });
+  }, { write: true });
 
   const tagItem = (user, oid, hid) => ({
-    PK: pk(user), SK: `TAG#${oid}#${hid}`, occasionId: oid, householdId: hid, addedAt: nowIso(),
+    PK: bk(user), SK: `TAG#${oid}#${hid}`, occasionId: oid, householdId: hid, addedAt: nowIso(),
   });
 
   // Tag (add) or untag (remove) households for an occasion.
@@ -423,29 +522,29 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     await mustGet(user, `OCC#${params.id}`, 'Occasion');
     const add = ids(body.add ?? [], 'add');
     const remove = ids(body.remove ?? [], 'remove');
-    const existing = await repo.query(pk(user), `TAG#${params.id}#`);
+    const existing = await repo.query(bk(user), `TAG#${params.id}#`);
     const have = new Set(existing.map((t) => t.householdId));
     if (add.length) {
-      const known = new Set((await repo.query(pk(user), 'HH#')).map((h) => h.id));
+      const known = new Set((await repo.query(bk(user), 'HH#')).map((h) => h.id));
       const missing = add.filter((h) => !known.has(h));
       if (missing.length) throw new HttpError(404, 'Household not found');
       await repo.batchPut(add.filter((h) => !have.has(h)).map((h) => tagItem(user, params.id, h)));
     }
-    const del = remove.filter((h) => have.has(h)).map((h) => ({ PK: pk(user), SK: `TAG#${params.id}#${h}` }));
+    const del = remove.filter((h) => have.has(h)).map((h) => ({ PK: bk(user), SK: `TAG#${params.id}#${h}` }));
     if (del.length) await repo.batchDel(del);
-    return { tags: (await repo.query(pk(user), `TAG#${params.id}#`)).map(strip) };
-  });
+    return { tags: (await repo.query(bk(user), `TAG#${params.id}#`)).map(strip) };
+  }, { write: true });
 
   // Mark households as mailed (or not) — e.g. after printing their labels.
   route('POST', '/occasions/:id/mailed', async ({ user, params, body }) => {
     await mustGet(user, `OCC#${params.id}`, 'Occasion');
     const hids = new Set(ids(body.householdIds, 'householdIds'));
     if (typeof body.mailed !== 'boolean') throw new HttpError(400, 'mailed must be true or false');
-    const tags = (await repo.query(pk(user), `TAG#${params.id}#`)).filter((t) => hids.has(t.householdId));
+    const tags = (await repo.query(bk(user), `TAG#${params.id}#`)).filter((t) => hids.has(t.householdId));
     const updated = tags.map(({ mailedAt, ...t }) => (body.mailed ? { ...t, mailedAt: mailedAt ?? nowIso() } : t));
     if (updated.length) await repo.batchPut(updated);
-    return { tags: (await repo.query(pk(user), `TAG#${params.id}#`)).map(strip) };
-  });
+    return { tags: (await repo.query(bk(user), `TAG#${params.id}#`)).map(strip) };
+  }, { write: true });
 
   // Emails the invitation to tagged households. Each household gets one email addressed to all of
   // its people. With test: true, one sample goes to the signed-in user only.
@@ -456,8 +555,8 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     const fromName = senderName(profile);
 
     if (body.test) {
-      const sample = (await repo.query(pk(user), `TAG#${params.id}#`))[0];
-      const h = sample ? await repo.get(pk(user), `HH#${sample.householdId}`) : null;
+      const sample = (await repo.query(bk(user), `TAG#${params.id}#`))[0];
+      const h = sample ? await repo.get(bk(user), `HH#${sample.householdId}`) : null;
       const msg = buildInvite({ occasion: o, household: h ?? { labelName: fullName(profile) || 'Friend' }, fromName, test: true });
       try {
         await mailer.send({ to: user.email, ...msg, fromName, replyTo: user.email });
@@ -471,8 +570,8 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
     const hids = ids(body.householdIds, 'householdIds', { max: INVITE_BATCH });
     const results = [];
     for (const [i, hid] of hids.entries()) {
-      const tag = await repo.get(pk(user), `TAG#${params.id}#${hid}`);
-      const h = await repo.get(pk(user), `HH#${hid}`);
+      const tag = await repo.get(bk(user), `TAG#${params.id}#${hid}`);
+      const h = await repo.get(bk(user), `HH#${hid}`);
       if (!tag || !h) { results.push({ householdId: hid, status: 'skipped', reason: 'Not on this occasion\'s list' }); continue; }
       const to = householdEmails(h);
       if (!to.length) { results.push({ householdId: hid, status: 'skipped', reason: 'No email address' }); continue; }
@@ -490,7 +589,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
       }
     }
     return { results };
-  });
+  }, { write: true });
 
   // ---------- public: address-update link ----------
   async function linkContext(token) {
@@ -546,6 +645,11 @@ export function createApi({ repo, verify, mailer, appUrl, files, now = () => new
         throw new HttpError(404, 'Not found');
       }
       const user = match.open ? null : await verify(event.headers?.authorization ?? event.headers?.Authorization);
+      if (user) {
+        user.book = await resolveBook(user);
+        if (match.owner && user.book.role !== 'owner') throw new HttpError(403, 'Only the owner of this address book can change sharing');
+        if (match.write && !canEdit(user)) throw new HttpError(403, 'You have view-only access to this address book', 'view_only');
+      }
       const values = match.re.exec(path).slice(1).map(decodeURIComponent);
       const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
       let body = {};
