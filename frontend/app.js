@@ -766,7 +766,6 @@ function householdModal(h) {
       <div data-members>${(peopleWithHouseholdContact(h).length ? peopleWithHouseholdContact(h) : [{}]).map(memberRow).join('')}</div>
       <button type="button" class="btn sm" data-action="add-member">+ Person</button>
     </fieldset>
-    <p class="hint" style="margin-top:-4px">If people share an email address, put it on each of them; invitations and address checks still send one email per household.</p>
     <div>
       <div class="label-like" id="groups-label">Groups</div>
       ${groupChipsField(h.groups ?? [])}
