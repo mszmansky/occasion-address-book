@@ -778,3 +778,4 @@ legend { font-weight: 600; font-size: 13px; color: var(--ink-2); padding: 0 6px;
   font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
   box-shadow: 0 6px 20px rgba(0, 0, 0, .2);
 }
+label > span.hint { display: block; }

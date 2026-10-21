@@ -707,6 +707,16 @@ async function setMailed(ids, mailed) {
   }
 }
 
+// The two name choices, with an example from the list (a household that has a formal name) when there is one.
+function nameStyleOptions(current, householdIds = []) {
+  const byId = hhById();
+  const pool = [...householdIds.map((id) => byId.get(id)).filter(Boolean), ...state.households];
+  const ex = pool.find((h) => h.formalName && h.formalName !== h.labelName);
+  const [everyday, formal] = ex ? [ex.labelName, ex.formalName] : ['The Smith Family', 'Mr. and Mrs. John Smith'];
+  return `<option value="label" ${current !== 'formal' ? 'selected' : ''}>Name on envelope, e.g. "${esc(everyday)}"</option>
+      <option value="formal" ${current === 'formal' ? 'selected' : ''}>Formal name, e.g. "${esc(formal)}"</option>`;
+}
+
 function occasionModal(o) {
   const isNew = !o;
   o ??= { kind: 'card', nameStyle: 'label', invite: {} };
@@ -719,9 +729,9 @@ function occasionModal(o) {
       <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
     </div>
     <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
-    <label>Name on envelopes<select name="nameStyle">
-      <option value="label" ${o.nameStyle !== 'formal' ? 'selected' : ''}>Everyday name (The Smith Family)</option>
-      <option value="formal" ${o.nameStyle === 'formal' ? 'selected' : ''}>Formal name where set (Mr. and Mrs. John Smith)</option></select></label>
+    <label>Name printed on labels and envelopes<select name="nameStyle">
+      ${nameStyleOptions(o.nameStyle, isNew ? [] : (state.occ?.tags ?? []).map((t) => t.householdId))}</select>
+      <span class="hint">You can still switch it each time you print.</span></label>
     ${isNew && copyable.length ? `<label>Start with the list from <span class="muted">(optional)</span><select name="copyFrom"><option value="">Nobody yet</option>
       ${copyable.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} (${x.counts.tagged})</option>`).join('')}</select></label>` : ''}
     <fieldset><legend>Email invitation <span class="muted">(optional)</span></legend>
@@ -800,9 +810,9 @@ function printModal() {
         <option value="shown">On the list and shown below (${shownRecipients().filter((h) => tags.has(h.id)).length})</option></select></label>
       <label>Order<select name="order"><option value="name">By last name</option><option value="zip">By ZIP code</option></select></label>
     </div>
-    <label data-for="name">Name<select name="nameStyle">
-      <option value="label" ${o.nameStyle !== 'formal' ? 'selected' : ''}>Everyday name</option>
-      <option value="formal" ${o.nameStyle === 'formal' ? 'selected' : ''}>Formal name where set</option></select></label>
+    <label data-for="name">Name printed on the first line<select name="nameStyle">
+      ${nameStyleOptions(o.nameStyle, [...tags.keys()])}</select>
+      <span class="hint">Households with no formal name use their "Name on envelope" either way.</span></label>
     <label data-for="start">Start on label number <span class="muted">(1–30, to use up a partly used sheet)</span><input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
     <label class="check" data-for="ret"><input type="checkbox" name="withReturn" ${hasReturn ? 'checked' : 'disabled'}> Print my return address in the corner</label>
     <label class="check"><input type="checkbox" name="outline"> Draw outlines (for a test print on plain paper)</label>
