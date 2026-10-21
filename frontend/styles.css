@@ -727,6 +727,7 @@ legend { font-weight: 600; font-size: 13px; color: var(--ink-2); padding: 0 6px;
 .rcpt input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
 .rcpt tr:not(.on) td:nth-child(2) .link-btn { color: var(--ink-2); font-weight: 500; }
 .rcpt .link-btn { font-weight: 600; }
+.rcpt .col-greeting { color: var(--ink-2); }
 .col-mailed { width: 70px; text-align: center; }
 .col-email { width: 120px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -749,8 +750,9 @@ legend { font-weight: 600; font-size: 13px; color: var(--ink-2); padding: 0 6px;
   .member-row [data-m=birthday] { grid-row: 3; grid-column: 2 / 3; }
   .member-row .btn { grid-row: 1; grid-column: 3; }
   .rcpt tr { grid-template-columns: 30px 1fr 1fr !important; }
-  .rcpt td:nth-child(1) { grid-column: 1; grid-row: 1 / 4; }
-  .rcpt td:nth-child(2), .rcpt td:nth-child(3) { grid-column: 2 / 4; }
+  .rcpt td:nth-child(1) { grid-column: 1; grid-row: 1 / 5; }
+  .rcpt td:nth-child(2), .rcpt td:nth-child(3), .rcpt td:nth-child(4) { grid-column: 2 / 4; }
+  .rcpt td.col-greeting:empty { display: none; }
   .rcpt td.col-mailed { grid-column: 2; width: auto; text-align: left; display: flex; align-items: center; gap: 6px; }
   .rcpt td.col-email { grid-column: 3; width: auto; }
   .rcpt td.col-mailed:not(:empty)::before { content: 'Mailed'; color: var(--ink-3); font-size: 13px; }

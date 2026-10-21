@@ -649,7 +649,7 @@ function renderOccasion() {
     <button class="link" data-action="bulk-tag" data-add="">Remove all shown</button>
   </div>
   <div class="panel tight"><table class="items rcpt">
-    <thead><tr><th style="width:44px"><span class="sr">On the list</span></th><th>Household</th><th>Address</th><th class="col-mailed">Mailed</th><th class="col-email">Email</th></tr></thead>
+    <thead><tr><th style="width:44px"><span class="sr">On the list</span></th><th>Household</th><th>Greeting</th><th>Address</th><th class="col-mailed">Mailed</th><th class="col-email">Email</th></tr></thead>
     <tbody id="rcpt-rows"></tbody></table></div>`;
 }
 
@@ -663,6 +663,13 @@ function shownRecipients() {
     if (state.occGroup && !h.groups?.includes(state.occGroup)) return false;
     return matchesSearch(h, state.occSearch);
   }).sort(byName);
+}
+
+// Who's in a household, for the occasion list: the greeting, else the people's first names.
+function whoText(h) {
+  if (h.greeting?.trim()) return h.greeting.trim();
+  const names = splitMembers(h.members ?? []).map((m) => m.firstName).filter(Boolean);
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0] ?? '';
 }
 
 function renderRecipientRows() {
@@ -680,11 +687,12 @@ function renderRecipientRows() {
     return `<tr class="${t ? 'on' : ''}">
       <td><input type="checkbox" data-action="tag" data-id="${esc(h.id)}" ${t ? 'checked' : ''} aria-label="${esc(h.labelName)} on the list"></td>
       <td><button class="link-btn" data-action="edit-household" data-id="${esc(h.id)}">${esc(h.labelName)}</button>${h.pendingUpdate ? ' <span class="pill due-soon">New address</span>' : ''}</td>
+      <td class="col-greeting small">${esc(whoText(h))}</td>
       <td class="small">${isMailable(h.address) ? esc(addressLines('', h.address).join(', ')) : '<span class="pill unknown">No address</span>'}</td>
       <td class="col-mailed">${t ? `<input type="checkbox" data-action="mailed" data-id="${esc(h.id)}" ${t.mailedAt ? 'checked' : ''} aria-label="Mailed">` : ''}</td>
       <td class="col-email">${emailCell}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="5" class="muted">No households match.</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="muted">No households match.</td></tr>';
 }
 
 async function setTags(add, remove) {
