@@ -102,7 +102,7 @@ test('household create cleans input and is private to its owner', async () => {
 
 test('household validation', async () => {
   const { call } = await setup();
-  assert.match((await call('POST', '/households', { labelName: '' })).body.error, /Name on envelope is required/);
+  assert.match((await call('POST', '/households', { labelName: '' })).body.error, /Household Greeting is required/);
   assert.match((await call('POST', '/households', { labelName: 'X', emails: 'bad' })).body.error, /not a valid email/);
   assert.match((await call('POST', '/households', { labelName: 'X', members: [{ email: 'a@b.co' }] })).body.error, /Give person 1 a name/);
 });

@@ -860,3 +860,7 @@ label > span.hint { display: block; }
 .chip-option { padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; }
 .chip-option[aria-selected=true], .chip-option:hover { background: var(--surface-2); }
 .chip-option.new { color: var(--ink-2); }
+
+/* required field marker */
+.req { color: #dc2626; margin-left: 3px; font-weight: 700; }
+@media (prefers-color-scheme: dark) { .req { color: #f87171; } }

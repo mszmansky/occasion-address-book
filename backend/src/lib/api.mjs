@@ -117,9 +117,9 @@ function parseGroups(v) {
 export function parseHousehold(b) {
   if (!b || typeof b !== 'object') throw new HttpError(400, 'Household is invalid');
   return {
-    labelName: str(b.labelName, 'Name on envelope', { max: 120, required: true }),
-    formalName: str(b.formalName, 'Formal name', { max: 160 }),
-    greeting: str(b.greeting, 'Greeting name', { max: 120 }),
+    labelName: str(b.labelName, 'Household Greeting', { max: 120, required: true }),
+    formalName: str(b.formalName, 'Formal Greeting', { max: 160 }),
+    greeting: str(b.greeting, 'Informal Greeting', { max: 120 }),
     address: parseAddress(b.address),
     emails: emails(b.emails, 'Household email'),
     phone: str(b.phone, 'Phone', { max: 30 }),

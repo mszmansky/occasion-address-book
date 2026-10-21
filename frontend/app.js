@@ -53,6 +53,7 @@ const PENCIL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="tru
 const MAIL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="m2.5 4.5 5.5 4 5.5-4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 const TRASH = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.75c0-.4.3-.75.75-.75h1.5c.4 0 .75.35.75.75V4M4 4l.6 9.1c.05.5.45.9 1 .9h4.8c.55 0 .95-.4 1-.9L12 4M6.75 6.75v4.5M9.25 6.75v4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const BOOK_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 2.75A1.75 1.75 0 0 1 4.75 1h7.5c.41 0 .75.34.75.75v10.5a.75.75 0 0 1-.75.75H4.75a.75.75 0 0 0 0 1.5H13M3 2.75v10.5A1.75 1.75 0 0 0 4.75 15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 4.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+const REQUIRED = '<span class="req" aria-hidden="true" title="Required">*</span>';
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const LOGO = '<img class="logo" src="icon-192.png" width="64" height="64" alt="">';
 
@@ -467,7 +468,7 @@ function modalError(msg) {
 
 const addressFields = (a = {}, prefix = '') => `
   <label>Street address<input name="${prefix}line1" value="${val(a.line1)}" autocomplete="off" maxlength="120"></label>
-  <label>Apt, suite, unit <span class="muted">(optional)</span><input name="${prefix}line2" value="${val(a.line2)}" autocomplete="off" maxlength="120"></label>
+  <label>Apt, suite, unit<input name="${prefix}line2" value="${val(a.line2)}" autocomplete="off" maxlength="120"></label>
   <div class="grid-3">
     <label>City<input name="${prefix}city" value="${val(a.city)}" autocomplete="off" maxlength="80"></label>
     <label>State<input name="${prefix}state" value="${val(a.state)}" autocomplete="off" maxlength="40"></label>
@@ -608,11 +609,13 @@ function householdModal(h) {
     </div>` : '';
   openModal(isNew ? 'New household' : esc(h.labelName), `
     ${pendingBox}
-    <label>Name on envelope<input name="labelName" required maxlength="120" value="${val(h.labelName)}" placeholder="The Smith Family"></label>
-    <div class="grid-2">
-      <label>Formal name <span class="muted">(optional)</span><input name="formalName" maxlength="160" value="${val(h.formalName || suggestedFormal)}" ${!h.formalName && suggestedFormal ? 'data-auto="1"' : ''} placeholder="Mr. and Mrs. John Smith"></label>
-      <label>Greeting in emails <span class="muted">(optional)</span><input name="greeting" maxlength="120" value="${val(h.greeting)}" placeholder="John and Mary"></label>
-    </div>
+    <fieldset><legend>Greetings</legend>
+      <label>Household Greeting${REQUIRED}<input name="labelName" required aria-required="true" maxlength="120" value="${val(h.labelName)}" placeholder="The Smith Family"></label>
+      <div class="grid-2">
+        <label>Formal Greeting<input name="formalName" maxlength="160" value="${val(h.formalName || suggestedFormal)}" ${!h.formalName && suggestedFormal ? 'data-auto="1"' : ''} placeholder="Mr. and Mrs. John Smith"></label>
+        <label>Informal Greeting<input name="greeting" maxlength="120" value="${val(h.greeting)}" placeholder="John and Mary"></label>
+      </div>
+    </fieldset>
     <fieldset><legend>Mailing address</legend>${addressFields(h.address)}
       ${h.addressConfirmedAt ? `<p class="hint">Confirmed by them ${fmtDate(h.addressConfirmedAt)}.</p>` : ''}
       ${req && !p ? `<p class="hint">Address check sent ${fmtDate(req.sentAt)} to ${esc(req.sentTo.join(', '))}; the link works until ${fmtDate(req.expiresAt)}.</p>` : ''}
@@ -675,7 +678,7 @@ function readHousehold(form) {
 async function saveHousehold(form) {
   const id = form.dataset.form.replace(/^household-/, '');
   const body = readHousehold(form);
-  if (!body.labelName) return modalError('Enter the name that goes on the envelope.');
+  if (!body.labelName) return modalError('Enter the Household Greeting.');
   await withBusy(form.querySelector('.btn.primary'), async () => {
     const res = id === 'new' ? await api('/households', { method: 'POST', body }) : await api(`/households/${id}`, { method: 'PUT', body });
     upsertHousehold(res.household);
@@ -923,8 +926,8 @@ function nameStyleOptions(current, householdIds = []) {
   const pool = [...householdIds.map((id) => byId.get(id)).filter(Boolean), ...state.households];
   const ex = pool.find((h) => effectiveFormalName(h) && effectiveFormalName(h) !== h.labelName);
   const [everyday, formal] = ex ? [ex.labelName, effectiveFormalName(ex)] : ['The Smith Family', 'Mr. and Mrs. John Smith'];
-  return `<option value="label" ${current !== 'formal' ? 'selected' : ''}>Name on envelope, e.g. "${esc(everyday)}"</option>
-      <option value="formal" ${current === 'formal' ? 'selected' : ''}>Formal name, e.g. "${esc(formal)}"</option>`;
+  return `<option value="label" ${current !== 'formal' ? 'selected' : ''}>Household Greeting, e.g. "${esc(everyday)}"</option>
+      <option value="formal" ${current === 'formal' ? 'selected' : ''}>Formal Greeting, e.g. "${esc(formal)}"</option>`;
 }
 
 function occasionModal(o) {
@@ -1022,7 +1025,7 @@ function printModal() {
     </div>
     <label data-for="name">Name printed on the first line<select name="nameStyle">
       ${nameStyleOptions(o.nameStyle, [...tags.keys()])}</select>
-      <span class="hint">Households with no formal name use their "Name on envelope" either way.</span></label>
+      <span class="hint">Households with no Formal Greeting use their Household Greeting either way.</span></label>
     <label data-for="start">Start on label number <span class="muted">(1–30, to use up a partly used sheet)</span><input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
     <label class="check" data-for="ret"><input type="checkbox" name="withReturn" ${hasReturn ? 'checked' : 'disabled'}> Print my return address in the corner</label>
     <label class="check"><input type="checkbox" name="outline"> Draw outlines (for a test print on plain paper)</label>

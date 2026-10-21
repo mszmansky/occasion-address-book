@@ -105,9 +105,9 @@ export const toCsv = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\
 
 // What each import column can become, with header words that suggest it.
 export const FIELDS = [
-  { key: 'labelName', label: 'Name on envelope', hints: [/^((household|label|envelope|addressee|mailing)\s*name|name on envelope)$/, /^name$/, /^(household|family|addressee|label)$/] },
-  { key: 'formalName', label: 'Formal name', hints: [/formal/] },
-  { key: 'greeting', label: 'Greeting name', hints: [/greeting|salutation|dear/] },
+  { key: 'labelName', label: 'Household Greeting', hints: [/^((household|label|envelope|addressee|mailing)\s*name|name on envelope|household greeting)$/, /^name$/, /^(household|family|addressee|label)$/] },
+  { key: 'formalName', label: 'Formal Greeting', hints: [/\bformal\b/] },
+  { key: 'greeting', label: 'Informal Greeting', hints: [/greeting|salutation|dear/] },
   { key: 'firstName', label: 'First name', hints: [/^first/, /given/] },
   { key: 'lastName', label: 'Last name', hints: [/^last/, /surname|family name/] },
   { key: 'spouse', label: 'Spouse / partner first name', hints: [/spouse|partner|wife|husband/] },
@@ -147,7 +147,7 @@ export function looksLikeHeader(row) {
 
 /**
  * Turns CSV rows into households for the API. Rows without a usable name are reported, not imported.
- * Name on envelope, when not mapped: "First & Spouse Last" or "First Last".
+ * Household Greeting, when not mapped: "First & Spouse Last" or "First Last".
  */
 export function buildHouseholds(rows, mapping) {
   const households = [];
@@ -195,7 +195,7 @@ export function buildHouseholds(rows, mapping) {
 export function householdsToCsv(list) {
   // People carry their own email: "John Smith <john@x.com>; Mary Smith". Email and Phone hold only
   // what's still saved on the household itself (from before those moved onto the people).
-  const header = ['Name on envelope', 'Formal name', 'Greeting', 'Street address', 'Address line 2', 'City', 'State', 'ZIP', 'Country',
+  const header = ['Household Greeting', 'Formal Greeting', 'Informal Greeting', 'Street address', 'Address line 2', 'City', 'State', 'ZIP', 'Country',
     'People', 'Email', 'Phone', 'Groups', 'Notes'];
   const rows = list.map((h) => {
     const a = h.address ?? {};

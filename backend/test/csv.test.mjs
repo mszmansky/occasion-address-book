@@ -127,3 +127,10 @@ test('the old household email and home phone move onto the people', async () => 
   assert.deepEqual(h.members.map((m) => [m.firstName, m.email, m.phone]), [['Todd', 'abbotts@x.com', '555-0100'], ['Kim', 'abbotts@x.com', undefined]]);
   assert.deepEqual([h.emails, h.phone], [[], undefined]);
 });
+
+test('CSV headers: the new greeting names and the old ones both import', () => {
+  assert.deepEqual(guessMapping(['Household Greeting', 'Formal Greeting', 'Informal Greeting']), ['labelName', 'formalName', 'greeting']);
+  assert.deepEqual(guessMapping(['Informal Greeting', 'Formal Greeting', 'Household Greeting']), ['greeting', 'formalName', 'labelName']);
+  assert.deepEqual(guessMapping(['Name on envelope', 'Formal name', 'Greeting']), ['labelName', 'formalName', 'greeting']);
+  assert.equal(householdsToCsv([]).split('\r\n')[0].split(',').slice(0, 3).join(','), 'Household Greeting,Formal Greeting,Informal Greeting');
+});
