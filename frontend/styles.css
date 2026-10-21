@@ -77,7 +77,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.ghost:hover { background: var(--surface-2); }
 .btn.danger { color: var(--overdue); }
 .btn.sm { padding: 4px 9px; font-size: 13px; }
-.btn[disabled] { opacity: .55; cursor: progress; }
+.btn[disabled] { opacity: .55; cursor: not-allowed; }           /* turned off (e.g. nobody to email) */
+.btn[aria-busy=true] { cursor: progress; }                        /* working: saving, sending, signing in */
 
 label { display: block; font-weight: 500; font-size: 13px; color: var(--ink-2); }
 input:not([type]), input[type=search], input[type=text], input[type=email], input[type=tel], input[type=url], input[type=password], input[type=number], input[type=date], select, textarea {

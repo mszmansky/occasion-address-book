@@ -79,9 +79,12 @@ async function api(path, { method = 'GET', body } = {}) {
   return json;
 }
 
+// Disables a button while its work runs; aria-busy gives it the "working" cursor until it's done.
 async function withBusy(btn, fn) {
-  if (btn) btn.disabled = true;
-  try { return await fn(); } catch (e) { modalError(e.message) || toast(e.message, true); return undefined; } finally { if (btn) btn.disabled = false; }
+  if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
+  try { return await fn(); } catch (e) { modalError(e.message) || toast(e.message, true); return undefined; } finally {
+    if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); }
+  }
 }
 
 // ---------- auth ----------
@@ -138,6 +141,7 @@ async function submitAuth(form) {
   state.authErr = ''; state.authMsg = '';
   const btn = form.querySelector('button[type=submit]');
   btn.disabled = true;
+  btn.setAttribute('aria-busy', 'true');
   const go = (res) => {
     if (res?.step === 'mfa') state.authMode = 'mfa';
     if (res?.step === 'new_password') state.authMode = 'newpassword';
@@ -170,6 +174,7 @@ async function submitAuth(form) {
     if (/sign in again/i.test(e.message)) state.authMode = 'signin';
   } finally {
     btn.disabled = false;
+    btn.removeAttribute('aria-busy');
   }
   if (!state.session) renderAuth();
 }
@@ -1153,6 +1158,7 @@ async function finishMfaEnroll(btn) {
   const code = modal.querySelector('[data-mfa-code]').value.replace(/\s/g, '');
   if (!/^\d{6}$/.test(code)) return toast('Enter the 6-digit code from your authenticator app', true);
   btn.disabled = true;
+  btn.setAttribute('aria-busy', 'true');
   try {
     await auth.finishMfaSetup(code);
     mfaEnrollment = null;
@@ -1161,6 +1167,7 @@ async function finishMfaEnroll(btn) {
   } catch (e) {
     toast(e.code === 'CodeMismatchException' || e.code === 'EnableSoftwareTokenMFAException' ? "That code didn't work. Codes change every 30 seconds; try the current one." : e.message, true);
     btn.disabled = false;
+    btn.removeAttribute('aria-busy');
   }
   return undefined;
 }
