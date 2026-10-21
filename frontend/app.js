@@ -31,7 +31,7 @@ const KIND_LABEL = { card: 'Cards', invite: 'Invitation', other: 'Other' };
 const INVITE_BATCH = 25;
 
 const state = {
-  session: null, authMode: 'signin', authMsg: '', authErr: '', authEmail: rememberedEmail(),
+  session: null, pendingEmail: null, authMode: 'signin', authMsg: '', authErr: '', authEmail: rememberedEmail(),
   me: null, households: [], occasions: [], loading: true,
   view: 'people',                 // 'people' | 'occasions'
   occasionId: null, occ: null,    // open occasion: { occasion, tags }
@@ -932,62 +932,236 @@ async function sendInvites(form) {
 }
 
 // ---------- settings ----------
-function settingsModal() {
+// Tabs across the top, like Vehicle Maintenance. Each tab saves only its own fields.
+const SETTINGS_TABS = [['profile', 'Profile'], ['return', 'Return address'], ['security', 'Security'], ['printer', 'Printer']];
+let settingsTab = 'profile';
+let mfaEnrollment = null; // { qr, secret } while setting up an authenticator app
+
+function settingsTabs(active) {
+  return `<div class="tabs settings-tabs" role="tablist">${SETTINGS_TABS.map(([id, label]) => `
+    <button type="button" role="tab" class="tab" data-action="settings-tab" data-tab="${id}" aria-selected="${id === active}">${label}</button>`).join('')}</div>`;
+}
+
+const saveFoot = (label) => `<div></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">${label}</button></div>`;
+
+function settingsModal(tab = settingsTab) {
+  settingsTab = SETTINGS_TABS.some(([id]) => id === tab) ? tab : 'profile';
+  if (settingsTab === 'return') return returnAddressTab();
+  if (settingsTab === 'security') return securityTab();
+  if (settingsTab === 'printer') return printerTab();
+  return profileTab();
+}
+
+function profileTab() {
   const p = state.me?.profile ?? {};
-  const pr = p.print ?? {};
-  const off = (name, v) => `<input name="${name}" type="number" step="0.01" min="-1" max="1" value="${Number(v ?? 0)}" style="max-width:110px">`;
+  const email = state.session?.user?.email ?? p.email;
   openModal('Settings', `
+    ${settingsTabs('profile')}
     <div class="grid-2">
       <label>First name<input name="firstName" maxlength="60" value="${val(p.firstName)}" autocomplete="given-name"></label>
       <label>Last name<input name="lastName" maxlength="60" value="${val(p.lastName)}" autocomplete="family-name"></label>
     </div>
     <label>Emails come from <span class="muted">(optional; default is your name)</span><input name="emailFromName" maxlength="80" value="${val(p.emailFromName)}" placeholder="The Szmansky Family"></label>
-    <fieldset><legend>Return address</legend>
-      <label>Name<input name="returnName" maxlength="120" value="${val(p.returnName)}" placeholder="The Szmansky Family"></label>
-      ${addressFields(p.returnAddress, 'r_')}
+    <div>
+      <div class="label-like">Sign-in email</div>
+      <div class="email-row"><span>${esc(email)}</span><button type="button" class="icon-btn" data-action="show-email-change" aria-expanded="${state.pendingEmail ? 'true' : 'false'}" title="Change email" aria-label="Change email">${PENCIL}</button></div>
+      <div class="email-change" data-email-change ${state.pendingEmail ? '' : 'hidden'}>${emailChangeBody(state.pendingEmail)}</div>
+      <p class="hint">Replies to your invitations and address checks come here.</p>
+    </div>`, { form: 'settings-profile', foot: saveFoot('Save profile') });
+}
+
+function returnAddressTab() {
+  const p = state.me?.profile ?? {};
+  openModal('Settings', `
+    ${settingsTabs('return')}
+    <p style="margin:0">Printed in the corner of envelopes, and on return-address labels.</p>
+    <label>Name<input name="returnName" maxlength="120" value="${val(p.returnName)}" placeholder="${val([p.firstName, p.lastName].filter(Boolean).join(' ') || 'The Szmansky Family')}"></label>
+    ${addressFields(p.returnAddress, 'r_')}`, { form: 'settings-return', foot: saveFoot('Save return address') });
+}
+
+function printerTab() {
+  const pr = state.me?.profile?.print ?? {};
+  const off = (name, label, v) => `<label>${label}<input name="${name}" type="number" step="0.01" min="-1" max="1" value="${Number(v ?? 0)}"></label>`;
+  openModal('Settings', `
+    ${settingsTabs('printer')}
+    <p style="margin:0">If printing lands off, move it in inches: positive moves right or down, negative left or up (0.06 is about 1/16 in).
+      Print an alignment page on plain paper and hold it against a label sheet or envelope to check.</p>
+    <fieldset><legend>Avery 5160 / 8160 labels</legend>
+      <div class="grid-2">${off('labelOffsetX', 'Across', pr.labelOffsetX)}${off('labelOffsetY', 'Down', pr.labelOffsetY)}</div>
+      <div><button type="button" class="btn sm" data-action="align-test" data-what="labels">Label alignment page</button></div>
     </fieldset>
-    <fieldset><legend>Printer alignment</legend>
-      <p class="hint" style="margin-top:0">If printing lands off, move it in inches: positive moves right / down, negative left / up (e.g. 0.06 ≈ 1/16 in).</p>
-      <div class="grid-2">
-        <label>Labels: across${off('labelOffsetX', pr.labelOffsetX)}</label>
-        <label>Labels: down${off('labelOffsetY', pr.labelOffsetY)}</label>
-        <label>Envelopes: across${off('envelopeOffsetX', pr.envelopeOffsetX)}</label>
-        <label>Envelopes: down${off('envelopeOffsetY', pr.envelopeOffsetY)}</label>
-      </div>
-      <div class="row-gap"><button type="button" class="btn sm" data-action="align-test" data-what="labels">Label alignment page</button>
-      <button type="button" class="btn sm" data-action="align-test" data-what="envelopes">Envelope alignment page</button></div>
+    <fieldset><legend>A7 envelopes</legend>
+      <div class="grid-2">${off('envelopeOffsetX', 'Across', pr.envelopeOffsetX)}${off('envelopeOffsetY', 'Down', pr.envelopeOffsetY)}</div>
+      <div><button type="button" class="btn sm" data-action="align-test" data-what="envelopes">Envelope alignment page</button></div>
     </fieldset>
-    <fieldset><legend>Change password</legend>
+    <p class="hint">Always print at <b>Actual size / 100%</b>, not "Fit to page".</p>`, { form: 'settings-printer', foot: saveFoot('Save printer settings') });
+}
+
+async function securityTab() {
+  openModal('Settings', `
+    ${settingsTabs('security')}
+    <fieldset class="stack">
+      <legend>Change password</legend>
+      <label>Current password<input type="password" name="currentPassword" autocomplete="current-password" required></label>
       <div class="grid-2">
-        <label>Current password<input type="password" name="currentPassword" autocomplete="current-password"></label>
-        <label>New password <span class="muted">(at least 8 characters)</span><input type="password" name="newPassword" minlength="8" autocomplete="new-password"></label>
+        <label>New password<input type="password" name="newPassword" autocomplete="new-password" minlength="8" required></label>
+        <label>Confirm new password<input type="password" name="confirmPassword" autocomplete="new-password" minlength="8" required></label>
       </div>
-      <div class="row-gap" style="justify-content:flex-start"><button type="button" class="btn sm" data-action="change-password">Change password</button></div>
+      <div><button class="btn" type="submit">Update password</button></div>
+    </fieldset>
+    <fieldset class="stack">
+      <legend>Two-step verification</legend>
+      <div data-mfa class="stack"><p class="muted small" style="margin:0">Checking…</p></div>
     </fieldset>`, {
-    form: 'settings',
-    wide: true,
-    foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save</button></div>',
+    form: 'settings-password',
+    foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button></div>',
+  });
+  await renderMfaSection();
+}
+
+// What each tab sends; the API keeps everything it isn't sent.
+function readSettings(form, tab) {
+  const f = form.elements;
+  if (tab === 'profile') return { firstName: f.firstName.value.trim(), lastName: f.lastName.value.trim(), emailFromName: f.emailFromName.value.trim() };
+  if (tab === 'return') return { returnName: f.returnName.value.trim(), returnAddress: readAddress(form, 'r_') };
+  const n = (k) => Number(f[k].value || 0);
+  return { print: { labelOffsetX: n('labelOffsetX'), labelOffsetY: n('labelOffsetY'), envelopeOffsetX: n('envelopeOffsetX'), envelopeOffsetY: n('envelopeOffsetY') } };
+}
+
+async function changePassword(form) {
+  const f = form.elements;
+  const [current, next, again] = [f.currentPassword.value, f.newPassword.value, f.confirmPassword.value];
+  if (next !== again) throw new Error("The new passwords don't match");
+  if (next.length < 8) throw new Error('Use at least 8 characters for the new password');
+  if (next === current) throw new Error('Choose a password different from your current one');
+  try {
+    await auth.changePassword(current, next); // Cognito checks the current password
+  } catch (e) {
+    if (e.code === 'NotAuthorizedException') throw new Error('Your current password is incorrect');
+    throw e;
+  }
+  for (const el of form.querySelectorAll('input[type=password]')) el.value = '';
+  toast('Password updated');
+}
+
+// ----- sign-in email change: Cognito emails a code to the new address -----
+function emailChangeBody(pending) {
+  if (pending) {
+    return `<p class="small" style="margin:0">We emailed a 6-digit code to <b>${esc(pending)}</b>. Enter it to make that your sign-in email.</p>
+      <label>Code<input type="text" name="emailCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="mono code-input"></label>
+      <div class="row-gap" style="justify-content:flex-start"><button type="button" class="btn sm primary" data-action="confirm-email-change">Confirm</button>
+        <button type="button" class="btn sm" data-action="send-email-change" data-email="${esc(pending)}">Send a new code</button>
+        <button type="button" class="btn sm ghost" data-action="cancel-email-change">Cancel</button></div>`;
+  }
+  return `<label>New email address<input type="email" name="newEmail" autocomplete="email" placeholder="you@example.com"></label>
+    <div><button type="button" class="btn sm" data-action="send-email-change">Email me a code</button></div>
+    <div class="hint">We'll email a 6-digit code to the new address. Your email changes once you enter it; until then, keep signing in with your current one.</div>`;
+}
+
+async function changeEmail(btn) {
+  const email = (btn.dataset.email ?? modal.querySelector('[name=newEmail]')?.value ?? '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast('Enter a valid email address', true);
+  if (email === state.session?.user?.email?.toLowerCase()) return toast("That's already your email", true);
+  return withBusy(btn, async () => {
+    await auth.startEmailChange(email);
+    state.pendingEmail = email;
+    const box = modal.querySelector('[data-email-change]');
+    box.innerHTML = emailChangeBody(email);
+    box.querySelector('[name=emailCode]').focus();
   });
 }
 
-function readSettings(form) {
-  const f = form.elements;
-  const n = (k) => Number(f[k].value || 0);
-  return {
-    firstName: f.firstName.value.trim(), lastName: f.lastName.value.trim(), emailFromName: f.emailFromName.value.trim(),
-    returnName: f.returnName.value.trim(), returnAddress: readAddress(form, 'r_'),
-    print: { labelOffsetX: n('labelOffsetX'), labelOffsetY: n('labelOffsetY'), envelopeOffsetX: n('envelopeOffsetX'), envelopeOffsetY: n('envelopeOffsetY') },
-  };
+async function confirmEmailChange(btn) {
+  const code = (modal.querySelector('[name=emailCode]')?.value ?? '').replace(/\s/g, '');
+  if (!/^\d{6}$/.test(code)) return toast('Enter the 6-digit code from the email', true);
+  return withBusy(btn, async () => {
+    await auth.confirmEmailChange(code);
+    state.pendingEmail = null;
+    state.session = await auth.getSession();
+    if (rememberedEmail()) rememberEmail(state.session?.user?.email);
+    state.me = await api('/me'); // the profile follows the new sign-in email
+    toast('Your sign-in email is changed');
+    profileTab();
+    render();
+  });
 }
 
+// ----- two-step verification with an authenticator app -----
+async function renderMfaSection() {
+  const box = modal.querySelector('[data-mfa]');
+  if (!box) return;
+  if (mfaEnrollment) {
+    box.innerHTML = `
+      <ol class="mfa-steps">
+        <li>Open an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, Authy…) and scan this code.
+          <div class="mfa-qr"><img src="${esc(mfaEnrollment.qr)}" alt="QR code for your authenticator app" width="180" height="180"></div></li>
+        <li>Can't scan it? Enter this key instead: <span class="mono mfa-secret">${esc(mfaEnrollment.secret)}</span></li>
+        <li><label>Enter the 6-digit code it shows<input type="text" data-mfa-code inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="mono code-input" placeholder="123456"></label></li>
+      </ol>
+      <div class="mfa-buttons"><button type="button" class="btn" data-action="mfa-cancel">Cancel</button><button type="button" class="btn primary" data-action="mfa-verify">Verify and turn on</button></div>`;
+    box.querySelector('[data-mfa-code]').focus();
+    return;
+  }
+  let account;
+  try { account = await auth.getAccount(); } catch (e) { box.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+  box.innerHTML = account.mfaEnabled
+    ? `<div class="mfa-on"><span class="pill ok">On</span> Authenticator app</div>
+      <p class="hint">You'll be asked for a code from the app each time you sign in.</p>
+      <div><button type="button" class="btn danger" data-action="mfa-disable">Turn off</button></div>`
+    : `<p style="margin:0">Add a second step when signing in: a 6-digit code from an authenticator app on your phone. Someone who learns your password still can't get in.</p>
+      <div><button type="button" class="btn primary" data-action="mfa-start">Set up authenticator app</button></div>`;
+}
+
+// QR codes for the authenticator app are drawn in the browser (the secret never leaves it).
+let qrLib = null;
+async function qrDataUrl(text) {
+  qrLib ??= (await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm')).default;
+  return qrLib.toDataURL(text, { width: 360, margin: 1 });
+}
+
+async function startMfaEnroll(btn) {
+  await withBusy(btn, async () => {
+    const { secret, uri } = await auth.startMfaSetup(state.session?.user?.email ?? '');
+    mfaEnrollment = { secret, qr: await qrDataUrl(uri) };
+    await renderMfaSection();
+  });
+}
+
+async function finishMfaEnroll(btn) {
+  const code = modal.querySelector('[data-mfa-code]').value.replace(/\s/g, '');
+  if (!/^\d{6}$/.test(code)) return toast('Enter the 6-digit code from your authenticator app', true);
+  btn.disabled = true;
+  try {
+    await auth.finishMfaSetup(code);
+    mfaEnrollment = null;
+    toast('Two-step verification is on');
+    await renderMfaSection();
+  } catch (e) {
+    toast(e.code === 'CodeMismatchException' || e.code === 'EnableSoftwareTokenMFAException' ? "That code didn't work. Codes change every 30 seconds; try the current one." : e.message, true);
+    btn.disabled = false;
+  }
+  return undefined;
+}
+
+async function disableMfa(btn) {
+  if (!confirm('Turn off two-step verification? Signing in will only need your password.')) return;
+  await withBusy(btn, async () => {
+    await auth.disableMfa();
+    toast('Two-step verification is off');
+    await renderMfaSection();
+  });
+}
+
+// Alignment pages use the offsets typed on the Printer tab (saved or not) and the saved return address.
 async function alignTest(what) {
-  const s = readSettings(modal.querySelector('form'));
+  const s = readSettings(modal.querySelector('form'), 'printer');
   const JsPDF = await getJsPDF();
   const sample = ['The Sample Family', '1234 Example Street', 'Apt 5', 'Troy, MI  48083'];
+  const ret = returnLines();
   const doc = what === 'labels'
     ? buildLabels(JsPDF, Array(30).fill(sample), { offsetX: s.print.labelOffsetX, offsetY: s.print.labelOffsetY, outline: true })
     : buildEnvelopes(JsPDF, [sample], {
-      returnLines: isMailable(s.returnAddress) ? addressLines(s.returnName || [s.firstName, s.lastName].filter(Boolean).join(' '), s.returnAddress) : ['Your Name', '1 Return Street', 'Troy, MI  48083'],
+      returnLines: ret.length ? ret : ['Your Name', '1 Return Street', 'Troy, MI  48083'],
       offsetX: s.print.envelopeOffsetX, offsetY: s.print.envelopeOffsetY, outline: true,
     });
   window.open(doc.output('bloburl'), '_blank');
@@ -1011,19 +1185,26 @@ document.addEventListener('click', async (e) => {
       if (state.view === 'occasions') await refreshOccasions().catch((err) => toast(err.message, true));
       render();
       break;
-    case 'settings': setUserMenu(false); settingsModal(); break;
+    case 'settings': setUserMenu(false); mfaEnrollment = null; settingsModal('profile'); break;
     case 'align-test': await withBusy(el, () => alignTest(el.dataset.what)); break;
-    case 'change-password': {
-      const f = modal.querySelector('form').elements;
-      if (!f.currentPassword.value || f.newPassword.value.length < 8) { modalError('Enter your current password and a new one of at least 8 characters.'); break; }
-      await withBusy(el, async () => {
-        await auth.changePassword(f.currentPassword.value, f.newPassword.value);
-        f.currentPassword.value = ''; f.newPassword.value = '';
-        modalError('');
-        toast('Password changed');
-      });
+    case 'settings-tab': settingsModal(el.dataset.tab); break;
+    case 'show-email-change': {
+      const box = modal.querySelector('[data-email-change]');
+      box.hidden = !box.hidden;
+      el.setAttribute('aria-expanded', String(!box.hidden));
+      if (!box.hidden) box.querySelector('input')?.focus();
       break;
     }
+    case 'send-email-change': await changeEmail(el); break;
+    case 'confirm-email-change': await confirmEmailChange(el); break;
+    case 'cancel-email-change':
+      state.pendingEmail = null;
+      modal.querySelector('[data-email-change]').innerHTML = emailChangeBody(null);
+      break;
+    case 'mfa-start': await startMfaEnroll(el); break;
+    case 'mfa-verify': await finishMfaEnroll(el); break;
+    case 'mfa-cancel': mfaEnrollment = null; await renderMfaSection(); break; // Cognito drops an unverified setup on its own
+    case 'mfa-disable': await disableMfa(el); break;
     // address book
     case 'add-household': householdModal(); break;
     case 'edit-household': householdModal(hhById().get(id)); break;
@@ -1168,11 +1349,15 @@ document.addEventListener('submit', async (e) => {
   if (kind === 'print') return makePdf(form);
   if (kind === 'invites') return sendInvites(form);
   if (kind === 'import') return runImport(form.querySelector('[data-import-go]'));
-  if (kind === 'settings') {
+  if (kind === 'settings-password') return withBusy(form.querySelector('button[type=submit]'), () => changePassword(form));
+  if (['settings-profile', 'settings-return', 'settings-printer'].includes(kind)) {
+    const tab = kind.slice('settings-'.length);
     return withBusy(form.querySelector('.btn.primary'), async () => {
-      const res = await api('/me', { method: 'PUT', body: readSettings(form) });
+      const res = await api('/me', { method: 'PUT', body: readSettings(form, tab) });
       state.me.profile = res.profile;
-      closeModal(); toast('Settings saved'); render();
+      toast({ profile: 'Profile saved', return: 'Return address saved', printer: 'Printer settings saved' }[tab]);
+      render();
+      settingsModal(tab); // stay on the tab, showing what was saved
     });
   }
   if (kind.startsWith('addrreq-')) {

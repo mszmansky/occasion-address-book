@@ -96,7 +96,13 @@ Sign-up is by invitation only. Invite yourself (and anyone else) after the first
 ./scripts/invite-user.sh you@example.com
 ```
 
-Cognito emails a temporary password. Sign in with it and you're asked to choose your own. **Forgot password?** emails a 6-digit code. Settings has **Change password**.
+Cognito emails a temporary password. Sign in with it and you're asked to choose your own. **Forgot password?** emails a 6-digit code.
+
+**Settings** (account menu) has four tabs:
+- **Profile:** your name, the name invitations come from, and your sign-in email (changing it emails a 6-digit code to the new address).
+- **Return address:** printed on envelopes and return-address labels.
+- **Security:** change password, and two-step verification with an authenticator app.
+- **Printer:** label and envelope alignment offsets, with alignment test pages.
 
 ### Custom domain
 
