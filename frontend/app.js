@@ -231,7 +231,7 @@ function userChip(email) {
       ${CHEVRON}
     </button>
     <div class="menu" id="user-menu-list" role="menu" hidden>
-      <button type="button" role="menuitem" data-action="settings">Settings &amp; return address</button>
+      <button type="button" role="menuitem" data-action="settings">Settings</button>
       <hr>
       <button type="button" role="menuitem" data-action="signout">Sign out</button>
     </div>
