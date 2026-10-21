@@ -689,13 +689,23 @@ const addressFields = (a = {}, prefix = '') => `
 const readAddress = (form, prefix = '') => Object.fromEntries(['line1', 'line2', 'city', 'state', 'zip', 'country']
   .map((k) => [k, form.elements[`${prefix}${k}`]?.value.trim() ?? '']));
 
+// The default contact: the person ticked, else the first person with an email (ticked on screen too).
+function defaultPerson(members = []) {
+  const withEmail = members.filter((m) => m.email);
+  return withEmail.find((m) => m.primary) ?? withEmail[0] ?? null;
+}
+function withDefaultShown(members) {
+  const d = defaultPerson(members);
+  return members.map((m) => ({ ...m, primary: m === d }));
+}
+
 function memberRow(m = {}) {
   return `<div class="member-row" data-member data-id="${val(m.id)}">
     <input data-m="firstName" placeholder="First name" value="${val(m.firstName)}" aria-label="First name" maxlength="60">
     <input data-m="lastName" placeholder="Last name" value="${val(m.lastName)}" aria-label="Last name" maxlength="60">
     <input data-m="email" type="email" placeholder="Email" value="${val(m.email)}" aria-label="Email" maxlength="254">
     <input data-m="phone" type="tel" placeholder="Phone" value="${val(m.phone)}" aria-label="Phone" maxlength="30">
-    <input data-m="birthday" type="date" value="${val(m.birthday)}" aria-label="Birthday" title="Birthday">
+    <label class="default-cell" title="Default contact"><input type="checkbox" data-m="primary" ${m.primary ? 'checked' : ''} aria-label="Default contact"></label>
     <button type="button" class="btn ghost sm" data-action="remove-member" aria-label="Remove person">✕</button>
   </div>`;
 }
@@ -831,8 +841,8 @@ function householdModal(h) {
       ${req && !p ? `<p class="hint">Address check sent ${fmtDate(req.sentAt)} to ${esc(req.sentTo.join(', '))}; the link works until ${fmtDate(req.expiresAt)}.</p>` : ''}
     </fieldset>
     <fieldset><legend>People</legend>
-      <div class="member-head small muted"><span>First</span><span>Last</span><span>Email</span><span>Phone</span><span>Birthday</span><span></span></div>
-      <div data-members>${(peopleWithHouseholdContact(h).length ? peopleWithHouseholdContact(h) : [{}]).map(memberRow).join('')}</div>
+      <div class="member-head small muted"><span>First</span><span>Last</span><span>Email</span><span>Phone</span><span class="default-head">Default</span><span></span></div>
+      <div data-members>${withDefaultShown(peopleWithHouseholdContact(h).length ? peopleWithHouseholdContact(h) : [{}]).map(memberRow).join('')}</div>
       <button type="button" class="btn sm" data-action="add-member">+ Person</button>
     </fieldset>
     <div>
@@ -869,7 +879,7 @@ function refreshFormalName(form) {
 function readHousehold(form) {
   const members = [...form.querySelectorAll('[data-member]')].map((row) => ({
     id: row.dataset.id || undefined,
-    ...Object.fromEntries([...row.querySelectorAll('[data-m]')].map((i) => [i.dataset.m, i.value.trim()])),
+    ...Object.fromEntries([...row.querySelectorAll('[data-m]')].map((i) => [i.dataset.m, i.type === 'checkbox' ? i.checked : i.value.trim()])),
   }));
   return {
     labelName: form.labelName.value.trim(),
@@ -1322,19 +1332,28 @@ function invitesModal() {
     });
     return;
   }
+  const several = withEmail.filter((x) => (x.h.members ?? []).filter((m) => m.email).length > 1).sort((a, b) => byName(a.h, b.h));
   openModal('Email invitations', `
     <div class="invite-preview"><div class="small muted">Subject</div><div><b>${esc(o.invite.subject || `You're invited: ${o.name}`)}</b></div>
       <div class="small muted" style="margin-top:8px">Message</div><div class="pre">${esc(o.invite.message)}</div></div>
-    <p style="margin:0">${plural(withEmail.length, 'household')} on the list ${withEmail.length === 1 ? 'has' : 'have'} an email address; ${plural(notSent.length, 'hasn\'t', 'haven\'t')} been sent one yet.
-      ${on.length - withEmail.length ? `${on.length - withEmail.length} without email won't get one.` : ''}</p>
-    <label class="check"><input type="radio" name="who" value="new" checked> Only those not sent yet (${notSent.length})</label>
-    <label class="check"><input type="radio" name="who" value="all"> Everyone with email, including resends (${withEmail.length})</label>
-    <p class="hint">From "${esc(fromName())}". Replies go to ${esc(state.session.user.email)}. While Amazon SES is in its sandbox, only verified addresses receive mail.</p>
+    <label class="check"><input type="radio" name="who" value="new" checked> Not sent yet (${notSent.length})</label>
+    <label class="check"><input type="radio" name="who" value="all"> Everyone with email (${withEmail.length})</label>
+    ${several.length ? `<fieldset><legend>Send to</legend><div class="sendto-list">${several.map(({ h }) => sendToRow(h)).join('')}</div></fieldset>` : ''}
     <div data-progress hidden class="notice"></div>`, {
     form: 'invites',
     foot: `<div class="left-actions"><button type="button" class="btn" data-action="test-invite">Send a test to me</button></div>
       <div class="right"><button type="button" class="btn" data-action="close">Close</button><button class="btn primary">Send</button></div>`,
   });
+}
+
+const personName = (m) => [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
+
+function sendToRow(h) {
+  const people = (h.members ?? []).filter((m) => m.email);
+  const d = defaultPerson(h.members);
+  return `<label class="sendto-row"><span>${esc(h.labelName)}</span><select data-sendto="${esc(h.id)}" aria-label="Send ${esc(h.labelName)}'s invitation to">
+    ${people.map((m) => `<option value="${m === d ? 'default' : esc(m.id)}" ${m === d ? 'selected' : ''}>${esc(personName(m))}${m === d ? ' (default)' : ''}</option>`).join('')}
+    <option value="all">${people.length === 2 ? 'Both' : 'Everyone'}</option></select></label>`;
 }
 
 async function sendInvites(form) {
@@ -1351,7 +1370,9 @@ async function sendInvites(form) {
   await withBusy(form.querySelector('.btn.primary'), async () => {
     for (let i = 0; i < ids.length; i += INVITE_BATCH) {
       prog.textContent = `Sending… ${Math.min(i, ids.length)} of ${ids.length}`;
-      const res = await api(`/occasions/${state.occasionId}/invites`, { method: 'POST', body: { householdIds: ids.slice(i, i + INVITE_BATCH) } });
+      const batch = ids.slice(i, i + INVITE_BATCH);
+      const recipients = Object.fromEntries(batch.map((id) => [id, form.querySelector(`[data-sendto="${CSS.escape(id)}"]`)?.value ?? 'default']));
+      const res = await api(`/occasions/${state.occasionId}/invites`, { method: 'POST', body: { householdIds: batch, recipients } });
       results.push(...res.results);
     }
   });
@@ -1948,6 +1969,9 @@ document.addEventListener('input', (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (t.dataset?.m === 'primary' && t.checked) {
+    t.closest('[data-members]').querySelectorAll('[data-m=primary]').forEach((cb) => { if (cb !== t) cb.checked = false; });
+  }
   // "Peter and Paula" typed into one First box becomes two people sharing the last name.
   if (t.dataset?.m === 'firstName') {
     const names = splitFirstNames(t.value);

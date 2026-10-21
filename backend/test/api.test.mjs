@@ -170,7 +170,7 @@ test('invites: one email per household, skips no-email, records failures', async
   assert.deepEqual(res.map((r) => r.status), ['sent', 'skipped', 'failed']);
   assert.match(res[2].reason, /sandbox/);
   const sent = mailer.sent[1];
-  assert.deepEqual(sent.to, ['smiths@example.com', 'john@example.com']);
+  assert.deepEqual(sent.to, ['john@example.com'], 'the default contact: first person with an email');
   assert.equal(sent.replyTo, 'mike@example.com');
   assert.equal(sent.fromName, 'Mike Szmansky');
   assert.match(sent.text, /Dear John and Mary/);
@@ -488,4 +488,30 @@ test('Trash in a shared book: editors restore, view only can look', async () => 
   assert.equal((await call('DELETE', '/trash', undefined, joe)).status, 403);
   assert.equal((await call('POST', `/trash/household/${h.id}/restore`, undefined, kim)).status, 200);
   assert.equal((await call('GET', '/trash', undefined, { claims: { sub: 'user-kim', email: 'kim@example.com' } })).body.items.length, 0, "Kim's own book has its own bin");
+});
+
+test('default contact: one per household, and invitations go to it unless changed', async () => {
+  const { call, mailer } = await setup();
+  const h = (await call('POST', '/households', { labelName: 'The Smiths', members: [
+    { firstName: 'John', lastName: 'Smith', email: 'john@x.com' },
+    { firstName: 'Mary', lastName: 'Smith', email: 'mary@x.com', primary: true },
+    { firstName: 'Sam', lastName: 'Smith', email: 'sam@x.com', primary: true },
+  ] })).body.household;
+  assert.deepEqual(h.members.map((m) => m.primary ?? false), [false, true, false], 'only the first ticked one counts');
+  assert.equal(h.members[0].birthday, undefined);
+  const lees = (await call('POST', '/households', { labelName: 'The Lees', emails: ['lees@x.com'] })).body.household;
+  const occ = (await call('POST', '/occasions', { name: 'Party', invite: { message: 'Come!' } })).body.occasion;
+  await call('PUT', `/occasions/${occ.id}/tags`, { add: [h.id, lees.id] });
+
+  const send = async (recipients) => {
+    mailer.sent.length = 0;
+    await call('POST', `/occasions/${occ.id}/invites`, { householdIds: [h.id, lees.id], recipients });
+    return mailer.sent.map((m) => m.to);
+  };
+  assert.deepEqual(await send(), [['mary@x.com'], ['lees@x.com']], 'default contact; a household with no people uses its own address');
+  assert.deepEqual(await send({ [h.id]: h.members[0].id }), [['john@x.com'], ['lees@x.com']], 'someone else instead');
+  assert.deepEqual(await send({ [h.id]: 'all' }), [['john@x.com', 'mary@x.com', 'sam@x.com'], ['lees@x.com']], 'everyone');
+  assert.deepEqual(await send({ [h.id]: 'nobody-by-that-id' }), [['mary@x.com'], ['lees@x.com']], 'unknown choice falls back to the default');
+  const tag = (await call('GET', `/occasions/${occ.id}`)).body.tags.find((t) => t.householdId === h.id);
+  assert.deepEqual(tag.invitedTo, ['mary@x.com']);
 });

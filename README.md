@@ -15,7 +15,7 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
   - a name for the envelope ("The Smith Family");
   - an optional formal name ("Mr. and Mrs. John Smith") and email greeting ("John and Mary");
   - a mailing address;
-  - the people in it (name, email, phone, birthday);
+  - the people in it (name, email, phone), one of them ticked as the **default contact**;
   - a shared email and phone;
   - groups (Family, Neighbors, Work…) and notes.
 
@@ -31,7 +31,7 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
   - a sheet of return-address labels.
 
   Text shrinks (and long names wrap) to fit, so nothing runs off a label. Settings has printer alignment offsets and alignment test pages. After printing, one click marks those households as mailed.
-- **Email invitations.** Each household gets one email addressed to all of its people. It opens "Dear {greeting}," and continues with your message, date, time and location. Replies go to you. You can send yourself a test first, and each household shows whether its email was sent or failed.
+- **Email invitations.** Each household gets one email, sent to its default contact (the person ticked as default, or else the first person with an email). Where a household has more than one address, the send dialog's **Send to** lets you pick someone else or **Both** / **Everyone**. It opens "Dear {greeting}," and continues with your message, date, time and location. Replies go to you. You can send yourself a test first, and each household shows whether its email was sent or failed.
 - **Address checks.** Email a household a private link, valid for 30 days, to confirm or correct their address. Their reply comes back for you to review side by side and accept or discard. You also get an email when they answer. Links are stored only as hashes and expire through DynamoDB TTL.
 
 ## Architecture

@@ -94,15 +94,18 @@ function parseMembers(list) {
     const lastName = str(m.lastName, `Person ${i + 1} last name`, { max: 60 });
     const em = email(m.email, `${firstName ?? `Person ${i + 1}`}'s email`);
     const phone = str(m.phone, `${firstName ?? `Person ${i + 1}`}'s phone`, { max: 30 });
-    const birthday = date(m.birthday, `${firstName ?? `Person ${i + 1}`}'s birthday`);
     const relationship = str(m.relationship, `${firstName ?? `Person ${i + 1}`}'s relationship`, { max: 40 });
     if (!firstName && !lastName && !em && !phone) continue; // blank row
     if (!firstName && !lastName) throw new HttpError(400, `Give person ${i + 1} a name`);
     out.push({
       id: typeof m.id === 'string' && /^[a-z0-9]{1,40}$/.test(m.id) ? m.id : newId(),
-      firstName, lastName, email: em, phone, birthday, relationship,
+      firstName, lastName, email: em, phone, relationship,
+      primary: m.primary === true || m.primary === 'true' || undefined,
     });
   }
+  // One default contact at most: the first one ticked.
+  let seen = false;
+  for (const m of out) { if (m.primary && seen) delete m.primary; else if (m.primary) seen = true; }
   return out;
 }
 
@@ -178,6 +181,24 @@ function parseProfile(b, current) {
       envelopeOffsetY: off(p.envelopeOffsetY, 'Envelope offset (down)', cp.envelopeOffsetY),
     },
   };
+}
+
+// The household's default contact: the person ticked as default, else the first person with an email.
+export function defaultContact(h) {
+  const withEmail = (h.members ?? []).filter((m) => m.email);
+  return withEmail.find((m) => m.primary) ?? withEmail[0] ?? null;
+}
+
+/**
+ * Who an invitation goes to. choice: 'default' (or nothing), 'all', or a person's id.
+ * Without people who have an email, it falls back to the household's own addresses.
+ */
+export function inviteRecipients(h, choice) {
+  const all = householdEmails(h);
+  if (choice === 'all') return all;
+  const people = (h.members ?? []).filter((m) => m.email);
+  const chosen = (choice && people.find((m) => m.id === choice)) ?? defaultContact(h);
+  return chosen ? [chosen.email.toLowerCase()] : all;
 }
 
 // Every address a household can be emailed at: its own plus each person's, without repeats.
@@ -719,12 +740,15 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
     }
 
     const hids = ids(body.householdIds, 'householdIds', { max: INVITE_BATCH });
+    // Per household: 'default' (the default contact), 'all', or a person's id. Missing = default.
+    const choices = body.recipients && typeof body.recipients === 'object' ? body.recipients : {};
     const results = [];
     for (const [i, hid] of hids.entries()) {
       const tag = await repo.get(bk(user), `TAG#${params.id}#${hid}`);
       const h = await repo.get(bk(user), `HH#${hid}`);
       if (!tag || !h) { results.push({ householdId: hid, status: 'skipped', reason: 'Not on this occasion\'s list' }); continue; }
-      const to = householdEmails(h);
+      const choice = typeof choices[hid] === 'string' ? choices[hid].slice(0, 40) : 'default';
+      const to = inviteRecipients(h, choice);
       if (!to.length) { results.push({ householdId: hid, status: 'skipped', reason: 'No email address' }); continue; }
       try {
         if (i) await pause(120); // stay under SES's per-second send rate
