@@ -803,3 +803,30 @@ label > span.hint { display: block; }
   .share-row .btn { grid-column: 1 / -1; justify-self: start; }
   .share-add { grid-template-columns: 1fr; }
 }
+
+/* address book switcher (own + shared books) */
+.book-menu { position: relative; margin-left: 14px; }
+.book-chip {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 320px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 999px; padding: 5px 10px 5px 11px; cursor: pointer; font-weight: 600; font-size: 13.5px;
+}
+.book-chip:hover, .book-chip[aria-expanded=true] { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.book-chip .book-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.book-chip .pill { font-size: 11px; }
+.book-menu .menu { left: 0; right: auto; min-width: 290px; }
+.menu-label { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); padding: 6px 12px 4px; }
+.menu [role=menuitemradio] {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; border: 0; background: none;
+  padding: 8px 12px; border-radius: 6px; cursor: pointer; color: var(--ink); font: inherit; font-size: 14px;
+}
+.menu [role=menuitemradio]:hover, .menu [role=menuitemradio]:focus-visible { background: var(--surface-2); }
+.check-mark { width: 14px; flex: none; color: var(--accent); font-weight: 700; }
+.book-item { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.share-row.two { grid-template-columns: 1fr auto; }
+@media (max-width: 760px) {
+  .book-menu { order: 1; margin-left: auto; min-width: 0; }
+  .topbar .actions { order: 2; }
+  .book-chip { max-width: 210px; }
+  .book-menu .menu { left: auto; right: 0; }
+}

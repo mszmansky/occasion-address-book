@@ -31,7 +31,7 @@ const KIND_LABEL = { card: 'Cards', invite: 'Invitation', other: 'Other' };
 const INVITE_BATCH = 25;
 
 const state = {
-  session: null, pendingEmail: null, authMode: 'signin', authMsg: '', authErr: '', authEmail: rememberedEmail(),
+  session: null, pendingEmail: null, books: [], bookId: '', authMode: 'signin', authMsg: '', authErr: '', authEmail: rememberedEmail(),
   me: null, households: [], occasions: [], loading: true,
   view: 'people',                 // 'people' | 'occasions'
   occasionId: null, occ: null,    // open occasion: { occasion, tags }
@@ -52,6 +52,7 @@ const peopleNames = (h) => (h.members ?? []).map((m) => [m.firstName, m.lastName
 const PENCIL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10.6 2.6a1.6 1.6 0 0 1 2.3 0l.5.5a1.6 1.6 0 0 1 0 2.3L6 12.8l-3.3.8.8-3.3 7.1-7.7zM9.5 3.8l2.7 2.7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/></svg>';
 const MAIL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="m2.5 4.5 5.5 4 5.5-4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 const TRASH = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.75c0-.4.3-.75.75-.75h1.5c.4 0 .75.35.75.75V4M4 4l.6 9.1c.05.5.45.9 1 .9h4.8c.55 0 .95-.4 1-.9L12 4M6.75 6.75v4.5M9.25 6.75v4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const BOOK_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 2.75A1.75 1.75 0 0 1 4.75 1h7.5c.41 0 .75.34.75.75v10.5a.75.75 0 0 1-.75.75H4.75a.75.75 0 0 0 0 1.5H13M3 2.75v10.5A1.75 1.75 0 0 0 4.75 15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 4.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const LOGO = '<img class="logo" src="icon-192.png" width="64" height="64" alt="">';
 
@@ -63,7 +64,52 @@ const ROLE_LABEL = { edit: 'Can edit', view: 'View only' };
 function sharedNote() {
   const b = state.me?.book;
   if (!b || b.role === 'owner') return '';
-  return `<div class="shared-note">You're using <b>${esc(b.ownerName || b.ownerEmail)}</b>'s address book · ${ROLE_LABEL[b.role]}</div>`;
+  return `<div class="shared-note">You're in <b>${esc(b.ownerName || b.ownerEmail)}</b>'s shared address book · ${ROLE_LABEL[b.role]}.
+    ${state.books.length > 1 ? '<button class="link" data-action="switch-book" data-id="">Go to my address book</button>' : ''}</div>`;
+}
+
+// ----- address books: your own, plus any shared with you; the open one is remembered on this device -----
+const BOOK_KEY = 'oab.book';
+const storedBook = () => { try { return localStorage.getItem(BOOK_KEY) || ''; } catch { return ''; } };
+function storeBook(id) { try { if (id) localStorage.setItem(BOOK_KEY, id); else localStorage.removeItem(BOOK_KEY); } catch { /* storage blocked */ } }
+const ownBookId = () => state.session?.user?.sub ?? '';
+const bookLabel = (b) => (b.own ? 'My address book' : `${b.ownerName || b.ownerEmail}'s`);
+const currentBook = () => state.books.find((b) => b.id === (state.bookId || ownBookId())) ?? state.books[0];
+state.bookId = storedBook();
+
+function bookSwitcher() {
+  if (state.books.length < 2) return '';
+  const cur = currentBook();
+  return `<div class="book-menu">
+    <button type="button" class="book-chip" data-action="toggle-book-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="book-menu-list" title="Switch address book">
+      ${BOOK_ICON}<span class="book-name">${esc(bookLabel(cur))}</span>${cur.own ? '' : `<span class="pill ${cur.role === 'edit' ? 'ok' : 'unknown'}">${ROLE_LABEL[cur.role]}</span>`}${CHEVRON}
+    </button>
+    <div class="menu" id="book-menu-list" role="menu" hidden>
+      <div class="menu-label">Address books</div>
+      ${state.books.map((b) => `<button type="button" role="menuitemradio" aria-checked="${b.id === cur.id}" data-action="switch-book" data-id="${b.own ? '' : esc(b.id)}">
+        <span class="check-mark">${b.id === cur.id ? '✓' : ''}</span>
+        <span class="book-item"><span>${esc(bookLabel(b))}</span><span class="small muted">${b.own ? 'Only you, plus anyone you share it with' : `${ROLE_LABEL[b.role]} · shared by ${esc(b.ownerEmail)}`}</span></span>
+      </button>`).join('')}
+    </div>
+  </div>`;
+}
+
+function setBookMenu(open) {
+  const btn = document.querySelector('.book-chip');
+  const menu = document.getElementById('book-menu-list');
+  if (!btn || !menu) return;
+  menu.hidden = !open;
+  btn.setAttribute('aria-expanded', String(open));
+}
+
+async function switchBook(id) {
+  setBookMenu(false);
+  if ((id || '') === (state.bookId || '')) return;
+  state.bookId = id || '';
+  storeBook(state.bookId);
+  Object.assign(state, { occasionId: null, occ: null, households: [], occasions: [], search: '', group: '', pendingOnly: false });
+  await loadAll();
+  window.scrollTo(0, 0);
 }
 
 function toast(msg, isErr = false) {
@@ -79,13 +125,22 @@ async function api(path, { method = 'GET', body } = {}) {
   const token = session.idToken; // the API checks Cognito ID tokens (they carry the email)
   const res = await fetch(`${cfg.apiUrl.replace(/\/$/, '')}${path}`, {
     method,
-    headers: { authorization: `Bearer ${token}`, ...(body ? { 'content-type': 'application/json' } : {}) },
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(state.bookId && state.bookId !== session.user?.sub ? { 'x-book': state.bookId } : {}),
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = res.status === 204 ? null : await res.json().catch(() => ({}));
   if (res.status === 401) {
     await auth.signOut();
     throw new Error(json?.error ?? 'Please sign in again');
+  }
+  if (res.status === 403 && json?.code === 'book_gone') {
+    // That book was unshared (or never was): back to your own.
+    state.bookId = ''; storeBook('');
+    setTimeout(() => { toast(json.error, true); loadAll(); }, 0);
   }
   if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
   return json;
@@ -196,6 +251,8 @@ async function loadAll() {
   state.loading = true;
   render();
   try {
+    state.books = (await api('/books')).books;
+    if (state.bookId && !state.books.some((b) => b.id === state.bookId)) { state.bookId = ''; storeBook(''); }
     const [me, hh, occ] = await Promise.all([api('/me'), api('/households'), api('/occasions')]);
     state.me = me;
     state.households = hh.households;
@@ -225,6 +282,7 @@ function render() {
   root.innerHTML = `
   <header class="topbar">
     <div class="brand">${LOGO}<span>${APP_NAME}</span></div>
+    ${bookSwitcher()}
     <nav class="nav" aria-label="Sections">
       <button class="nav-tab" data-action="view" data-view="people" aria-current="${state.view === 'people'}">Address book${pending ? ` <span class="dot" title="${plural(pending, 'address update')} to review">${pending}</span>` : ''}</button>
       <button class="nav-tab" data-action="view" data-view="occasions" aria-current="${state.view === 'occasions'}">Occasions</button>
@@ -233,6 +291,7 @@ function render() {
   </header>
   <main class="page">${sharedNote()}${state.loading && !state.me ? '<p class="boot">Loading your address book…</p>'
     : state.view === 'people' ? renderPeople() : state.occasionId && state.occ ? renderOccasion() : renderOccasions()}</main>`;
+  document.title = currentBook() && !currentBook().own ? `${bookLabel(currentBook())} · ${APP_NAME}` : APP_NAME;
   if (state.view === 'people') renderHouseholdList();
   if (state.view === 'occasions' && state.occasionId && state.occ) renderRecipientRows();
 }
@@ -278,6 +337,12 @@ function setUserMenu(open) {
 function renderPeople() {
   const groups = allGroups();
   const pending = state.households.filter((h) => h.pendingUpdate).length;
+  if (!state.households.length && !isOwner()) {
+    const b = state.me.book;
+    return `<div class="panel empty"><h2>No households yet</h2>
+      <p>${esc(b.ownerName || b.ownerEmail)}'s address book is empty so far.${canEdit() ? ' You can add the first household.' : ''}</p>
+      ${canEdit() ? '<button class="btn primary" data-action="add-household">+ Household</button>' : ''}</div>`;
+  }
   if (!state.households.length) {
     return `<div class="panel empty">
       <h2>Start your address book</h2>
@@ -366,7 +431,7 @@ function showNoteTip(icon) {
   noteTip.style.top = `${top}px`;
 }
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') hideNoteTip();
+  if (e.key === 'Escape') { hideNoteTip(); setBookMenu(false); }
   // N on the Address book screen: new household. Not while typing, with a dialog open, or with Cmd/Ctrl/Alt.
   if (e.key.toLowerCase() === 'n' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat
     && state.session && state.view === 'people' && !modal.open && canEdit()
@@ -1111,30 +1176,25 @@ const roleSelect = (name, role, extra = '') => `<select ${name} ${extra}>
   <option value="view" ${role === 'view' ? 'selected' : ''}>View only</option></select>`;
 
 async function sharingTab() {
-  const b = state.me?.book;
-  if (!isOwner()) {
-    openModal('Settings', `
-      ${settingsTabs('sharing')}
-      <p style="margin:0">You're using <b>${esc(b.ownerName || b.ownerEmail)}</b>'s address book${b.ownerName ? ` (${esc(b.ownerEmail)})` : ''}.</p>
-      <p style="margin:0">Your access: <b>${ROLE_LABEL[b.role]}</b>. ${b.role === 'edit'
-    ? 'You can add and change households and occasions, print, and send invitations and address checks.'
-    : 'You can look up addresses and print labels and envelopes, but not change anything or send emails.'}</p>
-      <p class="hint">Only ${esc(b.ownerName || b.ownerEmail)} can change who it's shared with.</p>`, {
-      form: 'noop', foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button></div>',
-    });
-    return;
-  }
+  const withMe = state.books.filter((b) => !b.own);
   openModal('Settings', `
     ${settingsTabs('sharing')}
-    <p style="margin:0">Share your address book and occasions with someone else. They see the same households and occasions you do, and changes either of you make show up for both.</p>
+    <p style="margin:0">Share <b>your</b> address book and its occasions. The people you share with keep their own address book too, and switch between them at the top of the screen. Changes in a shared book show up for everyone using it.</p>
     <div data-share-list class="share-list"><p class="muted small" style="margin:0">Loading…</p></div>
     <fieldset class="stack"><legend>Share with someone</legend>
       <div class="share-add">
         <label>Email<input type="email" name="shareEmail" autocomplete="off" placeholder="partner@example.com"></label>
         <label>Access${roleSelect('name="shareRole"', 'edit')}</label>
       </div>
-      <p class="hint">If they don't have an account yet, they'll get an invitation email with a temporary password. The share stays with their account, so it keeps working if they change their email. While someone has your book shared with them, they work in it instead of their own.</p>
-    </fieldset>`, {
+      <p class="hint">If they don't have an account yet, they'll get an invitation email with a temporary password. The share stays with their account, so it keeps working if they change their email.</p>
+    </fieldset>
+    ${withMe.length ? `<fieldset class="stack"><legend>Shared with you</legend>
+      <div class="share-list">${withMe.map((b) => `<div class="share-row two">
+        <div><div>${esc(bookLabel(b))} address book</div><div class="small muted">${esc(b.ownerEmail)}${b.sharedAt ? ` · since ${fmtDate(b.sharedAt)}` : ''}</div></div>
+        <span class="pill ${b.role === 'edit' ? 'ok' : 'unknown'}">${ROLE_LABEL[b.role]}</span>
+      </div>`).join('')}</div>
+      <p class="hint">Only the owner can change your access to their book.</p>
+    </fieldset>` : ''}`, {
     form: 'share',
     foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button><button class="btn primary">Share</button></div>',
   });
@@ -1360,11 +1420,14 @@ document.addEventListener('click', async (e) => {
   if (!e.target.closest('.note-tip, .hh-note')) hideNoteTip();
   const el = e.target.closest('[data-action]');
   if (!e.target.closest('.user-menu')) setUserMenu(false);
+  if (!e.target.closest('.book-menu')) setBookMenu(false);
   if (!el) return;
   const { action, id } = el.dataset;
   switch (action) {
     case 'auth-mode': auth.cancelSignIn(); state.authMode = el.dataset.mode; state.authErr = ''; state.authMsg = ''; renderAuth(); break;
     case 'toggle-user-menu': setUserMenu(document.getElementById('user-menu-list').hidden); break;
+    case 'toggle-book-menu': setBookMenu(document.getElementById('book-menu-list').hidden); break;
+    case 'switch-book': await switchBook(el.dataset.id); break;
     case 'signout': await auth.signOut(); break;
     case 'close': closeModal(); break;
     case 'view':
@@ -1584,7 +1647,8 @@ auth.onChange((event, session) => {
   const wasSignedIn = Boolean(state.session);
   state.session = session;
   if (!session) {
-    Object.assign(state, { me: null, households: [], occasions: [], occasionId: null, occ: null, view: 'people' });
+    Object.assign(state, { me: null, books: [], households: [], occasions: [], occasionId: null, occ: null, view: 'people' });
+    if (wasSignedIn) state.bookId = storedBook(); // a different person may sign in next; loadAll checks the book is theirs
     if (modal.open) modal.close();
     if (wasSignedIn || event !== 'INITIAL_SESSION') state.authMode = 'signin';
     return renderAuth();

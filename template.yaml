@@ -228,7 +228,7 @@ Resources:
           - !Ref DevOrigin
           - !If [HasAppDomain, !Sub 'https://${AppDomain}', !Ref AWS::NoValue]
           - !If [HasAltDomain, !Sub 'https://${AppAltDomain}', !Ref AWS::NoValue]
-        AllowHeaders: [authorization, content-type]
+        AllowHeaders: [authorization, content-type, x-book]   # x-book: which address book (own or shared)
         AllowMethods: [GET, POST, PUT, DELETE, OPTIONS]
         MaxAge: 600
 

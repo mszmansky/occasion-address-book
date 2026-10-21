@@ -110,27 +110,16 @@ Cognito emails a temporary password. Sign in with it and you're asked to choose 
 
 ### Sharing
 
-The owner of an address book shares it from **Settings > Sharing** by email, choosing **Can edit** or **View only** for each person (changeable later; **Stop sharing** removes them).
+Everyone has their own private address book (with its own occasions). You can share yours from **Settings > Sharing** by email, choosing **Can edit** or **View only** for each person (changeable later; **Stop sharing** removes them).
 
 - Someone without an account gets a Cognito invitation with a temporary password; everyone gets an email saying the book was shared with them.
-- While a book is shared with someone, they work in it instead of their own, and a note at the top says whose book it is. Changes either person makes show up for both.
-- **Can edit:** everything the owner can do except change sharing. **View only:** look up, search, export and print; no changes and no emails. The API enforces this, not just the screens.
-- The return address belongs to the book, so everyone prints the same one. Name, photo, password, two-step verification and printer alignment stay personal.
-- A person can have one address book shared with them at a time.
-- Shares are tied to each person's account (their permanent Cognito id), not their email, so either person can change their sign-in email without re-sharing. The emails shown in the Sharing list update the next time that person signs in.
+- The people you share with **keep their own address book**. Once a book is shared with them, a switcher appears at the top of the screen listing **My address book** and each book shared with them (e.g. *Mike Szmansky's · Can edit*). The open book drives both **Address book** and **Occasions**, and is remembered on each device. A person can have several books shared with them.
+- **Can edit:** everything the owner can do in that book except change its sharing. **View only:** look up, search, export and print; no changes and no emails. The API enforces this, not just the screens.
+- The return address belongs to each book, so everyone prints the same one from a shared book. Name, photo, password, two-step verification and printer alignment stay personal.
+- Shares are tied to each person's account (their permanent Cognito id), not their email, so either person can change their sign-in email without re-sharing.
+- **Settings > Sharing** always manages *your own* book, and also lists the books shared with you.
 
-Stored as `USER#<owner> / SHARE#<member id>` (the owner's list) and `MEMBER#<member id> / BOOK` (looked up when that person signs in). Shares made by the first, email-based version (`SHARED#<email>`) move over automatically the first time that person signs in.
-
-### Custom domain
-
-This works the same as Vehicle Maintenance. Request an ACM certificate in **us-east-1** for the domain (and `www.`), then run:
-
-```bash
-APP_DOMAIN=your-domain.com APP_ALT_DOMAIN=www.your-domain.com \
-APP_CERT_ARN=arn:aws:acm:us-east-1:...:certificate/... ./scripts/deploy.sh
-```
-
-Point DNS at the `CloudFrontUrl` output; at Cloudflare that's a CNAME set to DNS only (grey cloud). Later deploys remember the domain. Don't add the domain to CloudFront by hand.
+Stored as `USER#<owner> / SHARE#<member id>` (the owner's list) and `MEMBER#<member id> / BOOK#<owner id>` (the books shared with someone). The app names the open book in an `x-book` request header; the API checks it against these. Shares saved by earlier versions (`SHARED#<email>`, `MEMBER#<id> / BOOK`) move over automatically the next time that person signs in.
 
 ## Printing tips
 

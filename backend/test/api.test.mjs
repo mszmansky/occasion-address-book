@@ -36,12 +36,13 @@ async function setup({ mailer = createFakeMailer(), allowedEmails = '*', files =
     log: { error() {} },
     pause: async () => {},
   });
-  const call = async (method, path, body, { token, claims } = {}) => {
+  // claims: who's calling; book: which address book (owner's account id), like the app's x-book header.
+  const call = async (method, path, body, { token, claims, book } = {}) => {
     const auth = token === null ? undefined : `Bearer ${token ?? await tokens.sign(claims)}`;
     const res = await api({
       rawPath: path,
       requestContext: { http: { method } },
-      headers: auth ? { authorization: auth } : {},
+      headers: { ...(auth ? { authorization: auth } : {}), ...(book ? { 'x-book': book } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
@@ -271,86 +272,97 @@ test('profile photo: upload, replace, remove, and private to its owner', async (
   assert.equal(files.objects.size, 0);
 });
 
-test('sharing: edit and view-only access to the owner\'s book', async () => {
+// Mike is user-1. Kim already has an account; Joe gets invited.
+const KIM = { sub: 'user-kim', email: 'kim@example.com' };
+const as = (who, book) => ({ claims: who, ...(book ? { book } : {}) });
+
+test('sharing: people keep their own book and open shared ones; edit vs view only', async () => {
   const { call, mailer, directory } = await setup();
-  const kim = { claims: { sub: 'user-kim', email: 'kim@example.com' } };     // has an account already
-  const joe = { claims: { sub: 'user-joe', email: 'joe@example.com' } };     // doesn't yet
+  const joe = { sub: 'user-joe', email: 'joe@example.com' };
   await call('PUT', '/me', { firstName: 'Mike', lastName: 'Szmansky', returnName: 'The Szmanskys', returnAddress: { line1: '1 Home Rd', city: 'Troy', state: 'MI', zip: '48083' } });
-  const h = (await call('POST', '/households', { labelName: 'The Lees' })).body.household;
+  const lees = (await call('POST', '/households', { labelName: 'The Lees' })).body.household;
 
-  // Only valid, other people; only the owner manages sharing.
-  assert.match((await call('POST', '/shares', { email: 'mike@example.com', role: 'edit' })).body.error, /your own email/);
+  assert.match((await call('POST', '/shares', { email: 'mike@example.com', role: 'edit' })).body.error, /your own/);
   assert.match((await call('POST', '/shares', { email: 'kim@example.com', role: 'admin' })).body.error, /Can edit/);
-
   let res = await call('POST', '/shares', { email: 'Kim@Example.com', role: 'edit' });
-  assert.equal(res.status, 200);
-  assert.equal(res.body.share.invited, undefined, 'Kim already had an account');
-  assert.equal(mailer.sent.at(-1).to, 'kim@example.com');
+  assert.deepEqual([res.status, res.body.share.id, res.body.share.invited], [200, 'user-kim', undefined]);
   assert.match(mailer.sent.at(-1).subject, /Mike Szmansky shared their address book/);
   res = await call('POST', '/shares', { email: 'joe@example.com', role: 'view' });
-  assert.equal(res.body.share.invited, true);
+  assert.deepEqual([res.body.share.id, res.body.share.invited], ['user-joe', true]);
   assert.deepEqual(directory.invited, ['joe@example.com']);
-  assert.match(mailer.sent.at(-1).text, /temporary password/);
-  assert.deepEqual((await call('GET', '/shares')).body.shares.map((x) => [x.id, x.email, x.role]), [['user-joe', 'joe@example.com', 'view'], ['user-kim', 'kim@example.com', 'edit']]);
 
-  // Kim (edit) works in Mike's book, with Mike's return address and her own name.
-  await call('PUT', '/me', { firstName: 'Kim' }, kim);
-  let me = (await call('GET', '/me', undefined, kim)).body;
-  assert.deepEqual([me.book.role, me.book.canEdit, me.book.ownerName], ['edit', true, 'Mike Szmansky']);
-  assert.equal(me.profile.firstName, 'Kim');
-  assert.equal(me.profile.returnName, 'The Szmanskys');
-  assert.deepEqual((await call('GET', '/households', undefined, kim)).body.households.map((x) => x.labelName), ['The Lees']);
-  assert.equal((await call('POST', '/households', { labelName: 'The Abbotts' }, kim)).status, 200);
-  assert.equal((await call('GET', '/households')).body.households.length, 2, 'Mike sees what Kim added');
-  // Kim can edit the shared return address; Mike sees it.
-  await call('PUT', '/me', { returnAddress: { line1: '2 New Rd', city: 'Troy', state: 'MI', zip: '48083' } }, kim);
+  // Kim has her own private book, plus Mike's.
+  await call('PUT', '/me', { firstName: 'Kim' }, as(KIM));
+  await call('POST', '/households', { labelName: 'Kim’s friend' }, as(KIM));
+  const books = (await call('GET', '/books', undefined, as(KIM))).body.books;
+  assert.deepEqual(books.map((b) => [b.id, b.role, b.own ?? false, b.ownerName ?? '']), [['user-kim', 'owner', true, ''], ['user-1', 'edit', false, 'Mike Szmansky']]);
+  assert.deepEqual((await call('GET', '/households', undefined, as(KIM))).body.households.map((h) => h.labelName), ['Kim’s friend'], 'her own book by default');
+  assert.deepEqual((await call('GET', '/households', undefined, as(KIM, 'user-1'))).body.households.map((h) => h.labelName), ['The Lees']);
+  assert.equal((await call('GET', '/households')).body.households.length, 1, "Mike doesn't see Kim's private book");
+
+  // In Mike's book Kim edits; the return address is the book's, her name is hers.
+  let me = (await call('GET', '/me', undefined, as(KIM, 'user-1'))).body;
+  assert.deepEqual([me.book.id, me.book.role, me.book.canEdit, me.profile.firstName, me.profile.returnName], ['user-1', 'edit', true, 'Kim', 'The Szmanskys']);
+  assert.equal((await call('POST', '/households', { labelName: 'The Abbotts' }, as(KIM, 'user-1'))).status, 200);
+  assert.equal((await call('GET', '/households')).body.households.length, 2, 'Mike sees what Kim added to his book');
+  await call('PUT', '/me', { returnAddress: { line1: '2 New Rd', city: 'Troy', state: 'MI', zip: '48083' } }, as(KIM, 'user-1'));
   assert.equal((await call('GET', '/me')).body.profile.returnAddress.line1, '2 New Rd');
-  assert.equal((await call('GET', '/me', undefined, kim)).body.profile.firstName, 'Kim', 'her own name is untouched');
-  // But sharing settings are the owner's.
-  assert.equal((await call('GET', '/shares', undefined, kim)).status, 403);
-  assert.equal((await call('POST', '/shares', { email: 'x@example.com', role: 'edit' }, kim)).status, 403);
+  assert.equal((await call('GET', '/me', undefined, as(KIM))).body.profile.returnAddress.line1, undefined, "her own book's return address is separate");
+  // Occasions belong to each book.
+  await call('POST', '/occasions', { name: "Mike's cards" });
+  await call('POST', '/occasions', { name: "Kim's party" }, as(KIM));
+  assert.deepEqual((await call('GET', '/occasions', undefined, as(KIM, 'user-1'))).body.occasions.map((o) => o.name), ["Mike's cards"]);
+  assert.deepEqual((await call('GET', '/occasions', undefined, as(KIM))).body.occasions.map((o) => o.name), ["Kim's party"]);
+  // Kim manages sharing of her own book even while Mike's is open, never Mike's.
+  assert.deepEqual((await call('GET', '/shares', undefined, as(KIM, 'user-1'))).body.shares, []);
 
-  // Joe (view only) can read and print, but not change or send.
-  me = (await call('GET', '/me', undefined, joe)).body;
+  // Joe (view only) reads Mike's book but can't change it or send; his own book is fully his.
+  me = (await call('GET', '/me', undefined, as(joe, 'user-1'))).body;
   assert.deepEqual([me.book.role, me.book.canEdit], ['view', false]);
-  assert.equal((await call('GET', '/households', undefined, joe)).body.households.length, 2);
-  const occ = (await call('POST', '/occasions', { name: 'Cards' })).body.occasion;
-  assert.equal((await call('GET', `/occasions/${occ.id}`, undefined, joe)).status, 200);
-  for (const [m, path, body] of [['POST', '/households', { labelName: 'X' }], ['PUT', `/households/${h.id}`, { labelName: 'X' }],
-    ['DELETE', `/households/${h.id}`], ['POST', '/occasions', { name: 'X' }], ['PUT', `/occasions/${occ.id}/tags`, { add: [h.id] }],
-    ['POST', `/occasions/${occ.id}/mailed`, { householdIds: [h.id], mailed: true }], ['POST', `/households/${h.id}/address-request`, {}],
+  assert.equal((await call('GET', '/households', undefined, as(joe, 'user-1'))).body.households.length, 2);
+  const occ = (await call('GET', '/occasions')).body.occasions[0];
+  for (const [m, path, body] of [['POST', '/households', { labelName: 'X' }], ['PUT', `/households/${lees.id}`, { labelName: 'X' }],
+    ['DELETE', `/households/${lees.id}`], ['POST', '/occasions', { name: 'X' }], ['PUT', `/occasions/${occ.id}/tags`, { add: [lees.id] }],
+    ['POST', `/occasions/${occ.id}/mailed`, { householdIds: [lees.id], mailed: true }], ['POST', `/households/${lees.id}/address-request`, {}],
     ['PUT', '/me', { returnName: 'Hacked' }]]) {
-    const r = await call(m, path, body, joe);
-    assert.equal(r.status, 403, `${m} ${path}`);
-    assert.equal(r.body.code, 'view_only');
+    const r = await call(m, path, body, as(joe, 'user-1'));
+    assert.deepEqual([r.status, r.body.code], [403, 'view_only'], `${m} ${path}`);
   }
-  assert.equal((await call('PUT', '/me', { firstName: 'Joe' }, joe)).status, 200, 'his own name is fine');
+  assert.equal((await call('POST', '/households', { labelName: 'Joe’s own' }, as(joe))).status, 200, 'his own book is fine');
 
-  // Mike changes Joe to edit, then stops sharing with Kim.
+  // Books not shared with you are off limits.
+  assert.equal((await call('GET', '/households', undefined, as(joe, 'user-kim'))).body.code, 'book_gone');
+  assert.equal((await call('GET', '/households', undefined, as(joe, '../x'))).status, 400);
+
+  // Changing access and stopping sharing.
   await call('PUT', '/shares/user-joe', { role: 'edit' });
-  assert.equal((await call('POST', '/households', { labelName: 'Y' }, joe)).status, 200);
+  assert.equal((await call('POST', '/households', { labelName: 'Y' }, as(joe, 'user-1'))).status, 200);
   await call('DELETE', '/shares/user-kim');
-  me = (await call('GET', '/me', undefined, kim)).body;
-  assert.equal(me.book.role, 'owner', 'Kim is back in her own book');
-  assert.equal((await call('GET', '/households', undefined, kim)).body.households.length, 0);
-
-  // Someone already sharing another book can't be added to a second one.
-  const ann = { claims: { sub: 'user-ann', email: 'ann@example.com' } };
-  assert.match((await call('POST', '/shares', { email: 'joe@example.com', role: 'view' }, ann)).body.error, /already has another address book/);
+  assert.equal((await call('GET', '/households', undefined, as(KIM, 'user-1'))).body.code, 'book_gone');
+  assert.deepEqual((await call('GET', '/books', undefined, as(KIM))).body.books.map((b) => b.id), ['user-kim']);
+  assert.equal((await call('GET', '/households', undefined, as(KIM))).body.households.length, 1, 'her own book is untouched');
 });
 
-test('sharing: an address check sent by a shared editor lands in the owner\'s book and notifies the sender', async () => {
+test('sharing: someone can have several books shared with them', async () => {
+  const { call } = await setup();
+  const ann = { sub: 'user-ann', email: 'ann@example.com' };
+  await call('POST', '/shares', { email: 'kim@example.com', role: 'edit' });
+  await call('PUT', '/me', { firstName: 'Ann' }, as(ann));
+  assert.equal((await call('POST', '/shares', { email: 'kim@example.com', role: 'view' }, as(ann))).status, 200);
+  const books = (await call('GET', '/books', undefined, as(KIM))).body.books;
+  assert.deepEqual(books.map((b) => [b.id, b.role]), [['user-kim', 'owner'], ['user-ann', 'view'], ['user-1', 'edit']]);
+});
+
+test("sharing: an address check sent by a shared editor lands in the owner's book and notifies the sender", async () => {
   const { call, mailer } = await setup();
-  const kim = { claims: { sub: 'user-kim', email: 'kim@example.com' } };
   await call('POST', '/shares', { email: 'kim@example.com', role: 'edit' });
   const h = (await call('POST', '/households', { labelName: 'The Lees', emails: ['lee@example.com'], address: { line1: '1 A', city: 'Troy', state: 'MI', zip: '48083' } })).body.household;
-  await call('POST', `/households/${h.id}/address-request`, {}, kim);
+  await call('POST', `/households/${h.id}/address-request`, {}, as(KIM, 'user-1'));
   const token = /#t=([\w-]+)/.exec(mailer.sent.at(-1).text)[1];
   assert.equal(mailer.sent.at(-1).replyTo, 'kim@example.com');
   await call('POST', `/public/address/${token}`, { address: { line1: '9 New St', city: 'Troy', state: 'MI', zip: '48084' } }, { token: null });
   assert.equal(mailer.sent.at(-1).to, 'kim@example.com');
-  const lees = (await call('GET', '/households')).body.households.find((x) => x.id === h.id);
-  assert.equal(lees.pendingUpdate.address.line1, '9 New St', 'the reply is in the shared book');
+  assert.equal((await call('GET', '/households')).body.households[0].pendingUpdate.address.line1, '9 New St');
 });
 
 test('sharing follows the account, not the email: either side can change their email', async () => {
@@ -359,61 +371,49 @@ test('sharing follows the account, not the email: either side can change their e
   await call('POST', '/households', { labelName: 'The Lees' });
   await call('POST', '/shares', { email: 'kim@example.com', role: 'edit' });
 
-  // Kim changes her sign-in email: same account id, new email in her token.
   directory.changeEmail('kim@example.com', 'kim.new@example.com');
-  const kimNew = { claims: { sub: 'user-kim', email: 'kim.new@example.com' } };
-  let me = (await call('GET', '/me', undefined, kimNew)).body;
-  assert.equal(me.book.role, 'edit', 'still shared after her email change');
-  assert.equal((await call('GET', '/households', undefined, kimNew)).body.households.length, 1);
-  // Mike's list shows her new email, and he can still manage the share.
+  const kimNew = { sub: 'user-kim', email: 'kim.new@example.com' };
+  assert.deepEqual((await call('GET', '/books', undefined, as(kimNew))).body.books.map((b) => b.id), ['user-kim', 'user-1']);
+  assert.equal((await call('GET', '/households', undefined, as(kimNew, 'user-1'))).body.households.length, 1);
   assert.deepEqual((await call('GET', '/shares')).body.shares.map((x) => [x.id, x.email]), [['user-kim', 'kim.new@example.com']]);
-  await call('PUT', '/shares/user-kim', { role: 'view' });
-  assert.equal((await call('GET', '/me', undefined, kimNew)).body.book.role, 'view');
 
-  // Someone else who now signs in with Kim's old email gets nothing of Mike's.
-  const stranger = { claims: { sub: 'user-stranger', email: 'kim@example.com' } };
-  assert.equal((await call('GET', '/me', undefined, stranger)).body.book.role, 'owner');
-  assert.equal((await call('GET', '/households', undefined, stranger)).body.households.length, 0);
+  // Someone else signing in with Kim's old email gets nothing of Mike's.
+  const stranger = { sub: 'user-stranger', email: 'kim@example.com' };
+  assert.deepEqual((await call('GET', '/books', undefined, as(stranger))).body.books.map((b) => b.id), ['user-stranger']);
+  assert.equal((await call('GET', '/households', undefined, as(stranger, 'user-1'))).body.code, 'book_gone');
 
-  // Mike changes his email: Kim still sees his book, and his new email.
-  const mikeNew = { claims: { sub: 'user-1', email: 'mike.new@example.com' } };
-  await call('GET', '/me', undefined, mikeNew); // the app loads his profile first thing
-  assert.equal((await call('GET', '/shares', undefined, mikeNew)).body.shares.length, 1);
-  me = (await call('GET', '/me', undefined, kimNew)).body;
-  assert.deepEqual([me.book.ownerName, me.book.ownerEmail], ['Mike Szmansky', 'mike.new@example.com']);
-
-  await call('DELETE', '/shares/user-kim', undefined, mikeNew);
-  assert.equal((await call('GET', '/me', undefined, kimNew)).body.book.role, 'owner');
+  // Mike changes his email: Kim still has his book, showing his new email.
+  const mikeNew = { sub: 'user-1', email: 'mike.new@example.com' };
+  await call('GET', '/me', undefined, as(mikeNew));
+  const shared = (await call('GET', '/books', undefined, as(kimNew))).body.books[1];
+  assert.deepEqual([shared.ownerName, shared.ownerEmail], ['Mike Szmansky', 'mike.new@example.com']);
 });
 
-test('a share made by the first, email-based version moves to the account at sign-in', async () => {
+test('shares saved by earlier versions move over at sign-in', async () => {
   const { call, repo } = await setup();
-  await call('PUT', '/me', { firstName: 'Mike', lastName: 'Szmansky' });
   await call('POST', '/households', { labelName: 'The Lees' });
-  // What the first version saved.
+  // First version (keyed by email) for Kim; second version (one book per person) for Joe.
   await repo.batchPut([
     { PK: 'USER#user-1', SK: 'SHARE#kim@example.com', email: 'kim@example.com', role: 'edit', sharedAt: '2026-10-20T00:00:00Z' },
-    { PK: 'SHARED#kim@example.com', SK: 'BOOK', email: 'kim@example.com', role: 'edit', ownerSub: 'user-1', ownerEmail: 'mike@example.com', ownerName: 'Mike Szmansky', sharedAt: '2026-10-20T00:00:00Z' },
+    { PK: 'SHARED#kim@example.com', SK: 'BOOK', email: 'kim@example.com', role: 'edit', ownerSub: 'user-1', sharedAt: '2026-10-20T00:00:00Z' },
+    { PK: 'USER#user-1', SK: 'SHARE#user-joe', memberSub: 'user-joe', email: 'joe@example.com', role: 'view', sharedAt: '2026-10-21T00:00:00Z' },
+    { PK: 'MEMBER#user-joe', SK: 'BOOK', memberSub: 'user-joe', email: 'joe@example.com', role: 'view', ownerSub: 'user-1', sharedAt: '2026-10-21T00:00:00Z' },
   ]);
-  // Before Kim signs in, Mike can still see and manage it.
-  let shares = (await call('GET', '/shares')).body.shares;
-  assert.deepEqual(shares.map((x) => [x.id, x.email]), [['kim@example.com', 'kim@example.com']]);
+  // The owner can manage both before they sign in.
+  assert.deepEqual((await call('GET', '/shares')).body.shares.map((x) => x.id), ['joe@example.com', 'kim@example.com'].map((e) => (e.startsWith('joe') ? 'user-joe' : e)));
 
-  const kim = { claims: { sub: 'user-kim', email: 'kim@example.com' } };
-  assert.equal((await call('GET', '/me', undefined, kim)).body.book.role, 'edit');
-  shares = (await call('GET', '/shares')).body.shares;
-  assert.deepEqual(shares.map((x) => [x.id, x.email, x.role]), [['user-kim', 'kim@example.com', 'edit']]);
-  assert.equal([...repo.rows.keys()].filter((k) => k.includes('SHARED#') || k.includes('SHARE#kim@')).length, 0, 'old rows removed');
+  assert.deepEqual((await call('GET', '/books', undefined, as(KIM))).body.books.map((b) => [b.id, b.role]), [['user-kim', 'owner'], ['user-1', 'edit']]);
+  const joe = { sub: 'user-joe', email: 'joe@example.com' };
+  assert.equal((await call('GET', '/households', undefined, as(joe, 'user-1'))).body.households.length, 1, 'opening the book directly migrates too');
+  assert.deepEqual((await call('GET', '/shares')).body.shares.map((x) => [x.id, x.role]), [['user-joe', 'view'], ['user-kim', 'edit']]);
+  const leftovers = [...repo.rows.values()].filter((r) => r.PK.startsWith('SHARED#') || (r.PK.startsWith('MEMBER#') && r.SK === 'BOOK') || r.SK === 'SHARE#kim@example.com');
+  assert.deepEqual(leftovers, []);
 
-  // And now it survives her changing email.
-  const kimNew = { claims: { sub: 'user-kim', email: 'kim.new@example.com' } };
-  assert.equal((await call('GET', '/households', undefined, kimNew)).body.households.length, 1);
-
-  // An old-style share can also be removed before the person ever signs in.
+  // An email-keyed share can be stopped before the person ever signs in.
   await repo.batchPut([
-    { PK: 'USER#user-1', SK: 'SHARE#joe@example.com', email: 'joe@example.com', role: 'view', sharedAt: '2026-10-20T00:00:00Z' },
-    { PK: 'SHARED#joe@example.com', SK: 'BOOK', email: 'joe@example.com', role: 'view', ownerSub: 'user-1', sharedAt: '2026-10-20T00:00:00Z' },
+    { PK: 'USER#user-1', SK: 'SHARE#ann@example.com', email: 'ann@example.com', role: 'view', sharedAt: '2026-10-20T00:00:00Z' },
+    { PK: 'SHARED#ann@example.com', SK: 'BOOK', email: 'ann@example.com', role: 'view', ownerSub: 'user-1', sharedAt: '2026-10-20T00:00:00Z' },
   ]);
-  await call('DELETE', `/shares/${encodeURIComponent('joe@example.com')}`);
-  assert.equal(await repo.get('SHARED#joe@example.com', 'BOOK'), null);
+  await call('DELETE', `/shares/${encodeURIComponent('ann@example.com')}`);
+  assert.equal(await repo.get('SHARED#ann@example.com', 'BOOK'), null);
 });
