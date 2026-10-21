@@ -820,7 +820,12 @@ function householdTabs(active, { people = 0, pending = false } = {}) {
       id === 'people' && people ? `<span class="count">${people}</span>` : ''}${id === 'address' && pending ? '<span class="tab-dot" title="Address update to review"></span>' : ''}</button>`).join('')}</div>`;
 }
 
+const NEXT_BTN = '<button type="button" class="btn" data-action="hh-next">Next ›</button>';
+
 function showHouseholdTab(id, { focus = true } = {}) {
+  const next = modal.querySelector('[data-action=hh-next]');
+  if (next) next.hidden = id === HOUSEHOLD_TABS.at(-1)[0];
+  modalError(''); // an old message would point at the wrong tab
   modal.querySelectorAll('[data-action=hh-tab]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === id)));
   modal.querySelectorAll('[data-hh-panel]').forEach((p) => { p.inert = p.dataset.hhPanel !== id; });
   if (focus) modal.querySelector(`[data-hh-panel="${id}"]`)?.querySelector('input:not([type=checkbox]):not([disabled]), textarea:not([disabled])')?.focus();
@@ -874,15 +879,15 @@ function householdModal(h) {
     wide: true,
     foot: `<div class="left-actions">${isNew ? '' : `<button type="button" class="btn danger" data-action="delete-household" data-id="${esc(h.id)}">Delete</button>
       <button type="button" class="btn" data-action="request-address" data-id="${esc(h.id)}" ${allEmails(h).length ? '' : 'disabled title="Add an email address first"'}>${MAIL} Confirm address</button>`}</div>
-      <div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save</button></div>`,
+      <div class="right"><button type="button" class="btn" data-action="close">Cancel</button>${NEXT_BTN}<button class="btn primary">Save</button></div>`,
   });
-  showHouseholdTab(start);
   if (!canEdit()) {
     // View only: everything shown, nothing changeable.
     modal.querySelectorAll('.modal-body input, .modal-body textarea, .modal-body select, .modal-body button:not(.tab)').forEach((el) => { el.disabled = true; });
     modal.querySelectorAll('[data-action=add-member], [data-action=remove-member], .pending-box .row-gap').forEach((el) => el.remove());
-    modal.querySelector('.modal-foot').innerHTML = '<div class="small muted">View only</div><div class="right"><button type="button" class="btn" data-action="close">Close</button></div>';
+    modal.querySelector('.modal-foot').innerHTML = `<div class="small muted">View only</div><div class="right"><button type="button" class="btn" data-action="close">Close</button>${NEXT_BTN}</div>`;
   }
+  showHouseholdTab(start);
 }
 
 function refreshFormalName(form) {
@@ -1793,6 +1798,11 @@ document.addEventListener('click', async (e) => {
     case 'align-test': await withBusy(el, () => alignTest(el.dataset.what)); break;
     case 'settings-tab': settingsModal(el.dataset.tab); break;
     case 'hh-tab': showHouseholdTab(el.dataset.tab); break;
+    case 'hh-next': {
+      const at = HOUSEHOLD_TABS.findIndex(([t]) => t === modal.querySelector('[data-action=hh-tab][aria-selected=true]')?.dataset.tab);
+      showHouseholdTab(HOUSEHOLD_TABS[Math.min(at + 1, HOUSEHOLD_TABS.length - 1)][0]);
+      break;
+    }
     case 'remove-avatar': await removeAvatar(el); break;
     case 'unshare':
       if (!await askConfirm({ title: 'Stop sharing?', text: `${el.dataset.email} will no longer see your address book and occasions.`, ok: 'Stop sharing', danger: true })) break;
