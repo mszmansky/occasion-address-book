@@ -1062,7 +1062,7 @@ async function changePassword(form) {
     if (e.code === 'NotAuthorizedException') throw new Error('Your current password is incorrect');
     throw e;
   }
-  for (const el of form.querySelectorAll('input[type=password]')) el.value = '';
+  closeModal();
   toast('Password updated');
 }
 
@@ -1377,9 +1377,9 @@ document.addEventListener('submit', async (e) => {
     return withBusy(form.querySelector('.btn.primary'), async () => {
       const res = await api('/me', { method: 'PUT', body: readSettings(form, tab) });
       state.me.profile = res.profile;
+      closeModal();
       toast({ profile: 'Profile saved', return: 'Return address saved', printer: 'Printer settings saved' }[tab]);
       render();
-      settingsModal(tab); // stay on the tab, showing what was saved
     });
   }
   if (kind.startsWith('addrreq-')) {
