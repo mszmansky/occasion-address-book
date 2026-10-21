@@ -127,7 +127,7 @@ ${appUrl}`;
  * so they must appear in the message exactly as given.
  */
 export function buildCognitoMessage(triggerSource, { appUrl, codeParameter = '{####}', usernameParameter = '{username}' } = {}) {
-  const APP = 'Occasion Address Book';
+  const APP = 'Occasions Address Book';
   const code = `<p style="margin:0 0 14px"><span style="display:inline-block;font:700 24px/1.2 'Courier New',Courier,monospace;letter-spacing:4px;background:#faf9f6;border:1px solid #e2dfd8;border-radius:6px;padding:10px 14px">${codeParameter}</span></p>`;
   const p = (t) => `<p style="margin:0 0 14px">${t}</p>`;
   const make = (subject, heading, inner, footer) => ({ subject, html: layout({ heading, inner, footer }) });

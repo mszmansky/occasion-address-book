@@ -646,7 +646,7 @@ dialog.idle-modal { width: min(420px, calc(100vw - 32px)); }
 .vphoto > img.cutout { object-fit: contain; }
 
 /* =====================================================================
-   Occasion Address Book
+   Occasions Address Book
    ===================================================================== */
 :root { --accent: #9f1239; --accent-ink: #ffffff; }
 @media (prefers-color-scheme: dark) { :root { --accent: #fb7185; --accent-ink: #2a0610; } }

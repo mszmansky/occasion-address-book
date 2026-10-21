@@ -11,7 +11,7 @@ const cfg = window.APP_CONFIG ?? {};
 const root = document.getElementById('root');
 const modal = document.getElementById('modal');
 const toastEl = document.getElementById('toast');
-const APP_NAME = 'Occasion Address Book';
+const APP_NAME = 'Occasions Address Book';
 
 if (!cfg.apiUrl || !cfg.region || !cfg.userPoolId || !cfg.userPoolClientId) {
   root.innerHTML = '<p class="boot">Missing config.js. Run scripts/deploy.sh, or copy config.example.js to config.js for local testing.</p>';

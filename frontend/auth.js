@@ -201,7 +201,7 @@ export function createAuth({ region, userPoolId, userPoolClientId }) {
     // Two-step verification with an authenticator app.
     async startMfaSetup(email) {
       const { SecretCode } = await call('AssociateSoftwareToken', { AccessToken: await accessToken() });
-      const issuer = 'Occasion Address Book';
+      const issuer = 'Occasions Address Book';
       const uri = `otpauth://totp/${encodeURIComponent(`${issuer}:${email}`)}?secret=${SecretCode}&issuer=${encodeURIComponent(issuer)}`;
       return { secret: SecretCode, uri };
     },

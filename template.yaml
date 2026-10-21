@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Occasion address book - households, occasions, labels and envelopes, SES invitations, Cognito sign-in.
+Description: Occasions address book - households, occasions, labels and envelopes, SES invitations, Cognito sign-in.
 
 Parameters:
   AllowedEmails:
@@ -123,7 +123,7 @@ Resources:
       EmailConfiguration:
         EmailSendingAccount: DEVELOPER
         SourceArn: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesIdentity}
-        From: !Sub Occasion Address Book <${SenderEmail}>
+        From: !Sub Occasions Address Book <${SenderEmail}>
         ConfigurationSet: !If [HasConfigSet, !Ref SesConfigurationSet, !Ref AWS::NoValue]
       LambdaConfig:
         CustomMessage: !GetAtt CognitoMessageFunction.Arn
@@ -249,7 +249,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: Occasion address book
+        Comment: Occasions address book
         DefaultRootObject: index.html
         Aliases: !If
           - HasAppDomain

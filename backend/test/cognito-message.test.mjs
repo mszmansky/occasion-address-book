@@ -11,7 +11,7 @@ const event = (triggerSource) => ({
 test('Cognito emails are built in the app style and keep the placeholders Cognito requires', async () => {
   process.env.APP_URL = 'https://cards.example.com';
   const invite = (await handler(event('CustomMessage_AdminCreateUser'))).response;
-  assert.match(invite.emailSubject, /invited to Occasion Address Book/);
+  assert.match(invite.emailSubject, /invited to Occasions Address Book/);
   assert.ok(invite.emailMessage.includes('{####}') && invite.emailMessage.includes('{username}'));
   assert.ok(invite.emailMessage.includes('https://cards.example.com'));
   for (const t of ['CustomMessage_ForgotPassword', 'CustomMessage_UpdateUserAttribute', 'CustomMessage_VerifyUserAttribute', 'CustomMessage_ResendCode']) {

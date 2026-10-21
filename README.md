@@ -1,4 +1,4 @@
-# Occasion Address Book
+# Occasions Address Book
 
 A small serverless web app that:
 - keeps people and mailing addresses;
