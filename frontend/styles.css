@@ -932,3 +932,15 @@ label > span.hint { display: block; }
 .btn.danger-solid { background: var(--overdue); border-color: var(--overdue); color: #fff; }
 .btn.danger-solid:hover { filter: brightness(1.06); }
 @media (prefers-color-scheme: dark) { .btn.danger-solid { color: #1a0d05; } }
+
+/* Household editor sections: every panel sits in the same grid cell, so the dialog keeps the
+   height of the tallest one and doesn't jump when switching tabs. */
+.hh-panels { display: grid; }
+.hh-panel { grid-area: 1 / 1; align-content: start; }
+.hh-panel[inert] { visibility: hidden; }
+.tab-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 6px; vertical-align: middle; }
+@media (max-width: 520px) {
+  .wide-only { display: none; }
+  /* Long footers (Delete, Confirm address, Cancel, Save) wrap instead of running off the screen. */
+  .modal-foot { flex-wrap: wrap; }
+}

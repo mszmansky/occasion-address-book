@@ -11,7 +11,7 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
 
 ## What it does
 
-- **Address book of households.** Each household is one envelope. It holds:
+- **Address book of households.** Each household is one envelope. Its edit screen has tabs (**Greetings**, **Address**, **People**, **Groups & notes**); Save keeps the changes on every tab. It holds:
   - a name for the envelope ("The Smith Family");
   - an optional formal name ("Mr. and Mrs. John Smith") and email greeting ("John and Mary");
   - a mailing address;

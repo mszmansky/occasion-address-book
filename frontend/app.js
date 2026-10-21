@@ -811,6 +811,21 @@ function onGroupKey(e) {
   }
 }
 
+// The household editor's sections. All of them belong to one form, so Save keeps every tab's changes.
+const HOUSEHOLD_TABS = [['greetings', 'Greetings'], ['address', 'Address'], ['people', 'People'], ['more', 'Groups<span class="wide-only"> & notes</span>']];
+
+function householdTabs(active, { people = 0, pending = false } = {}) {
+  return `<div class="tabs settings-tabs" role="tablist">${HOUSEHOLD_TABS.map(([id, label]) => `
+    <button type="button" role="tab" class="tab" data-action="hh-tab" data-tab="${id}" aria-selected="${id === active}">${label}${
+      id === 'people' && people ? `<span class="count">${people}</span>` : ''}${id === 'address' && pending ? '<span class="tab-dot" title="Address update to review"></span>' : ''}</button>`).join('')}</div>`;
+}
+
+function showHouseholdTab(id, { focus = true } = {}) {
+  modal.querySelectorAll('[data-action=hh-tab]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === id)));
+  modal.querySelectorAll('[data-hh-panel]').forEach((p) => { p.inert = p.dataset.hhPanel !== id; });
+  if (focus) modal.querySelector(`[data-hh-panel="${id}"]`)?.querySelector('input:not([type=checkbox]):not([disabled]), textarea:not([disabled])')?.focus();
+}
+
 function householdModal(h) {
   const isNew = !h;
   h ??= { members: [{}], address: {}, groups: state.filters.people.groups.length === 1 ? [...state.filters.people.groups] : [] };
@@ -827,38 +842,44 @@ function householdModal(h) {
       <div class="row-gap"><button type="button" class="btn sm primary" data-action="pending" data-do="accept" data-id="${esc(h.id)}">Use new address</button>
       <button type="button" class="btn sm" data-action="pending" data-do="discard" data-id="${esc(h.id)}">Keep the one on file</button></div>
     </div>` : '';
+  const people = withDefaultShown(peopleWithHouseholdContact(h).length ? peopleWithHouseholdContact(h) : [{}]);
+  const start = p ? 'address' : 'greetings';
+  const panel = (id, html) => `<div class="hh-panel stack" role="tabpanel" data-hh-panel="${id}" ${id === start ? '' : 'inert'}>${html}</div>`;
   openModal(isNew ? 'New household' : esc(h.labelName), `
-    ${pendingBox}
-    <fieldset><legend>Greetings</legend>
+    ${householdTabs(start, { people: people.filter((m) => m.firstName || m.lastName || m.email).length, pending: !!p })}
+    <div class="hh-panels">
+    ${panel('greetings', `
       <label>Household Greeting${REQUIRED}<input name="labelName" required aria-required="true" maxlength="120" value="${val(h.labelName)}" placeholder="The Smith Family"></label>
       <div class="grid-2">
         <label>Formal Greeting<input name="formalName" maxlength="160" value="${val(h.formalName || suggestedFormal)}" ${!h.formalName && suggestedFormal ? 'data-auto="1"' : ''} placeholder="Mr. and Mrs. John Smith"></label>
         <label>Informal Greeting<input name="greeting" maxlength="120" value="${val(h.greeting)}" placeholder="John and Mary"></label>
-      </div>
-    </fieldset>
-    <fieldset><legend>Mailing address</legend>${addressFields(h.address)}
+      </div>`)}
+    ${panel('address', `
+      ${pendingBox}
+      ${addressFields(h.address)}
       ${h.addressConfirmedAt ? `<p class="hint">Confirmed by them ${fmtDate(h.addressConfirmedAt)}.</p>` : ''}
-      ${req && !p ? `<p class="hint">Address check sent ${fmtDate(req.sentAt)} to ${esc(req.sentTo.join(', '))}; the link works until ${fmtDate(req.expiresAt)}.</p>` : ''}
-    </fieldset>
-    <fieldset><legend>People</legend>
+      ${req && !p ? `<p class="hint">Address check sent ${fmtDate(req.sentAt)} to ${esc(req.sentTo.join(', '))}; the link works until ${fmtDate(req.expiresAt)}.</p>` : ''}`)}
+    ${panel('people', `
       <div class="member-head small muted"><span>First</span><span>Last</span><span>Email</span><span>Phone</span><span class="default-head">Default</span><span></span></div>
-      <div data-members>${withDefaultShown(peopleWithHouseholdContact(h).length ? peopleWithHouseholdContact(h) : [{}]).map(memberRow).join('')}</div>
-      <button type="button" class="btn sm" data-action="add-member">+ Person</button>
-    </fieldset>
-    <div>
-      <div class="label-like" id="groups-label">Groups</div>
-      ${groupChipsField(h.groups ?? [])}
-    </div>
-    <label>Notes<textarea name="notes" rows="2" maxlength="2000">${esc(h.notes ?? '')}</textarea></label>`, {
+      <div data-members>${people.map(memberRow).join('')}</div>
+      <button type="button" class="btn sm" data-action="add-member">+ Person</button>`)}
+    ${panel('more', `
+      <div>
+        <div class="label-like" id="groups-label">Groups</div>
+        ${groupChipsField(h.groups ?? [])}
+      </div>
+      <label>Notes<textarea name="notes" rows="4" maxlength="2000">${esc(h.notes ?? '')}</textarea></label>`)}
+    </div>`, {
     form: isNew ? 'household-new' : `household-${h.id}`,
     wide: true,
     foot: `<div class="left-actions">${isNew ? '' : `<button type="button" class="btn danger" data-action="delete-household" data-id="${esc(h.id)}">Delete</button>
       <button type="button" class="btn" data-action="request-address" data-id="${esc(h.id)}" ${allEmails(h).length ? '' : 'disabled title="Add an email address first"'}>${MAIL} Confirm address</button>`}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save</button></div>`,
   });
+  showHouseholdTab(start);
   if (!canEdit()) {
     // View only: everything shown, nothing changeable.
-    modal.querySelectorAll('.modal-body input, .modal-body textarea, .modal-body select, .modal-body button').forEach((el) => { el.disabled = true; });
+    modal.querySelectorAll('.modal-body input, .modal-body textarea, .modal-body select, .modal-body button:not(.tab)').forEach((el) => { el.disabled = true; });
     modal.querySelectorAll('[data-action=add-member], [data-action=remove-member], .pending-box .row-gap').forEach((el) => el.remove());
     modal.querySelector('.modal-foot').innerHTML = '<div class="small muted">View only</div><div class="right"><button type="button" class="btn" data-action="close">Close</button></div>';
   }
@@ -897,7 +918,7 @@ function readHousehold(form) {
 async function saveHousehold(form) {
   const id = form.dataset.form.replace(/^household-/, '');
   const body = readHousehold(form);
-  if (!body.labelName) return modalError('Enter the Household Greeting.');
+  if (!body.labelName) { showHouseholdTab('greetings'); return modalError('Enter the Household Greeting.'); }
   await withBusy(form.querySelector('.btn.primary'), async () => {
     const res = id === 'new' ? await api('/households', { method: 'POST', body }) : await api(`/households/${id}`, { method: 'PUT', body });
     upsertHousehold(res.household);
@@ -1771,6 +1792,7 @@ document.addEventListener('click', async (e) => {
     case 'settings': setUserMenu(false); mfaEnrollment = null; settingsModal('profile'); break;
     case 'align-test': await withBusy(el, () => alignTest(el.dataset.what)); break;
     case 'settings-tab': settingsModal(el.dataset.tab); break;
+    case 'hh-tab': showHouseholdTab(el.dataset.tab); break;
     case 'remove-avatar': await removeAvatar(el); break;
     case 'unshare':
       if (!await askConfirm({ title: 'Stop sharing?', text: `${el.dataset.email} will no longer see your address book and occasions.`, ok: 'Stop sharing', danger: true })) break;
