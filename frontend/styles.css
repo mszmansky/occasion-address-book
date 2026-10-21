@@ -903,7 +903,7 @@ label > span.hint { display: block; }
   .filter-panel { position: fixed; left: 14px; right: 14px; top: 120px; width: auto; }
 }
 
-/* Trash bin */
+/* Trash */
 .trash-list { display: grid; border: 1px solid var(--line); border-radius: var(--radius); padding: 0 12px; }
 .trash-row { display: grid; grid-template-columns: 92px 1fr auto auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .trash-row:last-child { border-bottom: 0; }
@@ -916,3 +916,14 @@ label > span.hint { display: block; }
   .trash-row { grid-template-columns: 1fr auto; }
   .trash-row .pill { grid-column: 1 / -1; }
 }
+
+/* the app's own confirmation dialog */
+.confirm-modal { width: min(420px, calc(100vw - 32px)); }
+.confirm-modal::backdrop { background: rgba(15, 17, 20, .5); }
+.confirm-box { padding: 22px 22px 18px; }
+.confirm-box h2 { margin: 0 0 8px; font-size: 17px; line-height: 1.35; overflow-wrap: anywhere; }
+.confirm-box p { margin: 0; color: var(--ink-2); font-size: 14.5px; }
+.confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.btn.danger-solid { background: var(--overdue); border-color: var(--overdue); color: #fff; }
+.btn.danger-solid:hover { filter: brightness(1.06); }
+@media (prefers-color-scheme: dark) { .btn.danger-solid { color: #1a0d05; } }

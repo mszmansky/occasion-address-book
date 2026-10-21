@@ -418,7 +418,7 @@ test('shares saved by earlier versions move over at sign-in', async () => {
   assert.equal(await repo.get('SHARED#ann@example.com', 'BOOK'), null);
 });
 
-test('Trash bin: delete moves to the bin, restore brings everything back, 30 days then gone', async () => {
+test('Trash: delete moves to the bin, restore brings everything back, 30 days then gone', async () => {
   const { call, repo, setClock } = await setup();
   const lees = (await call('POST', '/households', { labelName: 'The Lees', address: { city: 'Troy', state: 'MI' } })).body.household;
   const rose = (await call('POST', '/households', { labelName: 'Grandma Rose' })).body.household;
@@ -474,7 +474,7 @@ test('Trash bin: delete moves to the bin, restore brings everything back, 30 day
   assert.equal([...repo.rows.values()].filter((x) => x.SK.startsWith('TRASH#')).length, 0, 'purged');
 });
 
-test('Trash bin in a shared book: editors restore, view only can look', async () => {
+test('Trash in a shared book: editors restore, view only can look', async () => {
   const { call } = await setup();
   const kim = { claims: { sub: 'user-kim', email: 'kim@example.com' }, book: 'user-1' };
   const joe = { claims: { sub: 'user-joe', email: 'joe@example.com' }, book: 'user-1' };

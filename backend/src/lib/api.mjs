@@ -8,7 +8,7 @@ import { userPk } from './repo.mjs';
 import { buildAddressReceived, buildAddressRequest, buildInvite, buildShareNotice } from './email.mjs';
 
 export const LINK_DAYS = 30;          // address-update links expire after this many days
-export const TRASH_DAYS = 30;         // deleted households and occasions stay in the Trash bin this long
+export const TRASH_DAYS = 30;         // deleted households and occasions stay in the Trash this long
 export const INVITE_BATCH = 25;       // invitations sent per request (the page sends larger lists in batches)
 export const IMPORT_MAX = 500;        // households per import request
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -476,7 +476,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
     return { household: publicHousehold(item) };
   }, { write: true });
 
-  // Deleting moves the household to the Trash bin, with its places on occasion lists so a restore puts them back.
+  // Deleting moves the household to the Trash, with its places on occasion lists so a restore puts them back.
   route('DELETE', '/households/:id', async ({ user, params }) => {
     const h = await mustGet(user, `HH#${params.id}`, 'Household');
     const tags = (await repo.query(bk(user), 'TAG#')).filter((t) => t.householdId === params.id);
@@ -572,7 +572,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
     return { occasion: strip(item) };
   }, { write: true });
 
-  // Deleting moves the occasion, with its list (and who was mailed / invited), to the Trash bin.
+  // Deleting moves the occasion, with its list (and who was mailed / invited), to the Trash.
   route('DELETE', '/occasions/:id', async ({ user, params }) => {
     const o = await mustGet(user, `OCC#${params.id}`, 'Occasion');
     const tags = await repo.query(bk(user), `TAG#${params.id}#`);
@@ -580,7 +580,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
     return { deleted: true, trashed: true };
   }, { write: true });
 
-  // ---------- Trash bin ----------
+  // ---------- Trash ----------
   //   <book> / TRASH#household#<id>   or   TRASH#occasion#<id>
   // holds the deleted item and the occasion-list rows that went with it. The "ttl" attribute makes
   // DynamoDB remove it after TRASH_DAYS; since that can lag a day or two, expired items are also
@@ -617,7 +617,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
   async function mustGetTrash(user, params) {
     if (!TYPES[params.type]) throw new HttpError(404, 'Not found');
     const t = await repo.get(bk(user), trashSk(params.type, params.id));
-    if (!t || expired(t)) throw new HttpError(404, 'That item is no longer in the Trash bin');
+    if (!t || expired(t)) throw new HttpError(404, 'That item is no longer in the Trash');
     return t;
   }
 

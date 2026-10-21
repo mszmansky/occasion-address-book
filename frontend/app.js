@@ -12,6 +12,7 @@ const cfg = window.APP_CONFIG ?? {};
 const root = document.getElementById('root');
 const modal = document.getElementById('modal');
 const toastEl = document.getElementById('toast');
+const confirmEl = document.getElementById('confirm-modal'); // the app's own confirmation dialog (opens on top of other dialogs)
 const APP_NAME = 'Occasions Address Book';
 
 if (!cfg.apiUrl || !cfg.region || !cfg.userPoolId || !cfg.userPoolClientId) {
@@ -114,6 +115,30 @@ async function switchBook(id) {
   closeFilterPanel();
   await loadAll();
   window.scrollTo(0, 0);
+}
+
+/**
+ * Asks before doing something, in the app's own style. Resolves true for the confirm button, false
+ * for Cancel, Escape or a click outside.
+ *   askConfirm({ title, text, ok: 'Move to Trash', danger: true })
+ */
+function askConfirm({ title, text = '', ok = 'OK', cancel = 'Cancel', danger = false }) {
+  return new Promise((resolve) => {
+    confirmEl.innerHTML = `<form method="dialog" class="confirm-box">
+      <h2 id="confirm-title">${esc(title)}</h2>
+      ${text ? `<p id="confirm-text">${esc(text)}</p>` : ''}
+      <div class="confirm-buttons">
+        <button type="submit" value="no" class="btn">${esc(cancel)}</button>
+        <button type="submit" value="yes" class="btn ${danger ? 'danger-solid' : 'primary'}" data-confirm-ok>${esc(ok)}</button>
+      </div>
+    </form>`;
+    const done = (yes) => { confirmEl.onclose = null; if (confirmEl.open) confirmEl.close(); resolve(yes); };
+    confirmEl.onclose = () => done(confirmEl.returnValue === 'yes');
+    confirmEl.onclick = (e) => { if (e.target === confirmEl) done(false); }; // the backdrop
+    confirmEl.returnValue = '';
+    confirmEl.showModal();
+    confirmEl.querySelector('[data-confirm-ok]').focus();
+  });
 }
 
 function toast(msg, isErr = false) {
@@ -324,7 +349,7 @@ function userChip(email) {
     </button>
     <div class="menu" id="user-menu-list" role="menu" hidden>
       <button type="button" role="menuitem" data-action="settings">Settings</button>
-      <button type="button" role="menuitem" data-action="trash">Trash bin</button>
+      <button type="button" role="menuitem" data-action="trash">Trash</button>
       <hr>
       <button type="button" role="menuitem" data-action="signout">Sign out</button>
     </div>
@@ -518,7 +543,7 @@ document.addEventListener('mousedown', (e) => {
   if (filterPanelScope && !e.target.closest('.filter-panel, .filter-btn, .filter-chips')) closeFilterPanel();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && filterPanelScope && !modal.open) { closeFilterPanel(); document.querySelector('.filter-btn')?.focus(); }
+  if (e.key === 'Escape' && filterPanelScope && !modal.open && !confirmEl.open) { closeFilterPanel(); document.querySelector('.filter-btn')?.focus(); }
 });
 
 function renderHouseholdList() {
@@ -548,7 +573,7 @@ function householdCard(h) {
   </button>`;
 }
 
-// ---------- Trash bin: deleted households and occasions, kept 30 days ----------
+// ---------- Trash: deleted households and occasions, kept 30 days ----------
 const TRASH_DAYS = 30;
 const daysLeft = (iso) => Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000));
 
@@ -567,12 +592,12 @@ async function trashModal() {
         <button type="button" class="btn sm ghost danger" data-action="trash-forever" data-type="${t.type}" data-id="${esc(t.id)}" data-name="${esc(t.name)}" title="Delete forever" aria-label="Delete ${esc(t.name)} forever">${TRASH}</button></span>` : ''}
     </div>`;
   };
-  openModal('Trash bin', items.length
+  openModal('Trash', items.length
     ? `<div class="trash-list">${items.map(row).join('')}</div>`
-    : '<p class="muted" style="margin:0">The Trash bin is empty.</p>', {
+    : '<p class="muted" style="margin:0">The Trash is empty.</p>', {
     form: 'trash',
     wide: true,
-    foot: `<div>${items.length && canEdit() ? '<button type="button" class="btn danger" data-action="trash-empty">Empty trash bin</button>' : ''}</div>
+    foot: `<div>${items.length && canEdit() ? '<button type="button" class="btn danger" data-action="trash-empty">Empty trash</button>' : ''}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Close</button></div>`,
   });
 }
@@ -1319,7 +1344,7 @@ async function sendInvites(form) {
     .filter((t) => byId.get(t.householdId) && allEmails(byId.get(t.householdId)).length && (form.elements.who.value === 'all' || !t.invitedAt))
     .map((t) => t.householdId);
   if (!ids.length) return modalError('Nobody to send to.');
-  if (!confirm(`Email the invitation to ${plural(ids.length, 'household')} now?`)) return undefined;
+  if (!await askConfirm({ title: 'Send invitations?', text: `Email the invitation to ${plural(ids.length, 'household')} now.`, ok: 'Send' })) return undefined;
   const prog = modal.querySelector('[data-progress]');
   prog.hidden = false;
   const results = [];
@@ -1678,7 +1703,7 @@ async function finishMfaEnroll(btn) {
 }
 
 async function disableMfa(btn) {
-  if (!confirm('Turn off two-step verification? Signing in will only need your password.')) return;
+  if (!await askConfirm({ title: 'Turn off two-step verification?', text: 'Signing in will only need your password.', ok: 'Turn off', danger: true })) return;
   await withBusy(btn, async () => {
     await auth.disableMfa();
     toast('Two-step verification is off');
@@ -1727,7 +1752,7 @@ document.addEventListener('click', async (e) => {
     case 'settings-tab': settingsModal(el.dataset.tab); break;
     case 'remove-avatar': await removeAvatar(el); break;
     case 'unshare':
-      if (!confirm(`Stop sharing your address book with ${el.dataset.email}? They'll go back to their own.`)) break;
+      if (!await askConfirm({ title: 'Stop sharing?', text: `${el.dataset.email} will no longer see your address book and occasions.`, ok: 'Stop sharing', danger: true })) break;
       await withBusy(el, async () => {
         shares = (await api(`/shares/${encodeURIComponent(el.dataset.id)}`, { method: 'DELETE' })).shares;
         renderShareList();
@@ -1770,12 +1795,12 @@ document.addEventListener('click', async (e) => {
     }
     case 'delete-household': {
       const h = hhById().get(id);
-      if (!confirm(`Move ${h.labelName} to the Trash bin? You can restore them for ${TRASH_DAYS} days.`)) return;
+      if (!await askConfirm({ title: `Move ${h.labelName} to the Trash?`, text: `You can restore them for ${TRASH_DAYS} days.`, ok: 'Move to Trash', danger: true })) return;
       await withBusy(el, async () => {
         await api(`/households/${id}`, { method: 'DELETE' });
         state.households = state.households.filter((x) => x.id !== id);
         if (state.occ) state.occ.tags = state.occ.tags.filter((t) => t.householdId !== id);
-        closeModal(); toast(`${h.labelName} moved to the Trash bin`); render();
+        closeModal(); toast(`${h.labelName} moved to the Trash`); render();
       });
       break;
     }
@@ -1813,7 +1838,7 @@ document.addEventListener('click', async (e) => {
     case 'trash': setUserMenu(false); await trashModal(); break;
     case 'trash-restore': await restoreFromTrash(el); break;
     case 'trash-forever': {
-      if (!confirm(`Delete "${el.dataset.name}" forever? This can't be undone.`)) break;
+      if (!await askConfirm({ title: `Delete "${el.dataset.name}" forever?`, text: "This can't be undone.", ok: 'Delete forever', danger: true })) break;
       await withBusy(el, async () => {
         await api(`/trash/${el.dataset.type}/${encodeURIComponent(el.dataset.id)}`, { method: 'DELETE' });
         toast(`"${el.dataset.name}" deleted forever`);
@@ -1822,7 +1847,7 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'trash-empty':
-      if (!confirm("Empty the Trash bin? Everything in it is deleted forever. This can't be undone.")) break;
+      if (!await askConfirm({ title: 'Empty the Trash?', text: "Everything in it is deleted forever. This can't be undone.", ok: 'Empty trash', danger: true })) break;
       await withBusy(el, async () => {
         const res = await api('/trash', { method: 'DELETE' });
         toast(`Deleted ${plural(res.emptied, 'item')} forever`);
@@ -1830,12 +1855,12 @@ document.addEventListener('click', async (e) => {
       });
       break;
     case 'delete-occasion':
-      if (!confirm(`Move "${state.occ.occasion.name}" to the Trash bin? You can restore it, with its list, for ${TRASH_DAYS} days.`)) return;
+      if (!await askConfirm({ title: `Move "${state.occ.occasion.name}" to the Trash?`, text: `You can restore it, with its list, for ${TRASH_DAYS} days.`, ok: 'Move to Trash', danger: true })) return;
       await withBusy(el, async () => {
         const name = state.occ.occasion.name;
         await api(`/occasions/${state.occasionId}`, { method: 'DELETE' });
         state.occasionId = null; state.occ = null;
-        await refreshOccasions(); closeModal(); toast(`"${name}" moved to the Trash bin`); render();
+        await refreshOccasions(); closeModal(); toast(`"${name}" moved to the Trash`); render();
       });
       break;
     case 'occ-filter': state.occFilter = el.dataset.filter; render(); break;
@@ -1860,7 +1885,7 @@ document.addEventListener('click', async (e) => {
       const add = Boolean(el.dataset.add);
       const ids = shownRecipients().map((h) => h.id).filter((x) => (add ? !tags.has(x) : tags.has(x)));
       if (!ids.length) return toast(add ? 'Everyone shown is already on the list' : 'Nobody shown is on the list');
-      if (!add && !confirm(`Remove ${plural(ids.length, 'household')} from this occasion?`)) return;
+      if (!add && !await askConfirm({ title: `Remove ${plural(ids.length, 'household')} from this occasion?`, text: 'They stay in your address book.', ok: 'Remove', danger: true })) return;
       await withBusy(el, async () => {
         for (let i = 0; i < ids.length; i += 1000) await setTags(add ? ids.slice(i, i + 1000) : [], add ? [] : ids.slice(i, i + 1000));
         render();

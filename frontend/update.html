@@ -74,7 +74,12 @@
       document.getElementById('back')?.addEventListener('click', () => { form.hidden = true; choice.hidden = false; document.getElementById('same').focus(); });
       document.getElementById('same')?.addEventListener('click', async (e) => {
         e.target.disabled = true;
-        try { await call('POST', { unchanged: true }); done(true, from); } catch (x) { e.target.disabled = false; alert(x.message); }
+        try { await call('POST', { unchanged: true }); done(true, from); } catch (x) {
+          e.target.disabled = false;
+          let msg = document.getElementById('same-err');
+          if (!msg) { msg = Object.assign(document.createElement('p'), { id: 'same-err', className: 'error' }); e.target.closest('.row-gap').after(msg); }
+          msg.textContent = x.message;
+        }
       });
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
