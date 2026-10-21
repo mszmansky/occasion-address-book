@@ -51,7 +51,7 @@
         <h1>Is this the right address for ${esc(d.labelName)}?</h1>
         <p class="muted small" style="margin:0">${esc(from)} uses it for cards and invitations. Only they will see what you send.</p>
         ${has ? `<div class="pending-box" style="margin-top:16px"><div>${lines(a).map(esc).join('<br>')}</div></div>
-          <div class="row-gap" style="margin-top:12px"><button class="btn primary" id="same">Yes, that's right</button><button class="btn" id="change">No, update it</button></div>` : ''}
+          <div class="row-gap" id="choice" style="margin-top:12px"><button class="btn primary" id="same">Yes, that's right</button><button class="btn" id="change">No, update it</button></div>` : ''}
         <form id="form" class="stack" ${has ? 'hidden' : ''} style="margin-top:16px">
           <label>Street address<input name="line1" autocomplete="address-line1" maxlength="120" required value="${esc(a.line1)}"></label>
           <label>Apt, suite, unit <span class="muted">(optional)</span><input name="line2" autocomplete="address-line2" maxlength="120" value="${esc(a.line2)}"></label>
@@ -64,10 +64,14 @@
           <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2" maxlength="500" placeholder="e.g. We moved in June!"></textarea></label>
           <p class="error" id="err" hidden></p>
           <button class="btn primary" type="submit">Send my address</button>
+          ${has ? '<p class="small" style="margin:0;text-align:center"><button type="button" class="link" id="back">Never mind, the address above is right</button></p>' : ''}
         </form>`;
       const form = document.getElementById('form');
       const err = document.getElementById('err');
-      document.getElementById('change')?.addEventListener('click', () => { form.hidden = false; form.line1.focus(); });
+      const choice = document.getElementById('choice');
+      // Updating: the form replaces the Yes / No buttons, so "Send my address" is the only next step.
+      document.getElementById('change')?.addEventListener('click', () => { choice.hidden = true; form.hidden = false; form.line1.focus(); });
+      document.getElementById('back')?.addEventListener('click', () => { form.hidden = true; choice.hidden = false; document.getElementById('same').focus(); });
       document.getElementById('same')?.addEventListener('click', async (e) => {
         e.target.disabled = true;
         try { await call('POST', { unchanged: true }); done(true, from); } catch (x) { e.target.disabled = false; alert(x.message); }
