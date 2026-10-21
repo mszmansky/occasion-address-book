@@ -19,8 +19,10 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
   - a shared email and phone;
   - groups (Family, Neighbors, Work…) and notes.
 
+  Email and phone belong to each person; if people share an email, it goes on each of them (invitations and address checks still send one email per household). Households saved before this keep working: their old shared email and home phone move onto the people the next time you open and save them.
+
   You can search and filter by group.
-- **Import / export CSV.** Bring in a list from Excel, Numbers or Google Sheets. Columns are guessed from the headers ("First Name", "Spouse", "Zip Code"…) and can be changed before importing. The app's own export imports back unchanged.
+- **Import / export CSV.** Bring in a list from Excel, Numbers or Google Sheets. Columns are guessed from the headers ("First Name", "Spouse", "Zip Code"…) and can be changed before importing. The app's own export imports back unchanged; its People column keeps each person's email, e.g. `John Smith <john@x.com>; Mary Smith`.
 - **Occasions.** Create one ("Christmas cards 2026"), tick who it's for and track who's been mailed. You can tick households one at a time, or everyone shown after a search or group filter. A new occasion can start from an earlier one's list, so next year's cards begin with this year's list.
 - **Printing.** Makes a PDF in the browser (jsPDF):
   - Avery 5160 / 8160 address labels, 30 per sheet, with "start at label N" for a partly used sheet;

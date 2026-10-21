@@ -23,7 +23,8 @@ test('guesses columns from a typical holiday card list', () => {
   assert.equal(h.greeting, 'John and Mary');
   assert.deepEqual(h.groups, ['Family', 'Christmas']);
   assert.equal(h.members.length, 2);
-  assert.deepEqual(h.emails, ['john@x.com']);
+  assert.deepEqual(h.members.map((m) => m.email), ['john@x.com', 'john@x.com'], 'the email goes on the people');
+  assert.equal(h.emails, undefined);
   // What the importer builds is accepted by the API's validation.
   assert.equal(parseHousehold(h).labelName, 'John & Mary Smith');
 });
@@ -42,8 +43,9 @@ test('export imports back the same', () => {
   assert.equal(h.formalName, 'Mr. and Mrs. John Smith');
   assert.equal(h.greeting, 'John and Mary');
   assert.deepEqual(h.address, original[0].address);
-  assert.deepEqual(h.emails, ['smiths@x.com', 'john@x.com']);
-  assert.deepEqual(h.members.map((m) => [m.firstName, m.lastName]), [['John', 'Smith'], ['Mary Ann', 'Smith']]);
+  // Each person keeps their own email; the old household email comes back on the people too.
+  assert.deepEqual(h.members.map((m) => [m.firstName, m.lastName, m.email]), [['John', 'Smith', 'john@x.com'], ['Mary Ann', 'Smith', 'smiths@x.com']]);
+  assert.deepEqual(h.emails, []);
   assert.deepEqual(h.groups, ['Family']);
   assert.equal(h.notes, 'Says "hi", always');
 });
@@ -98,4 +100,30 @@ test('a household imported before the formal-name default still prints "Mr. and 
   assert.equal(effectiveFormalName({ ...abbotts, formalName: 'Dr. and Mrs. Todd Abbott' }), 'Dr. and Mrs. Todd Abbott');
   const rose = { labelName: 'Grandma Rose', greeting: 'Rose', members: [{ firstName: 'Rose', lastName: 'Smith' }] };
   assert.equal(envelopeName({ ...rose, formalName: effectiveFormalName(rose) }, 'formal'), 'Grandma Rose');
+});
+
+test('the old household email and home phone move onto the people', async () => {
+  const { peopleWithHouseholdContact } = await import('../../frontend/csv-core.js');
+  // One shared email: everyone without an email gets it; the phone goes to the first person without one.
+  let people = peopleWithHouseholdContact({ emails: ['smiths@x.com'], phone: '248-555-0100',
+    members: [{ firstName: 'John', lastName: 'Smith' }, { firstName: 'Mary', lastName: 'Smith', email: 'mary@x.com' }] });
+  assert.deepEqual(people.map((m) => [m.firstName, m.email, m.phone]), [['John', 'smiths@x.com', '248-555-0100'], ['Mary', 'mary@x.com', undefined]]);
+  // Two names in one box split first, then both get the shared email.
+  people = peopleWithHouseholdContact({ emails: ['pp@x.com'], members: [{ firstName: 'Peter and Paula', lastName: 'Bartlett' }] });
+  assert.deepEqual(people.map((m) => [m.firstName, m.email]), [['Peter', 'pp@x.com'], ['Paula', 'pp@x.com']]);
+  // No people yet: one row holds the email, waiting for a name.
+  assert.deepEqual(peopleWithHouseholdContact({ emails: ['lee@x.com'] }), [{ email: 'lee@x.com' }]);
+  // Several emails: handed out in order, none dropped.
+  people = peopleWithHouseholdContact({ emails: ['a@x.com', 'b@x.com', 'c@x.com'], members: [{ firstName: 'A' }, { firstName: 'B' }] });
+  assert.deepEqual(people.map((m) => m.email), ['a@x.com', 'b@x.com', 'c@x.com']);
+  // Nothing to move: unchanged.
+  assert.deepEqual(peopleWithHouseholdContact({ members: [{ firstName: 'Rose' }] }), [{ firstName: 'Rose' }]);
+  assert.deepEqual(peopleWithHouseholdContact({}), []);
+
+  // CSV import puts email and phone on the people.
+  const rows = parseCsv('First Names,Last Name,Email,Phone\nTodd and Kim,Abbott,abbotts@x.com,555-0100\n');
+  const { households } = buildHouseholds(rows.slice(1), guessMapping(rows[0]));
+  const h = parseHousehold(households[0]);
+  assert.deepEqual(h.members.map((m) => [m.firstName, m.email, m.phone]), [['Todd', 'abbotts@x.com', '555-0100'], ['Kim', 'abbotts@x.com', undefined]]);
+  assert.deepEqual([h.emails, h.phone], [[], undefined]);
 });

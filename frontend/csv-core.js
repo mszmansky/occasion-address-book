@@ -54,6 +54,27 @@ export function effectiveFormalName(h) {
   return defaultFormalName(h.greeting, householdLastName({ ...h, members: splitMembers(h.members ?? []) }));
 }
 
+/**
+ * People for the edit screen, with the household's old shared email and home phone moved onto them
+ * (those fields are gone): the email goes to every person without one, the phone to the first person
+ * without one. A household with an email but no people gets one person row holding the email.
+ */
+export function peopleWithHouseholdContact(h) {
+  const people = splitMembers(h.members ?? []).map((m) => ({ ...m }));
+  const shared = [...new Set((h.emails ?? []).map((e) => String(e).trim()).filter(Boolean))];
+  if (!people.length && (shared.length || h.phone)) people.push({});
+  // One shared email: give it to everyone missing one. Several: hand them out in order, the rest to the last person.
+  if (shared.length === 1) for (const m of people) m.email ||= shared[0];
+  else {
+    for (const e of shared.filter((x) => !people.some((m) => m.email === x))) {
+      const m = people.find((x) => !x.email);
+      if (m) m.email = e; else people.push({ email: e }); // never drop an address: it gets its own row to name
+    }
+  }
+  if (h.phone) { const m = people.find((x) => !x.phone); if (m) m.phone = h.phone; }
+  return people;
+}
+
 /** RFC 4180-ish CSV parser: quoted fields, doubled quotes, CRLF/LF, a leading BOM. */
 export function parseCsv(text) {
   const rows = [];
@@ -142,9 +163,13 @@ export function buildHouseholds(rows, mapping) {
     if (v.spouse) members.push({ firstName: v.spouse, lastName: v.lastName });
     if (!members.length && v.people) {
       // "John Smith; Mary Smith": last word is the last name.
-      for (const full of v.people.split(/[;|]/).map((x) => x.trim()).filter(Boolean).slice(0, 20)) {
+      // "John Smith <john@x.com>; Mary Smith": last word is the last name; an email in <> is that person's.
+      for (const entry of v.people.split(/[;|]/).map((x) => x.trim()).filter(Boolean).slice(0, 20)) {
+        const email = /<([^<>\s]+@[^<>\s]+)>/.exec(entry)?.[1];
+        const full = entry.replace(/<[^>]*>/g, '').trim();
         const parts = full.split(/\s+/);
-        members.push(parts.length > 1 ? { firstName: parts.slice(0, -1).join(' '), lastName: parts.at(-1) } : { firstName: full });
+        const person = parts.length > 1 ? { firstName: parts.slice(0, -1).join(' '), lastName: parts.at(-1) } : { firstName: full };
+        members.push(email ? { ...person, email } : person);
       }
     }
     const greeting = v.greeting || (coupleFirst && coupleFirst !== labelName ? coupleFirst.replace(' & ', ' and ') : undefined);
@@ -153,9 +178,12 @@ export function buildHouseholds(rows, mapping) {
       formalName: v.formalName || defaultFormalName(greeting, householdLastName({ labelName, members })) || undefined,
       greeting,
       address: { line1: v.line1, line2: v.line2, city: v.city, state: v.state, zip: v.zip, country: v.country },
-      emails: (v.email ?? '').split(/[;,\s]+/).filter(Boolean).slice(0, 10),
-      phone: v.phone || undefined,
-      members: splitMembers(members).slice(0, 20),
+      // Email and phone go on the people (a shared email on each of them).
+      ...(() => {
+        const contact = { emails: (v.email ?? '').split(/[;,\s]+/).filter(Boolean).slice(0, 10), phone: v.phone || undefined };
+        const people = splitMembers(members).slice(0, 20);
+        return people.length ? { members: peopleWithHouseholdContact({ members: people, ...contact }) } : { members: [], ...contact };
+      })(),
       groups: v.groups ? v.groups.split(/[;,|]/).map((g) => g.trim()).filter(Boolean) : [],
       notes: v.notes || undefined,
     });
@@ -165,14 +193,15 @@ export function buildHouseholds(rows, mapping) {
 
 /** The address book as CSV rows (one per household), readable by this importer and by spreadsheets. */
 export function householdsToCsv(list) {
+  // People carry their own email: "John Smith <john@x.com>; Mary Smith". Email and Phone hold only
+  // what's still saved on the household itself (from before those moved onto the people).
   const header = ['Name on envelope', 'Formal name', 'Greeting', 'Street address', 'Address line 2', 'City', 'State', 'ZIP', 'Country',
-    'Email', 'Phone', 'People', 'Groups', 'Notes'];
+    'People', 'Email', 'Phone', 'Groups', 'Notes'];
   const rows = list.map((h) => {
     const a = h.address ?? {};
-    const people = (h.members ?? []).map((m) => [m.firstName, m.lastName].filter(Boolean).join(' ')).join('; ');
-    const allEmails = [...new Set([...(h.emails ?? []), ...(h.members ?? []).map((m) => m.email)].filter(Boolean))].join('; ');
+    const people = (h.members ?? []).map((m) => [[m.firstName, m.lastName].filter(Boolean).join(' '), m.email && `<${m.email}>`].filter(Boolean).join(' ')).join('; ');
     return [h.labelName, h.formalName, h.greeting, a.line1, a.line2, a.city, a.state, a.zip, a.country,
-      allEmails, h.phone, people, (h.groups ?? []).join('; '), h.notes];
+      people, (h.emails ?? []).join('; '), h.phone, (h.groups ?? []).join('; '), h.notes];
   });
   return toCsv([header, ...rows]);
 }

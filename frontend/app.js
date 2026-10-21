@@ -4,7 +4,7 @@ import {
 } from './print-core.js';
 import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
-  defaultFormalName, householdLastName, effectiveFormalName,
+  defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact,
 } from './csv-core.js';
 
 const cfg = window.APP_CONFIG ?? {};
@@ -619,13 +619,10 @@ function householdModal(h) {
     </fieldset>
     <fieldset><legend>People</legend>
       <div class="member-head small muted"><span>First</span><span>Last</span><span>Email</span><span>Phone</span><span>Birthday</span><span></span></div>
-      <div data-members>${(h.members?.length ? splitMembers(h.members) : [{}]).map(memberRow).join('')}</div>
+      <div data-members>${(peopleWithHouseholdContact(h).length ? peopleWithHouseholdContact(h) : [{}]).map(memberRow).join('')}</div>
       <button type="button" class="btn sm" data-action="add-member">+ Person</button>
     </fieldset>
-    <div class="grid-2">
-      <label>Household email <span class="muted">(shared, optional)</span><input name="emails" value="${val((h.emails ?? []).join(', '))}" placeholder="smiths@example.com"></label>
-      <label>Home phone <span class="muted">(optional)</span><input name="phone" type="tel" maxlength="30" value="${val(h.phone)}"></label>
-    </div>
+    <p class="hint" style="margin-top:-4px">If people share an email address, put it on each of them; invitations and address checks still send one email per household.</p>
     <div>
       <div class="label-like" id="groups-label">Groups</div>
       ${groupChipsField(h.groups ?? [])}
@@ -668,8 +665,8 @@ function readHousehold(form) {
     greeting: form.greeting.value.trim(),
     address: readAddress(form),
     members,
-    emails: form.emails.value.trim(),
-    phone: form.phone.value.trim(),
+    emails: [], // the shared email and home phone now live on the people
+    phone: '',
     groups: groupValues(form),
     notes: form.notes.value.trim(),
   };
