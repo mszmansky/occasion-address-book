@@ -779,3 +779,10 @@ legend { font-weight: 600; font-size: 13px; color: var(--ink-2); padding: 0 6px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, .2);
 }
 label > span.hint { display: block; }
+
+/* keyboard shortcut hint on a button */
+.btn kbd {
+  font: 600 11px/1 var(--mono); padding: 2px 5px; border-radius: 4px; margin-left: 2px;
+  background: color-mix(in srgb, currentColor 18%, transparent); border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+}
+@media (hover: none) { .btn kbd { display: none; } }

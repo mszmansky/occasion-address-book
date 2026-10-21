@@ -254,7 +254,7 @@ function renderPeople() {
     return `<div class="panel empty">
       <h2>Start your address book</h2>
       <p>Add a household for each envelope you send: a family at one address, a couple, or one person. Then tag them for occasions like Christmas cards or a party, and print labels or envelopes.</p>
-      <div class="row-gap"><button class="btn primary" data-action="add-household">+ Household</button><button class="btn" data-action="import">Import a spreadsheet (CSV)</button></div>
+      <div class="row-gap"><button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button><button class="btn" data-action="import">Import a spreadsheet (CSV)</button></div>
     </div>`;
   }
   return `
@@ -263,7 +263,7 @@ function renderPeople() {
     <div class="actions">
       <button class="btn" data-action="import">Import CSV</button>
       <button class="btn" data-action="export">Export CSV</button>
-      <button class="btn primary" data-action="add-household">+ Household</button>
+      <button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button>
     </div>
   </div>
   ${pending ? `<div class="notice"><span><b>${plural(pending, 'household')}</b> sent back ${pending === 1 ? 'an address' : 'addresses'} to review.</span>
@@ -337,7 +337,18 @@ function showNoteTip(icon) {
   noteTip.style.left = `${left}px`;
   noteTip.style.top = `${top}px`;
 }
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideNoteTip(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideNoteTip();
+  // N on the Address book screen: new household. Not while typing, with a dialog open, or with Cmd/Ctrl/Alt.
+  if (e.key.toLowerCase() === 'n' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat
+    && state.session && state.view === 'people' && !modal.open
+    && !e.target.closest?.('input, textarea, select, [contenteditable]')) {
+    e.preventDefault();
+    hideNoteTip();
+    setUserMenu(false);
+    householdModal();
+  }
+});
 window.addEventListener('scroll', hideNoteTip, true);
 window.addEventListener('resize', hideNoteTip);
 
