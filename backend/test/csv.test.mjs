@@ -134,3 +134,20 @@ test('CSV headers: the new greeting names and the old ones both import', () => {
   assert.deepEqual(guessMapping(['Name on envelope', 'Formal name', 'Greeting']), ['labelName', 'formalName', 'greeting']);
   assert.equal(householdsToCsv([]).split('\r\n')[0].split(',').slice(0, 3).join(','), 'Household Greeting,Formal Greeting,Informal Greeting');
 });
+
+test('people keep their phones through export and import', () => {
+  const h = { labelName: 'The Smith Family', address: {}, members: [
+    { firstName: 'John', lastName: 'Smith', email: 'john@example.com', phone: '(248) 555-0101' },
+    { firstName: 'Mary', lastName: 'Smith', phone: '586-555-0123' },
+    { firstName: 'Ann', lastName: 'Smith' },
+  ] };
+  const rows = parseCsv(householdsToCsv([h]));
+  assert.equal(rows[1][9], 'John Smith <john@example.com> ((248) 555-0101); Mary Smith (586-555-0123); Ann Smith');
+  const { households } = buildHouseholds(rows.slice(1), guessMapping(rows[0]));
+  const m = households[0].members.map(({ firstName, lastName, email, phone }) => ({ firstName, lastName, email, phone }));
+  assert.deepEqual(m, [
+    { firstName: 'John', lastName: 'Smith', email: 'john@example.com', phone: '(248) 555-0101' },
+    { firstName: 'Mary', lastName: 'Smith', email: undefined, phone: '586-555-0123' },
+    { firstName: 'Ann', lastName: 'Smith', email: undefined, phone: undefined },
+  ]);
+});

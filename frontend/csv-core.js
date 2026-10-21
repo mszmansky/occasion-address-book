@@ -163,13 +163,18 @@ export function buildHouseholds(rows, mapping) {
     if (v.spouse) members.push({ firstName: v.spouse, lastName: v.lastName });
     if (!members.length && v.people) {
       // "John Smith; Mary Smith": last word is the last name.
-      // "John Smith <john@x.com>; Mary Smith": last word is the last name; an email in <> is that person's.
+      // "John Smith <john@x.com> (248-555-0101); Mary Smith": last word is the last name; an email in <>
+      // and a phone in () are that person's.
       for (const entry of v.people.split(/[;|]/).map((x) => x.trim()).filter(Boolean).slice(0, 20)) {
         const email = /<([^<>\s]+@[^<>\s]+)>/.exec(entry)?.[1];
-        const full = entry.replace(/<[^>]*>/g, '').trim();
-        const parts = full.split(/\s+/);
+        const rest = entry.replace(/<[^>]*>/g, ' ');
+        // The phone is the bracketed part at the end; it may hold its own brackets: "((248) 555-0101)".
+        const phoneMatch = /\((.*\d.*)\)\s*$/.exec(rest);
+        const phone = phoneMatch?.[1].trim();
+        const full = (phoneMatch ? rest.slice(0, phoneMatch.index) : rest).replace(/\s+/g, ' ').trim();
+        const parts = full.split(' ');
         const person = parts.length > 1 ? { firstName: parts.slice(0, -1).join(' '), lastName: parts.at(-1) } : { firstName: full };
-        members.push(email ? { ...person, email } : person);
+        members.push({ ...person, ...(email ? { email } : {}), ...(phone ? { phone } : {}) });
       }
     }
     const greeting = v.greeting || (coupleFirst && coupleFirst !== labelName ? coupleFirst.replace(' & ', ' and ') : undefined);
@@ -193,13 +198,14 @@ export function buildHouseholds(rows, mapping) {
 
 /** The address book as CSV rows (one per household), readable by this importer and by spreadsheets. */
 export function householdsToCsv(list) {
-  // People carry their own email: "John Smith <john@x.com>; Mary Smith". Email and Phone hold only
+  // People carry their own email and phone: "John Smith <john@x.com> (248-555-0101); Mary Smith". Email and Phone hold only
   // what's still saved on the household itself (from before those moved onto the people).
   const header = ['Household Greeting', 'Formal Greeting', 'Informal Greeting', 'Street address', 'Address line 2', 'City', 'State', 'ZIP', 'Country',
     'People', 'Email', 'Phone', 'Groups', 'Notes'];
   const rows = list.map((h) => {
     const a = h.address ?? {};
-    const people = (h.members ?? []).map((m) => [[m.firstName, m.lastName].filter(Boolean).join(' '), m.email && `<${m.email}>`].filter(Boolean).join(' ')).join('; ');
+    const people = (h.members ?? []).map((m) => [[m.firstName, m.lastName].filter(Boolean).join(' '), m.email && `<${m.email}>`, m.phone && `(${m.phone})`]
+      .filter(Boolean).join(' ')).join('; ');
     return [h.labelName, h.formalName, h.greeting, a.line1, a.line2, a.city, a.state, a.zip, a.country,
       people, (h.emails ?? []).join('; '), h.phone, (h.groups ?? []).join('; '), h.notes];
   });
