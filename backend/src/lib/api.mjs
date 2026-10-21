@@ -201,16 +201,39 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
   const bk = (user) => user.book.pk;        // the address book they work in: their own, or one shared with them
 
   // ---------- sharing ----------
-  //   USER#<owner> / SHARE#<email>   who the owner shares with, and how (edit or view)
-  //   SHARED#<email> / BOOK          the same share, found from the other person's side at sign-in
+  // Shares are tied to each person's permanent account id (Cognito "sub"), never to an email, so
+  // either side can change their sign-in email without re-sharing.
+  //   USER#<owner> / SHARE#<member sub>   who the owner shares with, and how (edit or view)
+  //   MEMBER#<member sub> / BOOK          the same share, found from the member's side at sign-in
+  // The emails stored on these are only for display; they're refreshed whenever the person signs in.
   // Someone with a share works in the owner's book; their own (empty) book is set aside.
-  const sharePk = (email) => `SHARED#${email}`;
+  const memberPk = (sub) => `MEMBER#${sub}`;
+  const legacyPk = (email) => `SHARED#${email}`; // shares made before they were tied to account ids
+
+  // Moves a share saved under the member's email (the first version of sharing) onto their account id.
+  async function migrateLegacyShare(user) {
+    const old = await repo.get(legacyPk(user.email), 'BOOK');
+    if (!old) return null;
+    const ownerPk = userPk(old.ownerSub);
+    const oldRow = await repo.get(ownerPk, `SHARE#${user.email}`);
+    const m = { PK: memberPk(user.sub), SK: 'BOOK', memberSub: user.sub, email: user.email, role: old.role, ownerSub: old.ownerSub, sharedAt: old.sharedAt };
+    await repo.batchPut([m, { PK: ownerPk, SK: `SHARE#${user.sub}`, memberSub: user.sub, email: user.email, role: old.role, sharedAt: old.sharedAt, invited: oldRow?.invited }]);
+    await repo.batchDel([{ PK: legacyPk(user.email), SK: 'BOOK' }, ...(oldRow ? [{ PK: ownerPk, SK: `SHARE#${user.email}` }] : [])]);
+    return m;
+  }
+
   async function resolveBook(user) {
-    const m = await repo.get(sharePk(user.email), 'BOOK');
-    if (m && m.ownerSub !== user.sub) {
-      return { pk: userPk(m.ownerSub), ownerSub: m.ownerSub, role: m.role, ownerName: m.ownerName, ownerEmail: m.ownerEmail };
+    let m = await repo.get(memberPk(user.sub), 'BOOK');
+    if (!m) m = await migrateLegacyShare(user);
+    if (!m || m.ownerSub === user.sub) return { pk: userPk(user.sub), ownerSub: user.sub, role: 'owner' };
+    // Keep the email the owner sees current, whatever the member signs in with now.
+    if (m.email !== user.email) {
+      const row = await repo.get(userPk(m.ownerSub), `SHARE#${user.sub}`);
+      await repo.batchPut([{ ...m, email: user.email }, ...(row ? [{ ...row, email: user.email }] : [])]);
     }
-    return { pk: userPk(user.sub), ownerSub: user.sub, role: 'owner' };
+    // The owner's current name and email, from their profile (kept up to date at their own sign-in).
+    const owner = (await repo.get(userPk(m.ownerSub), 'PROFILE')) ?? {};
+    return { pk: userPk(m.ownerSub), ownerSub: m.ownerSub, role: m.role, ownerName: fullName(owner), ownerEmail: owner.email ?? '' };
   }
   const canEdit = (user) => user.book.role === 'owner' || user.book.role === 'edit';
 
@@ -276,34 +299,46 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
   });
 
   // ---------- sharing (owner only) ----------
-  const shareView = (sh) => ({ email: sh.email, role: sh.role, sharedAt: sh.sharedAt, invited: sh.invited || undefined });
+  const shareView = (sh) => ({ id: sh.memberSub ?? sh.email, email: sh.email, role: sh.role, sharedAt: sh.sharedAt, invited: sh.invited || undefined });
+  const listShares = async (user) => (await repo.query(pk(user), 'SHARE#')).map(shareView).sort((x, y) => x.email.localeCompare(y.email));
   const parseRole = (r) => {
     if (!['edit', 'view'].includes(r)) throw new HttpError(400, 'Choose "Can edit" or "View only"');
     return r;
   };
+  // The owner's row and the member's row for one share (rows from the first, email-keyed version included).
+  async function shareRows(user, id) {
+    const row = await repo.get(pk(user), `SHARE#${id}`);
+    if (!row) throw new HttpError(404, 'Not shared with that person');
+    const mKey = row.memberSub ? { PK: memberPk(row.memberSub), SK: 'BOOK' } : { PK: legacyPk(row.email), SK: 'BOOK' };
+    const m = await repo.get(mKey.PK, mKey.SK);
+    return { row, m: m?.ownerSub === user.sub ? m : null, mKey };
+  }
 
-  route('GET', '/shares', async ({ user }) => ({
-    shares: (await repo.query(pk(user), 'SHARE#')).map(shareView).sort((a, b) => a.email.localeCompare(b.email)),
-  }), { owner: true });
+  route('GET', '/shares', async ({ user }) => {
+    await getProfile(user); // keeps the owner's email current for the people they share with
+    return { shares: await listShares(user) };
+  }, { owner: true });
 
   route('POST', '/shares', async ({ user, body }) => {
+    if (!directory) throw new HttpError(503, 'Sharing is not set up');
     const email = (str(body.email, 'Email', { max: 254, required: true }) ?? '').toLowerCase();
     if (!EMAIL.test(email)) throw new HttpError(400, `"${email}" is not a valid email`);
     if (email === user.email) throw new HttpError(400, "That's your own email");
     const role = parseRole(body.role);
-    const existing = await repo.get(sharePk(email), 'BOOK');
-    if (existing && existing.ownerSub !== user.sub) throw new HttpError(409, `${email} already has another address book shared with them`);
     if ((await repo.query(pk(user), 'SHARE#')).length >= 20) throw new HttpError(400, 'You can share with at most 20 people');
 
-    const profile = await getProfile(user);
-    const ownerName = fullName(profile) || '';
-    // No account yet? Cognito emails them a temporary password (sign-up is invite-only).
-    let invited = false;
-    if (directory) invited = (await directory.invite(email)).invited;
+    // Find their account (or create one and email them an invitation): the share follows that account.
+    const { sub, invited } = await directory.invite(email);
+    if (!sub) throw new HttpError(502, 'Could not find or create an account for that email. Please try again.');
+    if (sub === user.sub) throw new HttpError(400, "That's your own account");
+    const existing = await repo.get(memberPk(sub), 'BOOK');
+    if (existing && existing.ownerSub !== user.sub) throw new HttpError(409, `${email} already has another address book shared with them`);
+
+    const ownerName = fullName(await getProfile(user)) || '';
     const sharedAt = existing?.sharedAt ?? nowIso();
     await repo.batchPut([
-      { PK: pk(user), SK: `SHARE#${email}`, email, role, sharedAt, invited: invited || undefined },
-      { PK: sharePk(email), SK: 'BOOK', email, role, ownerSub: user.sub, ownerEmail: user.email, ownerName, sharedAt },
+      { PK: pk(user), SK: `SHARE#${sub}`, memberSub: sub, email, role, sharedAt, invited: invited || undefined },
+      { PK: memberPk(sub), SK: 'BOOK', memberSub: sub, email, role, ownerSub: user.sub, sharedAt },
     ]);
     if (!existing) {
       try {
@@ -312,24 +347,20 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
         log.error(e); // the share works either way; they'll see the book when they sign in
       }
     }
-    return { share: shareView({ email, role, sharedAt, invited }), shares: (await repo.query(pk(user), 'SHARE#')).map(shareView) };
+    return { share: shareView({ memberSub: sub, email, role, sharedAt, invited }), shares: await listShares(user) };
   }, { owner: true });
 
-  route('PUT', '/shares/:email', async ({ user, params, body }) => {
-    const email = params.email.toLowerCase();
-    const sh = await repo.get(pk(user), `SHARE#${email}`);
-    if (!sh) throw new HttpError(404, 'Not shared with that person');
+  route('PUT', '/shares/:id', async ({ user, params, body }) => {
     const role = parseRole(body.role);
-    const m = await repo.get(sharePk(email), 'BOOK');
-    await repo.batchPut([{ ...sh, role }, ...(m ? [{ ...m, role }] : [])]);
-    return { shares: (await repo.query(pk(user), 'SHARE#')).map(shareView) };
+    const { row, m } = await shareRows(user, params.id);
+    await repo.batchPut([{ ...row, role }, ...(m ? [{ ...m, role }] : [])]);
+    return { shares: await listShares(user) };
   }, { owner: true });
 
-  route('DELETE', '/shares/:email', async ({ user, params }) => {
-    const email = params.email.toLowerCase();
-    const m = await repo.get(sharePk(email), 'BOOK');
-    await repo.batchDel([{ PK: pk(user), SK: `SHARE#${email}` }, ...(m?.ownerSub === user.sub ? [{ PK: sharePk(email), SK: 'BOOK' }] : [])]);
-    return { shares: (await repo.query(pk(user), 'SHARE#')).map(shareView) };
+  route('DELETE', '/shares/:id', async ({ user, params }) => {
+    const { row, m, mKey } = await shareRows(user, params.id);
+    await repo.batchDel([{ PK: row.PK, SK: row.SK }, ...(m ? [mKey] : [])]);
+    return { shares: await listShares(user) };
   }, { owner: true });
 
   // ---------- profile photo (same as Vehicle Maintenance) ----------

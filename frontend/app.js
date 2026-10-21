@@ -1133,7 +1133,7 @@ async function sharingTab() {
         <label>Email<input type="email" name="shareEmail" autocomplete="off" placeholder="partner@example.com"></label>
         <label>Access${roleSelect('name="shareRole"', 'edit')}</label>
       </div>
-      <p class="hint">If they don't have an account yet, they'll get an invitation email with a temporary password. While someone has your book shared with them, they work in it instead of their own.</p>
+      <p class="hint">If they don't have an account yet, they'll get an invitation email with a temporary password. The share stays with their account, so it keeps working if they change their email. While someone has your book shared with them, they work in it instead of their own.</p>
     </fieldset>`, {
     form: 'share',
     foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button><button class="btn primary">Share</button></div>',
@@ -1148,8 +1148,8 @@ function renderShareList() {
   box.innerHTML = shares.length ? shares.map((sh) => `
     <div class="share-row">
       <div><div>${esc(sh.email)}</div><div class="small muted">Shared ${fmtDate(sh.sharedAt)}${sh.invited ? ' · invited' : ''}</div></div>
-      ${roleSelect(`data-share-role="${esc(sh.email)}" aria-label="Access for ${esc(sh.email)}"`, sh.role)}
-      <button type="button" class="btn sm danger" data-action="unshare" data-email="${esc(sh.email)}">Stop sharing</button>
+      ${roleSelect(`data-share-role="${esc(sh.id)}" data-email="${esc(sh.email)}" aria-label="Access for ${esc(sh.email)}"`, sh.role)}
+      <button type="button" class="btn sm danger" data-action="unshare" data-id="${esc(sh.id)}" data-email="${esc(sh.email)}">Stop sharing</button>
     </div>`).join('') : '<p class="muted small" style="margin:0">Not shared with anyone yet.</p>';
 }
 
@@ -1380,7 +1380,7 @@ document.addEventListener('click', async (e) => {
     case 'unshare':
       if (!confirm(`Stop sharing your address book with ${el.dataset.email}? They'll go back to their own.`)) break;
       await withBusy(el, async () => {
-        shares = (await api(`/shares/${encodeURIComponent(el.dataset.email)}`, { method: 'DELETE' })).shares;
+        shares = (await api(`/shares/${encodeURIComponent(el.dataset.id)}`, { method: 'DELETE' })).shares;
         renderShareList();
         toast(`Stopped sharing with ${el.dataset.email}`);
       });
@@ -1529,9 +1529,9 @@ document.addEventListener('change', (e) => {
   const k = t.dataset?.input;
   if (k === 'group') { state.group = t.value; renderHouseholdList(); }
   if (t.dataset?.shareRole) {
-    const email = t.dataset.shareRole;
+    const { email } = t.dataset;
     t.disabled = true;
-    api(`/shares/${encodeURIComponent(email)}`, { method: 'PUT', body: { role: t.value } })
+    api(`/shares/${encodeURIComponent(t.dataset.shareRole)}`, { method: 'PUT', body: { role: t.value } })
       .then((res) => { shares = res.shares; toast(`${email}: ${ROLE_LABEL[t.value]}`); })
       .catch((err) => { toast(err.message, true); renderShareList(); })
       .finally(() => { t.disabled = false; });

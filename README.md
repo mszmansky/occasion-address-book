@@ -117,8 +117,9 @@ The owner of an address book shares it from **Settings > Sharing** by email, cho
 - **Can edit:** everything the owner can do except change sharing. **View only:** look up, search, export and print; no changes and no emails. The API enforces this, not just the screens.
 - The return address belongs to the book, so everyone prints the same one. Name, photo, password, two-step verification and printer alignment stay personal.
 - A person can have one address book shared with them at a time.
+- Shares are tied to each person's account (their permanent Cognito id), not their email, so either person can change their sign-in email without re-sharing. The emails shown in the Sharing list update the next time that person signs in.
 
-Stored as `USER#<owner> / SHARE#<email>` (the owner's list) and `SHARED#<email> / BOOK` (looked up when that person signs in).
+Stored as `USER#<owner> / SHARE#<member id>` (the owner's list) and `MEMBER#<member id> / BOOK` (looked up when that person signs in). Shares made by the first, email-based version (`SHARED#<email>`) move over automatically the first time that person signs in.
 
 ### Custom domain
 

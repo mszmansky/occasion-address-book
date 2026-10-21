@@ -4,13 +4,24 @@ import { createApi, householdEmails } from '../src/lib/api.mjs';
 import { createCognitoVerifier } from '../src/lib/auth.mjs';
 import { createMemoryRepo, createFakeMailer, createFakeFiles, createTokenFactory, REGION, USER_POOL_ID, CLIENT_ID } from './helpers.mjs';
 
-function createFakeDirectory(existing = []) {
-  const users = new Set(existing);
+// Stand-in for the Cognito user pool: email -> permanent account id ("sub").
+function createFakeDirectory(existing = {}) {
+  const users = new Map(Object.entries(existing));
   const invited = [];
-  return { invited, async invite(email) { if (users.has(email)) return { invited: false, exists: true }; users.add(email); invited.push(email); return { invited: true }; } };
+  return {
+    invited, users,
+    async invite(email) {
+      if (users.has(email)) return { sub: users.get(email), invited: false, exists: true };
+      const sub = `user-${email.split('@')[0]}`;
+      users.set(email, sub);
+      invited.push(email);
+      return { sub, invited: true };
+    },
+    changeEmail(from, to) { const sub = users.get(from); users.delete(from); users.set(to, sub); },
+  };
 }
 
-async function setup({ mailer = createFakeMailer(), allowedEmails = '*', files = createFakeFiles(), directory = createFakeDirectory(['kim@example.com']) } = {}) {
+async function setup({ mailer = createFakeMailer(), allowedEmails = '*', files = createFakeFiles(), directory = createFakeDirectory({ 'kim@example.com': 'user-kim', 'mike@example.com': 'user-1' }) } = {}) {
   const repo = createMemoryRepo();
   const tokens = await createTokenFactory();
   let clock = new Date('2026-11-01T15:00:00Z');
@@ -280,7 +291,7 @@ test('sharing: edit and view-only access to the owner\'s book', async () => {
   assert.equal(res.body.share.invited, true);
   assert.deepEqual(directory.invited, ['joe@example.com']);
   assert.match(mailer.sent.at(-1).text, /temporary password/);
-  assert.deepEqual((await call('GET', '/shares')).body.shares.map((x) => [x.email, x.role]), [['joe@example.com', 'view'], ['kim@example.com', 'edit']]);
+  assert.deepEqual((await call('GET', '/shares')).body.shares.map((x) => [x.id, x.email, x.role]), [['user-joe', 'joe@example.com', 'view'], ['user-kim', 'kim@example.com', 'edit']]);
 
   // Kim (edit) works in Mike's book, with Mike's return address and her own name.
   await call('PUT', '/me', { firstName: 'Kim' }, kim);
@@ -316,9 +327,9 @@ test('sharing: edit and view-only access to the owner\'s book', async () => {
   assert.equal((await call('PUT', '/me', { firstName: 'Joe' }, joe)).status, 200, 'his own name is fine');
 
   // Mike changes Joe to edit, then stops sharing with Kim.
-  await call('PUT', '/shares/joe@example.com', { role: 'edit' });
+  await call('PUT', '/shares/user-joe', { role: 'edit' });
   assert.equal((await call('POST', '/households', { labelName: 'Y' }, joe)).status, 200);
-  await call('DELETE', '/shares/kim@example.com');
+  await call('DELETE', '/shares/user-kim');
   me = (await call('GET', '/me', undefined, kim)).body;
   assert.equal(me.book.role, 'owner', 'Kim is back in her own book');
   assert.equal((await call('GET', '/households', undefined, kim)).body.households.length, 0);
@@ -340,4 +351,69 @@ test('sharing: an address check sent by a shared editor lands in the owner\'s bo
   assert.equal(mailer.sent.at(-1).to, 'kim@example.com');
   const lees = (await call('GET', '/households')).body.households.find((x) => x.id === h.id);
   assert.equal(lees.pendingUpdate.address.line1, '9 New St', 'the reply is in the shared book');
+});
+
+test('sharing follows the account, not the email: either side can change their email', async () => {
+  const { call, directory } = await setup();
+  await call('PUT', '/me', { firstName: 'Mike', lastName: 'Szmansky' });
+  await call('POST', '/households', { labelName: 'The Lees' });
+  await call('POST', '/shares', { email: 'kim@example.com', role: 'edit' });
+
+  // Kim changes her sign-in email: same account id, new email in her token.
+  directory.changeEmail('kim@example.com', 'kim.new@example.com');
+  const kimNew = { claims: { sub: 'user-kim', email: 'kim.new@example.com' } };
+  let me = (await call('GET', '/me', undefined, kimNew)).body;
+  assert.equal(me.book.role, 'edit', 'still shared after her email change');
+  assert.equal((await call('GET', '/households', undefined, kimNew)).body.households.length, 1);
+  // Mike's list shows her new email, and he can still manage the share.
+  assert.deepEqual((await call('GET', '/shares')).body.shares.map((x) => [x.id, x.email]), [['user-kim', 'kim.new@example.com']]);
+  await call('PUT', '/shares/user-kim', { role: 'view' });
+  assert.equal((await call('GET', '/me', undefined, kimNew)).body.book.role, 'view');
+
+  // Someone else who now signs in with Kim's old email gets nothing of Mike's.
+  const stranger = { claims: { sub: 'user-stranger', email: 'kim@example.com' } };
+  assert.equal((await call('GET', '/me', undefined, stranger)).body.book.role, 'owner');
+  assert.equal((await call('GET', '/households', undefined, stranger)).body.households.length, 0);
+
+  // Mike changes his email: Kim still sees his book, and his new email.
+  const mikeNew = { claims: { sub: 'user-1', email: 'mike.new@example.com' } };
+  await call('GET', '/me', undefined, mikeNew); // the app loads his profile first thing
+  assert.equal((await call('GET', '/shares', undefined, mikeNew)).body.shares.length, 1);
+  me = (await call('GET', '/me', undefined, kimNew)).body;
+  assert.deepEqual([me.book.ownerName, me.book.ownerEmail], ['Mike Szmansky', 'mike.new@example.com']);
+
+  await call('DELETE', '/shares/user-kim', undefined, mikeNew);
+  assert.equal((await call('GET', '/me', undefined, kimNew)).body.book.role, 'owner');
+});
+
+test('a share made by the first, email-based version moves to the account at sign-in', async () => {
+  const { call, repo } = await setup();
+  await call('PUT', '/me', { firstName: 'Mike', lastName: 'Szmansky' });
+  await call('POST', '/households', { labelName: 'The Lees' });
+  // What the first version saved.
+  await repo.batchPut([
+    { PK: 'USER#user-1', SK: 'SHARE#kim@example.com', email: 'kim@example.com', role: 'edit', sharedAt: '2026-10-20T00:00:00Z' },
+    { PK: 'SHARED#kim@example.com', SK: 'BOOK', email: 'kim@example.com', role: 'edit', ownerSub: 'user-1', ownerEmail: 'mike@example.com', ownerName: 'Mike Szmansky', sharedAt: '2026-10-20T00:00:00Z' },
+  ]);
+  // Before Kim signs in, Mike can still see and manage it.
+  let shares = (await call('GET', '/shares')).body.shares;
+  assert.deepEqual(shares.map((x) => [x.id, x.email]), [['kim@example.com', 'kim@example.com']]);
+
+  const kim = { claims: { sub: 'user-kim', email: 'kim@example.com' } };
+  assert.equal((await call('GET', '/me', undefined, kim)).body.book.role, 'edit');
+  shares = (await call('GET', '/shares')).body.shares;
+  assert.deepEqual(shares.map((x) => [x.id, x.email, x.role]), [['user-kim', 'kim@example.com', 'edit']]);
+  assert.equal([...repo.rows.keys()].filter((k) => k.includes('SHARED#') || k.includes('SHARE#kim@')).length, 0, 'old rows removed');
+
+  // And now it survives her changing email.
+  const kimNew = { claims: { sub: 'user-kim', email: 'kim.new@example.com' } };
+  assert.equal((await call('GET', '/households', undefined, kimNew)).body.households.length, 1);
+
+  // An old-style share can also be removed before the person ever signs in.
+  await repo.batchPut([
+    { PK: 'USER#user-1', SK: 'SHARE#joe@example.com', email: 'joe@example.com', role: 'view', sharedAt: '2026-10-20T00:00:00Z' },
+    { PK: 'SHARED#joe@example.com', SK: 'BOOK', email: 'joe@example.com', role: 'view', ownerSub: 'user-1', sharedAt: '2026-10-20T00:00:00Z' },
+  ]);
+  await call('DELETE', `/shares/${encodeURIComponent('joe@example.com')}`);
+  assert.equal(await repo.get('SHARED#joe@example.com', 'BOOK'), null);
 });
