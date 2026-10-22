@@ -43,7 +43,7 @@ const isEmailKind = (o) => kindOf(o) === 'email';
 const INVITE_BATCH = 25;
 
 const state = {
-  session: null, pendingEmail: null, books: [], bookId: '', authMode: 'signin', authMsg: '', authErr: '', authEmail: rememberedEmail(),
+  session: null, pendingEmail: null, books: [], bookId: '', authMode: 'signin', showLanding: !rememberedEmail(), authMsg: '', authErr: '', authEmail: rememberedEmail(),
   me: null, households: [], occasions: [], loading: true,
   view: 'people',                 // 'people' | 'occasions'
   occasionId: null, occ: null,    // open occasion: { occasion, tags }
@@ -200,7 +200,74 @@ const AUTH_TITLES = {
   resetcode: ['Enter your code', 'Check your email for a 6-digit code, then choose a new password.'],
 };
 
+// ---------- landing page (signed out) ----------
+// What visitors see before signing in: what the app does, and the way in. Accounts are by
+// invitation, so the only action is Sign in.
+function renderLanding() {
+  root.innerHTML = `
+  <div class="landing">
+    <header class="ld-top">
+      <div class="brand">${LOGO}<span>${APP_NAME}</span></div>
+      <nav class="ld-nav"><a class="ld-link" href="help.html">Help</a><button class="btn" data-action="show-signin">Sign in</button></nav>
+    </header>
+
+    <section class="ld-hero">
+      <div class="ld-hero-text">
+        <h1>Every card and invitation, addressed and on its way.</h1>
+        <p class="ld-lede">Keep the addresses of everyone you send to in one place, choose who gets what for each occasion, then print labels and envelopes or email a designed invitation.</p>
+        <div class="ld-cta"><button class="btn primary lg" data-action="show-signin">Sign in</button>
+          <span class="ld-note">Accounts are by invitation. Your invitation email has a temporary password.</span></div>
+      </div>
+      <div class="ld-envelope" aria-hidden="true">
+        <div class="env">
+          <div class="env-return">The Bennett Family<br>14 Cherry Lane<br>Troy, MI 48083</div>
+          <div class="env-stamp"><span>★</span></div>
+          <svg class="env-postmark" viewBox="0 0 160 70"><circle cx="35" cy="35" r="27" fill="none" stroke="currentColor" stroke-width="2"/><text x="35" y="31" text-anchor="middle" font-size="9" fill="currentColor" font-family="IBM Plex Sans, sans-serif" font-weight="600">TROY MI</text><text x="35" y="44" text-anchor="middle" font-size="8" fill="currentColor" font-family="IBM Plex Sans, sans-serif">DEC 12</text><path d="M70 22c10-6 20 6 30 0s20 6 30 0 20 6 28 0M70 35c10-6 20 6 30 0s20 6 30 0 20 6 28 0M70 48c10-6 20 6 30 0s20 6 30 0 20 6 28 0" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          <div class="env-to">Mr. and Mrs. John Smith<br>123 Maple Street<br>Royal Oak, MI 48067-1234</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="ld-features" aria-label="What it does">
+      <article class="ld-feature">
+        <div class="ld-text"><h2>One address book for the whole family</h2>
+          <p>Each household is one envelope: its greetings, mailing address, the people in it with their email and phone, groups like Family or Neighbors, and notes. Bring in your old list from a spreadsheet, and search or filter it by group, city, state or ZIP.</p></div>
+        <div class="ld-visual ld-hh">
+          <div class="mini-card"><b>The Smith Family</b><span>Mr. and Mrs. John Smith</span><span>123 Maple Street<br>Royal Oak, MI 48067</span><span class="mini-chips"><i>Family</i><i>Christmas</i></span></div>
+          <div class="mini-card faded"><b>The Jones Family</b><span>Bob and Carol</span><span>9 Elm Court<br>Troy, MI 48084</span><span class="mini-chips"><i>Neighbors</i></span></div>
+        </div>
+      </article>
+      <article class="ld-feature">
+        <div class="ld-text"><h2>Labels and envelopes, ready to print</h2>
+          <p>Tick who an occasion is for and print Avery 5160 / 8160 address labels or A7 envelopes with your return address, with each household's greeting on the first line. Start partway through a used label sheet, then mark everyone as mailed.</p></div>
+        <div class="ld-visual"><div class="label-sheet">${Array.from({ length: 15 }, (_, i) => `<span class="lbl${i < 5 ? ' used' : ''}">${i < 5 ? '' : ['The Smith Family<br>123 Maple Street<br>Royal Oak, MI 48067', 'The Jones Family<br>9 Elm Court<br>Troy, MI 48084', 'Grandma Rose<br>40 Lake Drive<br>Novi, MI 48375'][i % 3]}</span>`).join('')}</div></div>
+      </article>
+      <article class="ld-feature">
+        <div class="ld-text"><h2>Invitations and emails you design yourself</h2>
+          <p>Choose fonts and colors, add your own pictures, borders and flourishes, and drop in each guest's greeting and the date, time and place. Print the invitations, or email them to just the people you pick.</p></div>
+        <div class="ld-visual"><div class="mini-invite"><span class="mi-script">You're invited</span><span class="mi-flourish"></span><span>Dear John and Mary,</span><span>Holiday open house<br>Saturday, December 19 at 7:00 PM</span></div></div>
+      </article>
+      <article class="ld-feature">
+        <div class="ld-text"><h2>Addresses that stay up to date</h2>
+          <p>Send a household a private link to confirm or correct their address. What they send back waits for you to accept, so nothing changes without you seeing it first.</p></div>
+        <div class="ld-visual"><div class="mini-check"><b>Is this the right address for the Smith Family?</b><span>123 Maple Street<br>Royal Oak, MI 48067</span><span class="mini-btns"><i class="yes">Yes, that's right</i><i>No, update it</i></span></div></div>
+      </article>
+    </section>
+
+    <section class="ld-more" aria-label="Also">
+      <div><h3>Share with your family</h3><p>Let your spouse edit the same address book, or someone else just look. Everyone keeps their own book too.</p></div>
+      <div><h3>The right person, the right greeting</h3><p>Email Mary alone with an invitation that still reads "Dear John and Mary".</p></div>
+      <div><h3>Nothing lost by accident</h3><p>Deleted households and occasions wait in the Trash for 30 days.</p></div>
+      <div><h3>Private by default</h3><p>Sign-in with an optional authenticator code, and automatic sign-out after 30 minutes away.</p></div>
+    </section>
+
+    <footer class="ld-foot"><span>${APP_NAME}</span><a class="ld-link" href="help.html">Help</a><button class="link" data-action="show-signin">Sign in</button></footer>
+  </div>`;
+}
+
 function renderAuth() {
+  // Visitors who aren't signing in yet see the landing page first.
+  if (state.showLanding && state.authMode === 'signin' && !state.authErr && !state.authMsg) return renderLanding();
   const m = AUTH_TITLES[state.authMode] ? state.authMode : 'signin';
   const field = {
     email: `<label>Email<input type="email" name="email" autocomplete="username" value="${val(state.authEmail)}" required></label>`,
@@ -219,7 +286,7 @@ function renderAuth() {
   }[m];
   const button = { signin: 'Sign in', mfa: 'Verify', newpassword: 'Save password', reset: 'Email me a code', resetcode: 'Save new password' }[m];
   const links = m === 'signin'
-    ? '<button class="link" data-action="auth-mode" data-mode="reset">Forgot password?</button>'
+    ? '<button class="link" data-action="auth-mode" data-mode="reset">Forgot password?</button><a class="link" href="help.html">Help</a>'
     : '<button class="link" data-action="auth-mode" data-mode="signin">Back to sign in</button>';
   root.innerHTML = `
   <main class="auth"><div class="auth-card">
@@ -402,6 +469,7 @@ function userChip(email) {
     <div class="menu" id="user-menu-list" role="menu" hidden>
       <button type="button" role="menuitem" data-action="settings">Settings</button>
       <button type="button" role="menuitem" data-action="trash">Trash</button>
+      <a role="menuitem" href="help.html" target="_blank" rel="noopener">Help</a>
       <hr>
       <button type="button" role="menuitem" data-action="signout">Sign out</button>
     </div>
@@ -2823,6 +2891,7 @@ document.addEventListener('click', async (e) => {
   if (!el) return;
   const { action, id } = el.dataset;
   switch (action) {
+    case 'show-signin': state.showLanding = false; renderAuth(); window.scrollTo(0, 0); break;
     case 'auth-mode': auth.cancelSignIn(); state.authMode = el.dataset.mode; state.authErr = ''; state.authMsg = ''; renderAuth(); break;
     case 'toggle-user-menu': setUserMenu(document.getElementById('user-menu-list').hidden); break;
     case 'toggle-book-menu': setBookMenu(document.getElementById('book-menu-list').hidden); break;

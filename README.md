@@ -50,6 +50,8 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
 - **Sending emails** (Emails occasions). One email per household, to the person and with the greeting chosen in the send window. Replies go to you. You can send yourself a test first, and each household shows whether its email was sent or failed.
 - **Address checks.** Email a household a private link, valid for 30 days, to confirm or correct their address. Their reply comes back for you to review side by side and accept or discard. You also get an email when they answer. Links are stored only as hashes and expire through DynamoDB TTL.
 
+- **Welcome page and help.** Visitors who aren't signed in see a welcome page (what the app does, and Sign in); people who ticked *Remember my email* go straight to sign-in. `frontend/help.html` explains every screen, so the screens themselves stay free of instructions; it's linked from the welcome page, the sign-in card and the account menu.
+
 ## Architecture
 
 ```

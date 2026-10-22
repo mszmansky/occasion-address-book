@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Help · Occasions Address Book</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .help { max-width: 1120px; margin: 0 auto; padding: 0 24px 64px; }
+    .help-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+    .help-top .logo { width: 40px; height: 40px; }
+    .help-top a { color: inherit; text-decoration: none; }
+    .help-body { display: grid; grid-template-columns: 220px 1fr; gap: 48px; padding-top: 36px; }
+    .toc { position: sticky; top: 20px; align-self: start; display: grid; gap: 2px; font-size: 14.5px; }
+    .toc a { color: var(--ink-2); text-decoration: none; padding: 5px 10px; border-radius: 7px; }
+    .toc a:hover { background: var(--surface); color: var(--ink); }
+    .help h1 { font-size: 34px; letter-spacing: -.03em; margin: 0 0 10px; }
+    .help .intro { font-size: 17px; color: var(--ink-2); margin: 0 0 8px; max-width: 62ch; }
+    .help section { padding: 28px 0 8px; border-top: 1px solid var(--line); margin-top: 28px; scroll-margin-top: 16px; }
+    .help section:first-of-type { border-top: 0; margin-top: 8px; }
+    .help h2 { font-size: 23px; letter-spacing: -.02em; margin: 0 0 12px; }
+    .help h3 { font-size: 16.5px; margin: 22px 0 6px; }
+    .help p, .help li { font-size: 15.5px; line-height: 1.65; color: var(--ink); max-width: 68ch; }
+    .help p { margin: 0 0 10px; }
+    .help ul, .help ol { margin: 0 0 12px; padding-left: 22px; }
+    .help li { margin: 3px 0; }
+    .help b { font-weight: 600; }
+    .help .tip { border-left: 3px solid var(--accent); background: var(--surface); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; max-width: 66ch; }
+    .help kbd { font: 13px var(--sans); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 6px; background: var(--surface); }
+    @media (max-width: 860px) {
+      .help-body { grid-template-columns: 1fr; gap: 20px; }
+      .toc { position: static; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: var(--surface); }
+    }
+    @media (max-width: 520px) { .help { padding: 0 16px 48px; } .help h1 { font-size: 28px; } }
+  </style>
+</head>
+<body>
+<div class="help">
+  <header class="help-top">
+    <a class="brand" href="./"><img class="logo" src="icon-192.png" width="40" height="40" alt=""><span>Occasions Address Book</span></a>
+    <a class="btn" href="./">Open the app</a>
+  </header>
+
+  <div class="help-body">
+    <nav class="toc" aria-label="Help topics">
+      <a href="#start">Signing in</a>
+      <a href="#households">Households</a>
+      <a href="#finding">Finding people</a>
+      <a href="#importing">Importing and sharing a household</a>
+      <a href="#addresses">Keeping addresses current</a>
+      <a href="#occasions">Occasions</a>
+      <a href="#printing">Printing</a>
+      <a href="#designer">The designers</a>
+      <a href="#emails">Sending emails</a>
+      <a href="#sharing">Sharing your address book</a>
+      <a href="#settings">Settings</a>
+      <a href="#trash">Trash</a>
+    </nav>
+
+    <main>
+      <h1>Help</h1>
+      <p class="intro">Occasions Address Book keeps the mailing list for your cards and invitations. Each household is one envelope; each occasion is a list of who it's for.</p>
+
+      <section id="start">
+        <h2>Signing in</h2>
+        <p>Accounts are by invitation. The invitation email has your sign-in email and a temporary password; the first time you sign in you choose your own password (at least 8 characters).</p>
+        <ul>
+          <li><b>Remember my email on this device</b> fills in your email next time and skips the welcome page.</li>
+          <li><b>Forgot password?</b> emails a 6-digit code that works for an hour.</li>
+          <li>Whenever your password changes, you get an email saying so. If you didn't change it, use <b>Forgot password?</b> right away.</li>
+          <li>For extra safety, turn on two-step verification with an authenticator app in <b>Settings › Security</b>.</li>
+        </ul>
+        <p>After 30 minutes without using the app, it signs you out. Two minutes before, <b>Still there?</b> appears; <b>Stay signed in</b> keeps anything you were in the middle of. Using the app in another tab counts too.</p>
+      </section>
+
+      <section id="households">
+        <h2>Households</h2>
+        <p>Add one with <b>+ Household</b> or by pressing <kbd>N</kbd> on the Address book. The edit window has four tabs; <b>Next</b> walks through them, and <b>Save</b> keeps the changes on every tab.</p>
+        <h3>Greetings</h3>
+        <ul>
+          <li><b>Household Greeting</b> (required) is the name on labels and envelopes, like "The Smith Family".</li>
+          <li><b>Formal Greeting</b> is for formal envelopes, like "Mr. and Mrs. John Smith". When the Informal Greeting has two first names, it's filled in for you as "Mr. and Mrs. <i>Last name</i>".</li>
+          <li><b>Informal Greeting</b> is how emails and invitations open, like "Dear John and Mary,".</li>
+        </ul>
+        <h3>Address</h3>
+        <p>The mailing address. Leave Country blank for the US. When address checking is set up, <b>Check address</b> asks the Post Office whether it delivers there and offers its corrected version (with ZIP+4) to use or keep.</p>
+        <h3>People</h3>
+        <p>First and last name, email and phone for each person. Phone numbers tidy themselves into (248) 555-0101 when you leave the box. Typing two names like "Peter and Paula" in one First box makes two people with the same last name.</p>
+        <p>Tick <b>Default</b> on the person who should get emails for the household. If several people share an email address, put it on each of them.</p>
+        <h3>Groups &amp; Notes</h3>
+        <p>Groups (Family, Neighbors, Work…) help you filter and build lists; start typing to reuse a group you already have. Notes are just for you; a household with a note shows a small <b>i</b> on its card that shows the note when clicked.</p>
+      </section>
+
+      <section id="finding">
+        <h2>Finding people</h2>
+        <p>Search looks through names, streets, cities and emails. <b>Filter</b> narrows the list by several groups (in any or all of them), cities, states, the start of a ZIP code, whether there's an email or a complete mailing address, and addresses waiting for your review. Each filter shows as a chip you can remove; <b>Clear all</b> resets them. The same Filter is on each occasion's list.</p>
+      </section>
+
+      <section id="importing">
+        <h2>Importing and sharing a household</h2>
+        <p><b>Import CSV</b> brings in a list saved as CSV from Excel, Numbers or Google Sheets. The app guesses what each column holds from its heading; check them, step through the rows with ‹ ›, then import. <b>Export CSV</b> saves the whole address book; it imports back exactly, with each person's email and phone in the People column, like <i>John Smith &lt;john@example.com&gt; ((248) 555-0101)</i>.</p>
+        <p>The share icon at the top right of a household's edit window sends that household as a <b>vCard</b> (one contact per person, for Contacts on a Mac or iPhone) or a one-row <b>CSV</b>, through AirDrop, Mail or Messages, or as a download.</p>
+      </section>
+
+      <section id="addresses">
+        <h2>Keeping addresses current</h2>
+        <p><b>Confirm address</b> (on a household's edit window) emails them a private link, good for 30 days, to confirm or correct their address. You get an email when they answer. A changed address waits for you: the household shows <b>New address</b>, and its Address tab shows what they sent beside what's on file, to <b>Use new address</b> or <b>Keep the one on file</b>. Nothing changes until you choose.</p>
+      </section>
+
+      <section id="occasions">
+        <h2>Occasions</h2>
+        <p>An occasion is one mailing or invitation, like "Christmas cards 2026". Its type decides what you can do with it:</p>
+        <ul>
+          <li><b>Cards or Labels</b>: print labels or envelopes and track who was mailed.</li>
+          <li><b>Invitations</b>: the same, plus an invitation you design and print, one page per household.</li>
+          <li><b>Emails</b>: an email you design, sent to the people you choose.</li>
+        </ul>
+        <p>Tick households to put them on the list, or narrow the list with search and Filter and use <b>Add all shown to the list</b>. A new occasion can start with an earlier one's list, so next year's cards begin with this year's. <b>Not mailed yet</b> shows who still needs one.</p>
+      </section>
+
+      <section id="printing">
+        <h2>Printing</h2>
+        <p><b>Print…</b> on an occasion makes a PDF that opens in a new tab. Always print at <b>Actual size / 100%</b>, never "Fit to page".</p>
+        <h3>Labels</h3>
+        <p>Avery 5160 or 8160, 30 per sheet, on Letter paper. <b>Start on label number</b> uses up a partly used sheet. For a first try, print on plain paper with <b>Draw outlines</b> on and hold it against a label sheet up to the light.</p>
+        <h3>Envelopes</h3>
+        <p>A7 envelopes (5¼ × 7¼ in), one per page, with your return address in the corner if you like. In the print dialog choose the A7 paper size and feed envelopes the way your printer's tray shows.</p>
+        <h3>Return-address labels</h3>
+        <p>A full sheet of your return address, set in <b>Settings › Return address</b>.</p>
+        <h3>Invitations</h3>
+        <p>For Invitations occasions: pick a paper size (4 × 6, 5 × 7, half Letter or Letter) and the greeting, and each household gets its own page. Choose <b>Save as PDF</b> in the print dialog to keep a PDF.</p>
+        <div class="tip">If labels or envelopes land a little off, nudge them in <b>Settings › Printer</b> and print the alignment test page again.</div>
+        <p>Once they're in the mail, <b>Mark mailed</b> ticks everyone you just printed.</p>
+      </section>
+
+      <section id="designer">
+        <h2>The designers</h2>
+        <p>Open the Invitation Designer or Email Designer from <b>Edit</b> on the occasion. Whatever you see is what prints or arrives.</p>
+        <ul>
+          <li><b>Font</b>, <b>Text</b> color, size, bold, italic, underline: with words selected they change those words; with nothing selected they change the whole design.</li>
+          <li>Each color square opens a color window: the current color and its code, the colors already in your design (to match one exactly), a palette, a box for a color code, and <b>More colors…</b>.</li>
+          <li><b>Insert field</b> adds a placeholder filled in for each household: Greeting, Occasion name, Date, Time, Location or Your name.</li>
+          <li><b>Line</b> adds a divider. Click it to change its style (including calligraphy flourishes), color or length.</li>
+          <li><b>Picture</b> adds a PNG, JPEG, GIF or WebP up to 5 MB, or drop one from your Mac onto the page. Click a picture to place it beside the text or centered, size it, give it a border, or remove it; drag it to move it within the text.</li>
+          <li><b>Background</b> and <b>Border</b> set the page color and a frame around it.</li>
+          <li><b>&lt;/&gt;</b> shows the HTML, to edit or paste your own. Anything unsafe is removed when you save.</li>
+          <li>Undo and redo (<kbd>⌘Z</kbd> and <kbd>⇧⌘Z</kbd>) cover every change.</li>
+          <li><b>Preview</b> shows the design filled in for each household on the list; ‹ › steps through them.</li>
+        </ul>
+        <div class="tip">Fancy fonts like Great Vibes always show in the app, on printed invitations and in Apple Mail. Gmail and Outlook show a similar standard font instead; colors, sizes, pictures and layout look the same everywhere.</div>
+      </section>
+
+      <section id="emails">
+        <h2>Sending emails</h2>
+        <p>On an Emails occasion's list, each household shows its people who have an email address. Tick who gets it: just Mary, both, or the whole family. Ticking the household ticks its default contact.</p>
+        <p>The <b>Greeting</b> setting in <b>Edit</b> decides how each email opens: the Informal, Formal or Household Greeting, or the first names of the people ticked. So an email sent only to Mary can still say "Dear John and Mary".</p>
+        <p><b>Send emails…</b> shows the email, who each one goes to, and lets you change a household's greeting. Choose <b>Not sent yet</b> or <b>Everyone with email</b>, try <b>Send a test to me</b>, then <b>Send</b>. Replies come to your own email. Each household shows Sent or Failed afterwards.</p>
+      </section>
+
+      <section id="sharing">
+        <h2>Sharing your address book</h2>
+        <p>In <b>Settings › Sharing</b>, share your address book and its occasions by email, as <b>Can edit</b> or <b>View only</b>. Someone without an account gets an invitation. Everyone keeps their own address book too; the switcher at the top of the screen moves between yours and the ones shared with you.</p>
+        <ul>
+          <li><b>Can edit</b>: everything except changing who it's shared with.</li>
+          <li><b>View only</b>: look, search, export and print, but no changes and no emails.</li>
+          <li>Shares follow the person's account, so either of you can change your sign-in email without sharing again.</li>
+        </ul>
+        <h3>Two people at once</h3>
+        <p>Changes the other person makes show up on your screen within a minute, or as soon as you come back to the window. If you both edit the same household, occasion or design, the second Save asks whether to <b>Load their version</b> or <b>Save mine anyway</b>.</p>
+      </section>
+
+      <section id="settings">
+        <h2>Settings</h2>
+        <ul>
+          <li><b>Profile</b>: your photo, name, the name emails come from, and your sign-in email (changing it emails a code to the new address; the old one works until you enter it).</li>
+          <li><b>Return address</b>: printed on envelopes and return-address labels. It belongs to the address book, so everyone using a shared book prints the same one.</li>
+          <li><b>Security</b>: change your password, and two-step verification with an authenticator app.</li>
+          <li><b>Printer</b>: nudge labels and envelopes into place, with test pages.</li>
+          <li><b>Sharing</b>: who your address book is shared with.</li>
+        </ul>
+      </section>
+
+      <section id="trash">
+        <h2>Trash</h2>
+        <p>Deleted households and occasions go to the Trash (in the account menu) for 30 days, then disappear for good. <b>Restore</b> brings a household back onto the occasion lists it was on, and an occasion back with its list. <b>Delete forever</b> and <b>Empty trash</b> are there too.</p>
+      </section>
+    </main>
+  </div>
+</div>
+</body>
+</html>
