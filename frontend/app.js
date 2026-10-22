@@ -1686,7 +1686,7 @@ function designModal() {
   // One font picker and one text color: with words selected they change those words; with nothing
   // selected they change the whole design's font or text color.
   const colorInput = (name, value, label, title, extra = '') => `<span class="tb-swatch" ${extra}><span class="tb-label">${label}</span><button type="button" class="tb-color" data-color-for="${name}" title="${title}" aria-label="${title}" aria-haspopup="dialog" style="background:${esc(value)}"></button><input type="color" name="${name}" value="${esc(value)}" data-design="${name}" class="native-color" tabindex="-1" aria-hidden="true"></span>`;
-  openModal(kindOf(o) === 'email' ? 'Email Designer' : 'Design invitation', `
+  openModal(kindOf(o) === 'email' ? 'Email Designer' : 'Invitation Designer', `
     <div class="design-toolbar" role="toolbar" aria-label="Formatting">
       <span class="tb-group">
         <button type="button" class="tb" data-history="undo" title="Undo (⌘Z)" aria-label="Undo" disabled>${UNDO_ICON}</button>
