@@ -93,3 +93,13 @@ test('A7 envelopes: one per page, landscape 7.25 x 5.25, return address top-left
   const to = calls.find((c) => c.t === 'The Smiths');
   assert.ok(to.x > 2.5 && to.y > 2 && to.y < 3.5);
 });
+
+test('incomplete addresses say what is missing', async () => {
+  const { addressProblem } = await import('../../frontend/print-core.js');
+  assert.equal(addressProblem({ line1: '1 Riverfront Center W', line2: 'Apt 804', city: 'Flint', state: 'MI', zip: '' }), 'Missing ZIP');
+  assert.equal(addressProblem({ state: 'MI' }), 'Missing street, city and ZIP');
+  assert.equal(addressProblem({ city: 'Flint', zip: '48502' }), 'Missing street');
+  assert.equal(addressProblem({}), 'No mailing address');
+  assert.equal(addressProblem(undefined), 'No mailing address');
+  assert.equal(addressProblem({ line1: '1 Main', city: 'Flint', zip: '48502' }), '');
+});

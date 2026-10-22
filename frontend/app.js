@@ -1,6 +1,6 @@
 import { createAuth } from './auth.js';
 import {
-  addressLines, buildEnvelopes, buildLabels, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES,
+  addressLines, addressProblem, buildEnvelopes, buildLabels, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES,
 } from './print-core.js';
 import { activeCount, emptyFilter, filterChips, filterOptions, matchesFilter } from './filter-core.js';
 import {
@@ -688,7 +688,7 @@ function householdCard(h) {
   const lines = addressLines('', h.address);
   const badges = [
     h.pendingUpdate && '<span class="pill due-soon">New address to review</span>',
-    !isMailable(h.address) && '<span class="pill unknown">No mailing address</span>',
+    !isMailable(h.address) && `<span class="pill unknown">${esc(addressProblem(h.address))}</span>`,
   ].filter(Boolean).join('');
   const note = h.notes?.trim();
   return `<button class="hh-card${note ? ' has-note' : ''}" data-action="edit-household" data-id="${esc(h.id)}">
@@ -1283,7 +1283,7 @@ function readVcardFile(text) {
       <label class="vc-row" data-vc-row="${h.idx}" data-text="${esc([h.labelName, ...h.members.map((m) => `${m.firstName} ${m.lastName} ${m.email ?? ''}`), h.address?.city].join(' ').toLowerCase())}">
         <input type="checkbox" data-vc="${h.idx}" ${vcardImport.picked.has(h.idx) ? 'checked' : ''}>
         <span class="vc-main"><span class="vc-name"><b>${esc(h.labelName)}</b>${h.exists ? '<span class="pill unknown">Already in your address book</span>' : ''}</span>
-          <span class="small muted">${esc([h.members.map((m) => m.firstName || m.email).filter(Boolean).join(', '), isMailable(h.address) ? addressLines('', h.address).join(', ') : 'No mailing address'].filter(Boolean).join(' · '))}</span></span>
+          <span class="small muted">${esc([h.members.map((m) => m.firstName || m.email).filter(Boolean).join(', '), addressLines('', h.address).join(', '), addressProblem(h.address)].filter(Boolean).join(' · '))}</span></span>
       </label>`).join('')}</div></div>`;
   updateVcardSummary();
   return undefined;
@@ -1560,7 +1560,7 @@ function renderRecipientRows() {
       <td><button class="link-btn" data-action="edit-household" data-id="${esc(h.id)}">${esc(h.labelName)}</button>${h.pendingUpdate ? ' <span class="pill due-soon">New address</span>' : ''}</td>
       <td class="col-greeting small">${esc(emailKind && t ? listGreeting(h, t) : whoText(h))}</td>
       <td class="small">${emailKind ? peopleCell(h, t)
-    : isMailable(h.address) ? esc(addressLines('', h.address).join(', ')) : '<span class="pill unknown">No address</span>'}</td>
+    : [esc(addressLines('', h.address).join(', ')), addressProblem(h.address) && `<span class="pill unknown">${esc(addressProblem(h.address))}</span>`].filter(Boolean).join(' ')}</td>
       <td class="col-mailed">${t ? `<input type="checkbox" data-action="mailed" data-id="${esc(h.id)}" ${t.mailedAt ? 'checked' : ''} ${canEdit() ? '' : 'disabled'} aria-label="Mailed">` : ''}</td>
       <td class="col-email">${emailCell}</td>
     </tr>`;

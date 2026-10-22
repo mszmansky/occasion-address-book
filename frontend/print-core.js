@@ -39,6 +39,18 @@ export const envelopeName = (h, style) => (style === 'formal' && h.formalName ? 
 /** True when a household has enough address to mail to. */
 export const isMailable = (a = {}) => Boolean(a.line1 && a.city && (a.zip || (a.country && !US.test(a.country.trim()))));
 
+/**
+ * A short note for an address that can't be mailed to yet: "No mailing address" when there's
+ * nothing, otherwise what's missing ("Missing ZIP", "Missing street and ZIP"). Empty when mailable.
+ */
+export function addressProblem(a = {}) {
+  if (isMailable(a)) return '';
+  const has = (k) => String(a?.[k] ?? '').trim();
+  if (!['line1', 'line2', 'city', 'state', 'zip'].some(has)) return 'No mailing address';
+  const missing = [!has('line1') && 'street', !has('city') && 'city', !has('zip') && 'ZIP'].filter(Boolean);
+  return `Missing ${missing.length > 1 ? `${missing.slice(0, -1).join(', ')} and ${missing.at(-1)}` : missing[0]}`;
+}
+
 const LINE = 1.18; // line height as a multiple of the font size
 
 // Picks the font size (and, if needed, line wrapping) for an address block:
