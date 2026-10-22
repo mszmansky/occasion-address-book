@@ -2785,7 +2785,9 @@ document.addEventListener('submit', async (e) => {
   return undefined;
 });
 
-modal.addEventListener('close', () => { modal.innerHTML = ''; });
+// The close event arrives a moment later; if another window has opened in the meantime (Edit occasion →
+// Design), keep it.
+modal.addEventListener('close', () => { if (!modal.open) modal.innerHTML = ''; });
 
 // ---------- inactivity sign-out ----------
 // After 30 minutes with no mouse, keyboard, scroll or touch activity, the app signs out; a dialog
