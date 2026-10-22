@@ -5,7 +5,7 @@ import {
 import { activeCount, emptyFilter, filterChips, filterOptions, matchesFilter } from './filter-core.js';
 import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
-  defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact,
+  defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact, formatPhone,
 } from './csv-core.js';
 import { householdToVcard, fileBaseName } from './vcard-core.js';
 import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
@@ -2945,6 +2945,12 @@ document.addEventListener('mousedown', (e) => {
 });
 document.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-chip-text]')) showGroupSuggest(e.target.closest('[data-chips]')); });
 document.addEventListener('focusout', (e) => { if (e.target.matches?.('[data-chip-text]')) hideGroupSuggest(e.target.closest('[data-chips]')); });
+// Phone numbers tidy themselves into (248) 555-0101 when you leave the box.
+document.addEventListener('focusout', (e) => {
+  if (!e.target.matches?.('[data-m=phone]')) return;
+  const tidy = formatPhone(e.target.value);
+  if (tidy !== e.target.value) e.target.value = tidy;
+});
 
 document.addEventListener('input', (e) => {
   // Changing the address makes an earlier USPS check out of date.

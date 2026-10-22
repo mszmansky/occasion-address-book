@@ -211,3 +211,20 @@ export function householdsToCsv(list) {
   });
   return toCsv([header, ...rows]);
 }
+
+/**
+ * US phone numbers in the standard form, (248) 555-0101. Ten digits (or eleven starting with 1)
+ * are reformatted, keeping an extension ("x12"); anything else (international, too short) is left
+ * as typed.
+ */
+export function formatPhone(value) {
+  const raw = String(value ?? '').trim();
+  const m = /^(.*?)(?:\s*(?:x|ext\.?|extension|#)\s*(\d{1,6}))?$/i.exec(raw);
+  const main = m?.[1] ?? raw;
+  if (/^\+(?!1)/.test(main.replace(/\s/g, ''))) return raw; // another country's code
+  if (/[a-wyz]/i.test(main)) return raw;
+  let d = main.replace(/\D/g, '');
+  if (d.length === 11 && d.startsWith('1')) d = d.slice(1);
+  if (d.length !== 10) return raw;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}${m?.[2] ? ` x${m[2]}` : ''}`;
+}

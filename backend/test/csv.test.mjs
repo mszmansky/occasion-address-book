@@ -151,3 +151,13 @@ test('people keep their phones through export and import', () => {
     { firstName: 'Ann', lastName: 'Smith', email: undefined, phone: undefined },
   ]);
 });
+
+test('phone numbers format as (###) ###-####', async () => {
+  const { formatPhone } = await import('../../frontend/csv-core.js');
+  for (const [inp, out] of [
+    ['2485550101', '(248) 555-0101'], ['248-555-0101', '(248) 555-0101'], ['248.555.0101', '(248) 555-0101'],
+    ['(248)555-0101', '(248) 555-0101'], ['1 248 555 0101', '(248) 555-0101'], ['+1 (248) 555-0101', '(248) 555-0101'],
+    ['248-555-0101 x12', '(248) 555-0101 x12'], ['248 555 0101 ext. 7', '(248) 555-0101 x7'],
+    ['555-0101', '555-0101'], ['+44 20 7946 0958', '+44 20 7946 0958'], ['', ''], ['call me', 'call me'],
+  ]) assert.equal(formatPhone(inp), out, inp);
+});
