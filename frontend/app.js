@@ -60,6 +60,7 @@ const BOOK_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="
 const REQUIRED = '<span class="req" aria-hidden="true" title="Required">*</span>';
 // The standard share icon: a box with an arrow coming up out of it.
 const SHARE_ICON = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 1.75v8.5M5.25 4.5 8 1.75l2.75 2.75M5.5 6.5H4.25c-.7 0-1.25.55-1.25 1.25v5.5c0 .7.55 1.25 1.25 1.25h7.5c.7 0 1.25-.55 1.25-1.25v-5.5c0-.7-.55-1.25-1.25-1.25H10.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const CHECK_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const LOGO = '<img class="logo" src="icon-192.png" width="64" height="64" alt="">';
 
@@ -174,7 +175,7 @@ async function api(path, { method = 'GET', body } = {}) {
     state.bookId = ''; storeBook('');
     setTimeout(() => { toast(json.error, true); loadAll(); }, 0);
   }
-  if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw Object.assign(new Error(json?.error ?? `Request failed (${res.status})`), { status: res.status, data: json });
   return json;
 }
 
@@ -826,12 +827,94 @@ function householdTabs(active, { people = 0, pending = false } = {}) {
 const NEXT_BTN = '<button type="button" class="btn" data-action="hh-next">Next ›</button>';
 
 function showHouseholdTab(id, { focus = true } = {}) {
+  if (id === 'address') loadAddressChecks();
   const next = modal.querySelector('[data-action=hh-next]');
   if (next) next.hidden = id === HOUSEHOLD_TABS.at(-1)[0];
   modalError(''); // an old message would point at the wrong tab
   modal.querySelectorAll('[data-action=hh-tab]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === id)));
   modal.querySelectorAll('[data-hh-panel]').forEach((p) => { p.inert = p.dataset.hhPanel !== id; });
   if (focus) modal.querySelector(`[data-hh-panel="${id}"]`)?.querySelector('input:not([type=checkbox]):not([disabled]), textarea:not([disabled])')?.focus();
+}
+
+// ---------- address checks (USPS) ----------
+// USPS allows 60 checks an hour for the whole app; the API counts them and says how many are left.
+// The button is hidden until address checks are set up, and disabled while the hour's checks are used up.
+let addressChecks = null; // { enabled, remaining, availableAt, at }
+let addressChecksTimer = null;
+
+async function loadAddressChecks() {
+  const box = modal.querySelector('[data-addr-check]');
+  if (!box || !canEdit()) return;
+  if (!addressChecks || Date.now() - addressChecks.at > 60_000) {
+    try { addressChecks = { ...(await api('/address-check')).checks, at: Date.now() }; } catch { return; }
+  }
+  showAddressChecks();
+}
+
+function showAddressChecks() {
+  const box = modal.querySelector('[data-addr-check]');
+  if (!box) return;
+  const c = addressChecks ?? {};
+  box.hidden = !c.enabled;
+  if (!c.enabled) return;
+  const btn = box.querySelector('[data-action=check-address]');
+  const quota = box.querySelector('[data-addr-quota]');
+  const out = c.remaining <= 0;
+  btn.disabled = out;
+  btn.title = out ? 'USPS allows 60 address checks an hour' : '';
+  quota.textContent = out
+    ? `Checks used up${c.availableAt ? ` until ${new Date(c.availableAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ' for now'}`
+    : c.remaining <= 10 ? `${plural(c.remaining, 'check')} left this hour` : '';
+  // Turn the button back on when the hour rolls over.
+  clearTimeout(addressChecksTimer);
+  if (out && c.availableAt) {
+    addressChecksTimer = setTimeout(() => { addressChecks = null; if (modal.open) loadAddressChecks(); }, Math.max(5_000, Date.parse(c.availableAt) - Date.now() + 2_000));
+  }
+}
+
+const ADDRESS_KEYS = ['line1', 'line2', 'city', 'state', 'zip'];
+const sameAddress = (a, b) => ADDRESS_KEYS.every((k) => String(a[k] ?? '').trim().replace(/\s+/g, ' ').toLowerCase() === String(b[k] ?? '').trim().replace(/\s+/g, ' ').toLowerCase());
+const CHECK_VERDICTS = {
+  confirmed: ['ok', 'USPS confirms this address.'],
+  'needs-unit': ['warn', 'USPS says this address needs an apartment or unit number.'],
+  'unit-unconfirmed': ['warn', "USPS found the building but not that apartment or unit."],
+  'not-found': ['bad', "USPS couldn't find this address."],
+};
+
+async function checkAddress(btn) {
+  const form = modal.querySelector('form');
+  const out = modal.querySelector('[data-addr-result]');
+  const typed = readAddress(form);
+  modalError('');
+  out.innerHTML = '';
+  await withBusy(btn, async () => {
+    let res;
+    try {
+      res = await api('/address-check', { method: 'POST', body: { address: typed } });
+    } catch (e) {
+      if (e.data?.checks) { addressChecks = { ...e.data.checks, at: Date.now() }; showAddressChecks(); }
+      throw e;
+    }
+    addressChecks = { ...res.checks, at: Date.now() };
+    const { status, suggested, vacant } = res.result;
+    const [tone, text] = CHECK_VERDICTS[status] ?? CHECK_VERDICTS['not-found'];
+    const differs = suggested && !sameAddress(typed, suggested);
+    out.innerHTML = `<div class="check-result ${tone}">
+      <div>${tone === 'ok' ? CHECK_ICON : ''} <b>${esc(text)}</b>${vacant ? ' <span class="muted">USPS lists it as vacant.</span>' : ''}</div>
+      ${differs ? `<div class="compare">
+          <div><span class="small muted">You entered</span><div>${addressLines('', typed).map(esc).join('<br>') || '—'}</div></div>
+          <div><span class="small muted">USPS</span><div>${addressLines('', suggested).map(esc).join('<br>')}</div></div>
+        </div>
+        <div class="row-gap"><button type="button" class="btn sm primary" data-action="use-usps-address">Use USPS address</button>
+          <button type="button" class="btn sm" data-action="keep-typed-address">Keep mine</button></div>` : ''}
+    </div>`;
+    out.querySelector('[data-action=use-usps-address]')?.addEventListener('click', () => {
+      for (const k of ADDRESS_KEYS) form.elements[k].value = suggested[k] ?? '';
+      out.innerHTML = `<div class="check-result ok"><div>${CHECK_ICON} <b>Updated to the USPS address.</b> <span class="muted">Save to keep it.</span></div></div>`;
+    }, { once: true });
+    out.querySelector('[data-action=keep-typed-address]')?.addEventListener('click', () => { out.innerHTML = ''; }, { once: true });
+  });
+  showAddressChecks();
 }
 
 // Share one household as a vCard or a CSV: the system share sheet (AirDrop, Mail, Messages…) where the
@@ -912,6 +995,10 @@ function householdModal(h) {
     ${panel('address', `
       ${pendingBox}
       ${addressFields(h.address)}
+      <div class="addr-check" data-addr-check hidden>
+        <div class="addr-check-row"><button type="button" class="btn sm" data-action="check-address">${CHECK_ICON} Check address</button><span class="small muted" data-addr-quota></span></div>
+        <div data-addr-result></div>
+      </div>
       ${h.addressConfirmedAt ? `<p class="hint">Confirmed by them ${fmtDate(h.addressConfirmedAt)}.</p>` : ''}
       ${req && !p ? `<p class="hint">Address check sent ${fmtDate(req.sentAt)} to ${esc(req.sentTo.join(', '))}; the link works until ${fmtDate(req.expiresAt)}.</p>` : ''}`)}
     ${panel('people', `
@@ -1850,6 +1937,7 @@ document.addEventListener('click', async (e) => {
     case 'align-test': await withBusy(el, () => alignTest(el.dataset.what)); break;
     case 'settings-tab': settingsModal(el.dataset.tab); break;
     case 'hh-tab': showHouseholdTab(el.dataset.tab); break;
+    case 'check-address': await checkAddress(el); break;
     case 'toggle-share-menu': setShareMenu(modal.querySelector('#share-menu-list').hidden); break;
     case 'hh-share': await shareHousehold(el.dataset.how, el.dataset.kind); break;
     case 'hh-next': {
@@ -2038,6 +2126,11 @@ document.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-chip
 document.addEventListener('focusout', (e) => { if (e.target.matches?.('[data-chip-text]')) hideGroupSuggest(e.target.closest('[data-chips]')); });
 
 document.addEventListener('input', (e) => {
+  // Changing the address makes an earlier USPS check out of date.
+  if (e.target.closest?.('[data-hh-panel=address]') && e.target.name && ['line1', 'line2', 'city', 'state', 'zip', 'country'].includes(e.target.name)) {
+    const out = modal.querySelector('[data-addr-result]');
+    if (out) out.innerHTML = '';
+  }
   if (e.target.matches?.('[data-chip-text]')) {
     const box = e.target.closest('[data-chips]');
     if (e.target.value.includes(',')) { // pasted "Family, Work"

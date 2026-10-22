@@ -952,3 +952,14 @@ label > span.hint { display: block; }
 .btn.icon-only { padding-left: 8px; padding-right: 8px; display: inline-flex; align-items: center; }
 .share-menu .btn[aria-expanded=true] { background: var(--surface-2); }
 .share-menu .menu { min-width: 170px; }
+
+/* USPS address check */
+.addr-check { display: grid; gap: 10px; }
+.addr-check-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.addr-check-row .btn svg, .check-result svg { vertical-align: -2px; }
+.check-result { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; display: grid; gap: 10px; font-size: 14px; }
+.check-result.ok { border-color: color-mix(in srgb, var(--ok, #2f855a) 45%, var(--line)); }
+.check-result.ok > div:first-child svg { color: var(--ok, #2f855a); }
+.check-result.warn { border-color: color-mix(in srgb, var(--soon) 40%, var(--line)); background: var(--soon-bg); }
+.check-result.bad { border-color: color-mix(in srgb, var(--overdue) 40%, var(--line)); }
+.check-result .row-gap { justify-content: flex-start; }

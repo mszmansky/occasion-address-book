@@ -15,6 +15,13 @@ export function createMemoryRepo() {
     async query(pk, prefix = '') {
       return sorted([...rows.values()].filter((r) => r.PK === pk && r.SK.startsWith(prefix)).map(clone));
     },
+    async increment(pk, sk, field, n = 1, { ttl } = {}) {
+      const cur = rows.get(key(pk, sk)) ?? { PK: pk, SK: sk };
+      cur[field] = (cur[field] ?? 0) + n;
+      if (ttl) cur.ttl = ttl;
+      rows.set(key(pk, sk), cur);
+      return cur[field];
+    },
     async batchDel(keys) { for (const k of keys) rows.delete(key(k.PK, k.SK)); },
     async batchPut(items) { for (const item of items) rows.set(key(item.PK, item.SK), clone(item)); },
   };

@@ -21,7 +21,7 @@ function createFakeDirectory(existing = {}) {
   };
 }
 
-async function setup({ mailer = createFakeMailer(), allowedEmails = '*', files = createFakeFiles(), directory = createFakeDirectory({ 'kim@example.com': 'user-kim', 'mike@example.com': 'user-1' }) } = {}) {
+async function setup({ addressChecker, mailer = createFakeMailer(), allowedEmails = '*', files = createFakeFiles(), directory = createFakeDirectory({ 'kim@example.com': 'user-kim', 'mike@example.com': 'user-1' }) } = {}) {
   const repo = createMemoryRepo();
   const tokens = await createTokenFactory();
   let clock = new Date('2026-11-01T15:00:00Z');
@@ -32,6 +32,7 @@ async function setup({ mailer = createFakeMailer(), allowedEmails = '*', files =
     appUrl: 'https://cards.example.com',
     files,
     directory,
+    addressChecker,
     now: () => clock,
     log: { error() {} },
     pause: async () => {},
@@ -514,4 +515,39 @@ test('default contact: one per household, and invitations go to it unless change
   assert.deepEqual(await send({ [h.id]: 'nobody-by-that-id' }), [['mary@x.com'], ['lees@x.com']], 'unknown choice falls back to the default');
   const tag = (await call('GET', `/occasions/${occ.id}`)).body.tags.find((t) => t.householdId === h.id);
   assert.deepEqual(tag.invitedTo, ['mary@x.com']);
+});
+
+test('address checks: off until set up, then validated and passed to the checker', async () => {
+  let { call } = await setup();
+  assert.deepEqual((await call('GET', '/address-check')).body, { checks: { enabled: false } });
+  assert.equal((await call('POST', '/address-check', { address: { line1: '1 Elm', city: 'Troy', state: 'MI' } })).status, 503);
+
+  const seen = [];
+  const addressChecker = {
+    async status() { return { enabled: true, limit: 55, used: 0, remaining: 55, availableAt: null }; },
+    async check(a) { seen.push(a); return { result: { status: 'confirmed', suggested: a }, checks: await this.status() }; },
+  };
+  ({ call } = await setup({ addressChecker }));
+  assert.equal((await call('GET', '/address-check')).body.checks.remaining, 55);
+  let r = await call('POST', '/address-check', { address: { line1: '1 Elm', city: 'Troy' } });
+  assert.deepEqual([r.status, r.body.error], [400, 'Enter the street, state, and the city or ZIP first']);
+  r = await call('POST', '/address-check', { address: { line1: '1 Elm', city: 'Toronto', state: 'ON', country: 'Canada' } });
+  assert.deepEqual([r.status, r.body.error], [400, 'USPS can only check US addresses']);
+  r = await call('POST', '/address-check', { address: { line1: ' 1 Elm ', state: 'MI', zip: '48083', country: 'USA' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.result.status, 'confirmed');
+  assert.deepEqual(seen, [{ line1: '1 Elm', line2: undefined, city: undefined, state: 'MI', zip: '48083', country: 'USA' }]);
+});
+
+test('address checks: the hourly limit reaches the browser with when it opens up again', async () => {
+  const checks = { enabled: true, limit: 55, used: 55, remaining: 0, availableAt: '2026-11-01T15:20:00.000Z' };
+  const { HttpError } = await import('../src/lib/auth.mjs');
+  const addressChecker = {
+    async status() { return checks; },
+    async check() { const e = new HttpError(429, 'The address checks for this hour are used up.'); e.extra = { checks }; throw e; },
+  };
+  const { call } = await setup({ addressChecker });
+  const r = await call('POST', '/address-check', { address: { line1: '1 Elm', city: 'Troy', state: 'MI' } });
+  assert.equal(r.status, 429);
+  assert.deepEqual(r.body.checks, checks);
 });

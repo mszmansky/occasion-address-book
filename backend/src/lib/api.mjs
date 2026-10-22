@@ -209,7 +209,7 @@ export function householdEmails(h) {
 const strip = ({ PK, SK, GSI1PK, GSI1SK, ...rest }) => rest;
 const fullName = (p) => [p.firstName, p.lastName].filter(Boolean).join(' ');
 
-export function createApi({ repo, verify, mailer, appUrl, files, directory, now = () => new Date(), log = console, pause = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function createApi({ repo, verify, mailer, appUrl, files, directory, addressChecker, now = () => new Date(), log = console, pause = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const routes = [];
   // open: no sign-in (the address-check page). write: changes the book or sends email, so
   // View-only people can't.
@@ -516,6 +516,29 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
       : { ...rest, updatedAt: nowIso() };
     await repo.put(item);
     return { household: publicHousehold(item) };
+  }, { write: true });
+
+  // ---------- address checks (USPS) ----------
+  // How many checks are left this hour (USPS allows 60 an hour for the whole app). enabled: false
+  // until USPS credentials are set up.
+  route('GET', '/address-check', async () => ({ checks: addressChecker ? await addressChecker.status() : { enabled: false } }));
+
+  // Checks the address as typed (it doesn't have to be saved yet); nothing changes until it's saved.
+  route('POST', '/address-check', async ({ body }) => {
+    if (!addressChecker) throw new HttpError(503, "Address checking isn't set up yet");
+    const a = body.address ?? {};
+    const address = {
+      line1: str(a.line1, 'Street address', { max: 120 }), line2: str(a.line2, 'Apt, suite, unit', { max: 120 }),
+      city: str(a.city, 'City', { max: 80 }), state: str(a.state, 'State', { max: 40 }), zip: str(a.zip, 'ZIP', { max: 20 }),
+      country: str(a.country, 'Country', { max: 60 }),
+    };
+    if (address.country && !/^(us|usa|u\.s\.a?\.?|united states( of america)?)$/i.test(address.country)) {
+      throw new HttpError(400, 'USPS can only check US addresses');
+    }
+    if (!address.line1 || !address.state || !(address.city || address.zip)) {
+      throw new HttpError(400, 'Enter the street, state, and the city or ZIP first');
+    }
+    return addressChecker.check(address);
   }, { write: true });
 
   // Emails the household a private link to confirm or correct their mailing address.
@@ -837,7 +860,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, now 
       }
       return respond(200, await match.fn({ user, params, body, query: event.queryStringParameters ?? {} }));
     } catch (err) {
-      if (err instanceof HttpError) return respond(err.status, { error: err.message, ...(err.code ? { code: err.code } : {}) });
+      if (err instanceof HttpError) return respond(err.status, { error: err.message, ...(err.code ? { code: err.code } : {}), ...(err.extra ?? {}) });
       log.error(err);
       return respond(500, { error: 'Something went wrong. Please try again.' });
     }

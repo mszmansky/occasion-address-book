@@ -3,6 +3,11 @@ Transform: AWS::Serverless-2016-10-31
 Description: Occasions address book - households, occasions, labels and envelopes, SES invitations, Cognito sign-in.
 
 Parameters:
+  UspsParameter:
+    Type: String
+    Default: /occasion-address-book/usps
+    Description: SSM SecureString parameter holding the USPS API credentials as {"clientId":"...","clientSecret":"..."}. Address checks stay off until it exists.
+    AllowedPattern: ^/[A-Za-z0-9_./-]+$
   AllowedEmails:
     Type: String
     Default: '*'
@@ -65,6 +70,7 @@ Globals:
         ALLOWED_EMAILS: !Ref AllowedEmails
         SENDER_EMAIL: !Ref SenderEmail
         SES_CONFIGURATION_SET: !Ref SesConfigurationSet
+        USPS_PARAMETER: !Ref UspsParameter
         APP_URL: !If [HasAppDomain, !Sub 'https://${AppDomain}', !Sub 'https://${Distribution.DomainName}']
 
 Resources:
@@ -244,6 +250,10 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref Table }
         - S3CrudPolicy: { BucketName: !Ref FilesBucket }
+        - Statement:
+            - Effect: Allow   # USPS credentials for address checks
+              Action: ssm:GetParameter
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${UspsParameter}
         - Statement:
             - Effect: Allow   # sharing: check whether someone has an account, and invite them if not
               Action: [cognito-idp:AdminCreateUser, cognito-idp:AdminGetUser]

@@ -8,10 +8,13 @@
 //
 //   PK = TOKEN#<sha256 of link token>, SK = TOKEN
 //        address-update link sent to a household; expires through the table's TTL ("ttl")
+//
+//   PK = USPS#QUOTA, SK = MIN#<yyyy-mm-ddThh:mm> | BLOCK
+//        USPS address checks made in each minute (for the 60-an-hour limit), removed by TTL
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
-  BatchWriteCommand, DeleteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand,
+  BatchWriteCommand, DeleteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 
 export const userPk = (sub) => `USER#${sub}`;
@@ -64,6 +67,18 @@ export function createDynamoRepo({ tableName, client } = {}) {
           ExpressionAttributeValues: { ':pk': pk, ':sk': skPrefix },
         }
         : { KeyConditionExpression: 'PK = :pk', ExpressionAttributeValues: { ':pk': pk } });
+    },
+    /** Adds n to a number attribute (creating the item if needed) and returns the new value. */
+    async increment(pk, sk, field, n = 1, { ttl } = {}) {
+      const res = await doc.send(new UpdateCommand({
+        TableName: tableName,
+        Key: { PK: pk, SK: sk },
+        UpdateExpression: `ADD #f :n${ttl ? ' SET #ttl = :ttl' : ''}`,
+        ExpressionAttributeNames: { '#f': field, ...(ttl ? { '#ttl': 'ttl' } : {}) },
+        ExpressionAttributeValues: { ':n': n, ...(ttl ? { ':ttl': ttl } : {}) },
+        ReturnValues: 'UPDATED_NEW',
+      }));
+      return res.Attributes?.[field] ?? n;
     },
     async batchDel(keys) {
       await batchWrite(keys.map(({ PK, SK }) => ({ DeleteRequest: { Key: { PK, SK } } })), 'delete');
