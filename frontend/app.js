@@ -290,7 +290,9 @@ async function loadAll() {
   try {
     state.books = (await api('/books')).books;
     if (state.bookId && !state.books.some((b) => b.id === state.bookId)) { state.bookId = ''; storeBook(''); }
-    const [me, hh, occ] = await Promise.all([api('/me'), api('/households'), api('/occasions')]);
+    let tz = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* unknown */ }
+    const [me, hh, occ] = await Promise.all([api(`/me${tz ? `?tz=${encodeURIComponent(tz)}` : ''}`), api('/households'), api('/occasions')]);
     state.me = me;
     state.households = hh.households;
     state.occasions = occ.occasions;
@@ -2683,6 +2685,7 @@ async function changePassword(form) {
   }
   closeModal();
   toast('Password updated');
+  api('/me/password-changed', { method: 'POST' }).catch(() => {}); // the "your password was changed" email
 }
 
 // ----- sign-in email change: Cognito emails a code to the new address -----

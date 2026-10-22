@@ -125,7 +125,7 @@ Sign-up is by invitation only. Invite yourself (and anyone else) after the first
 ./scripts/invite-user.sh you@example.com
 ```
 
-Cognito emails a temporary password. Sign in with it and you're asked to choose your own. **Forgot password?** emails a 6-digit code.
+Cognito emails a temporary password. Sign in with it and you're asked to choose your own. **Forgot password?** emails a 6-digit code. Whenever a password changes, in **Settings > Security** (the app asks the API to send it) or through **Forgot password?** (a Cognito post-confirmation trigger, `backend/src/handlers/cognito-post-confirmation.mjs`), the account's email gets a *Your password was changed* notice with the time, in the time zone the app last reported, and how to reset it if it wasn't them.
 
 After **30 minutes without activity** (mouse, keyboard, scroll or touch) the app signs out, with a **Still there?** warning 2 minutes before; **Stay signed in** keeps any unsaved edits. Activity in one tab keeps every tab signed in, a computer that slept past the limit signs out when it wakes, and reopening the app more than 30 minutes after the last activity starts at the sign-in screen.
 

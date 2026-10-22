@@ -5,7 +5,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { HttpError } from './auth.mjs';
 import { userPk } from './repo.mjs';
-import { buildAddressReceived, buildAddressRequest, buildInvite, buildShareNotice } from './email.mjs';
+import { buildAddressReceived, buildAddressRequest, buildInvite, buildPasswordChanged, buildShareNotice } from './email.mjs';
 import { cleanDesignHtml } from './sanitize.mjs';
 import { BORDERS, FONTS } from './design-core.mjs';
 
@@ -377,7 +377,28 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     };
   }
 
-  route('GET', '/me', async ({ user }) => meResponse(user, await getProfile(user)));
+  // The app passes its time zone (?tz=America/Detroit) so security notices show local times.
+  route('GET', '/me', async ({ user, query }) => {
+    const profile = await getProfile(user);
+    const tz = typeof query?.tz === 'string' && /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+){0,2}$/.test(query.tz) && query.tz.length <= 64 ? query.tz : null;
+    if (tz && profile.timeZone !== tz) { profile.timeZone = tz; await repo.put(profile); }
+    return meResponse(user, profile);
+  });
+
+  // After a password change in Settings, the app asks for the "your password was changed" notice.
+  // It goes only to the account's own sign-in email; at most one every few seconds.
+  route('POST', '/me/password-changed', async ({ user }) => {
+    const profile = await getProfile(user);
+    if (profile.passwordNoticeAt && now() - Date.parse(profile.passwordNoticeAt) < 5000) return { sent: false };
+    await repo.put({ ...profile, passwordNoticeAt: nowIso() });
+    try {
+      await mailer.send({ to: user.email, ...buildPasswordChanged({ email: user.email, when: now(), timeZone: profile.timeZone, appUrl }) });
+    } catch (e) {
+      log.error(e);
+      return { sent: false };
+    }
+    return { sent: true };
+  });
 
   // Your own book first, then the ones shared with you.
   route('GET', '/books', async ({ user }) => ({

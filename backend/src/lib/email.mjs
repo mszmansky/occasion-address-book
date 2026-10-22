@@ -97,6 +97,32 @@ ${renderDesign(occasion.design, values)}
   return { subject, html, text };
 }
 
+/** "Your password was changed": sent after a change in Settings and after a Forgot-password reset. */
+export function buildPasswordChanged({ email, when = new Date(), timeZone, appUrl }) {
+  const APP = 'Occasions Address Book';
+  let at;
+  try {
+    at = when.toLocaleString('en-US', { timeZone: timeZone || 'America/New_York', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  } catch {
+    at = when.toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'full', timeStyle: 'short' });
+  }
+  const subject = `Your ${APP} password was changed`;
+  const html = layout({
+    heading: 'Your password was changed',
+    inner: `<p style="margin:0 0 14px">The password for <b>${esc(email)}</b> was changed on ${esc(at)}.</p>
+      <p style="margin:0 0 14px">If that was you, there's nothing more to do.</p>
+      <p style="margin:0 0 14px"><b>If it wasn't you,</b> reset your password right away: open ${APP}, choose <b>Forgot password?</b>, and enter your email.</p>
+      ${appUrl ? button(appUrl, `Open ${APP}`) : ''}`,
+    footer: 'This is an automatic security notice. You get it whenever your password changes.',
+  });
+  const text = `The password for ${email} was changed on ${at}.
+
+If that was you, there's nothing more to do.
+
+If it wasn't you, reset your password right away: open ${APP}${appUrl ? ` (${appUrl})` : ''}, choose Forgot password?, and enter your email.`;
+  return { subject, html, text };
+}
+
 /** Asks a household to confirm or correct their mailing address through a private link. */
 export function buildAddressRequest({ household, fromName, url, message, expiresDays }) {
   const who = fromName || 'A friend';

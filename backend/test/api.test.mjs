@@ -42,7 +42,8 @@ async function setup({ media = createFakeFiles(), addressChecker, mailer = creat
   const call = async (method, path, body, { token, claims, book } = {}) => {
     const auth = token === null ? undefined : `Bearer ${token ?? await tokens.sign(claims)}`;
     const res = await api({
-      rawPath: path,
+      rawPath: path.split('?')[0],
+      queryStringParameters: Object.fromEntries(new URLSearchParams(path.split('?')[1] ?? '')),
       requestContext: { http: { method } },
       headers: { ...(auth ? { authorization: auth } : {}), ...(book ? { 'x-book': book } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -676,4 +677,21 @@ test('two people editing at once: the second save is refused with the other vers
   r = await call('PUT', `/occasions/${o.id}`, { name: 'Party?', kind: 'invite', baseUpdatedAt: o.updatedAt }, asTeri);
   assert.equal(r.status, 409);
   assert.equal(r.body.changedBy, 'Mike Szmansky');
+});
+
+test('password changed: the notice goes to the account email, in its time zone, not more than once in a few seconds', async () => {
+  const { call, mailer, setClock } = await setup();
+  setClock('2026-10-22T16:51:00Z');
+  await call('GET', '/me?tz=America/Detroit');
+  assert.equal((await call('GET', '/me', undefined)).status, 200);
+  let r = await call('POST', '/me/password-changed', {});
+  assert.deepEqual(r.body, { sent: true });
+  const m = mailer.sent.at(-1);
+  assert.deepEqual([m.to, m.subject], ['mike@example.com', 'Your Occasions Address Book password was changed']);
+  assert.match(m.text, /was changed on Thursday, October 22, 2026 at 12:51 PM EDT\./);
+  assert.match(m.text, /If it wasn't you, reset your password right away/);
+  r = await call('POST', '/me/password-changed', {});
+  assert.deepEqual(r.body, { sent: false });
+  setClock('2026-10-22T16:52:00Z');
+  assert.deepEqual((await call('POST', '/me/password-changed', {})).body, { sent: true });
 });

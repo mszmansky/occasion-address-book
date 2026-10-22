@@ -234,6 +234,7 @@ Resources:
         ConfigurationSet: !If [HasConfigSet, !Ref SesConfigurationSet, !Ref AWS::NoValue]
       LambdaConfig:
         CustomMessage: !GetAtt CognitoMessageFunction.Arn
+        PostConfirmation: !GetAtt CognitoPostConfirmationFunction.Arn
 
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
@@ -256,6 +257,38 @@ Resources:
     Properties:
       Handler: src/handlers/cognito-message.handler
       Timeout: 5
+
+  # Emails "your password was changed" after a Forgot-password reset.
+  CognitoPostConfirmationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/cognito-post-confirmation.handler
+      Timeout: 10
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref Table }
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource:
+                - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*
+                - !If
+                  - HasConfigSet
+                  - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/${SesConfigurationSet}
+                  - !Ref AWS::NoValue
+
+  CognitoPostConfirmationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt CognitoPostConfirmationFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
+
+  CognitoPostConfirmationLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CognitoPostConfirmationFunction}
+      RetentionInDays: 30
 
   CognitoMessagePermission:
     Type: AWS::Lambda::Permission
