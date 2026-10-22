@@ -1058,3 +1058,4 @@ label > span.hint { display: block; }
 
 .btn-preview { display: inline-flex; align-items: center; gap: 6px; }
 .btn-preview[aria-pressed=true] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.imgbar-group { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }

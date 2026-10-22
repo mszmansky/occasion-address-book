@@ -1660,7 +1660,10 @@ function designModal() {
       <span class="imgbar-sep"></span>
       <span class="small muted">Size</span>
       ${[['25%', 'Small'], ['50%', 'Medium'], ['75%', 'Large'], ['100%', 'Full width']].map(([w, l]) => `<button type="button" class="btn sm" data-img-width="${w}">${l}</button>`).join('')}
-      <button type="button" class="btn sm" data-img-border aria-pressed="false">Border</button>
+      <span class="imgbar-sep"></span>
+      <span class="imgbar-group"><span class="small muted">Border</span>
+      <select data-img-border aria-label="Picture border"><option value="none">None</option>${LINE_STYLES.map(([k, l]) => `<option value="${k}">${esc(k === 'rounded' ? 'Rounded corners' : l)}</option>`).join('')}</select>
+      ${colorInput('imgBorderColor', d.borderColor, 'Color', 'Picture border color', 'data-img-border-color hidden')}</span>
       <button type="button" class="btn sm danger" data-img-remove>Remove</button>
     </div>
     <div class="design-stage">
@@ -1823,12 +1826,37 @@ function wireDesign(editor) {
   };
   const showPlace = (img) => imgbar.querySelectorAll('[data-img-place]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.imgPlace === placeOf(img))));
 
+  // A picture's border: the same styles as lines, in any color (through the color window).
+  const imgBorderSel = imgbar.querySelector('[data-img-border]');
+  const imgBorderColor = modal.querySelector('[name=imgBorderColor]');
+  const imgBorderOf = (img) => {
+    if (!img.style.borderStyle || img.style.borderStyle === 'none') return 'none';
+    if (img.style.borderRadius) return 'rounded';
+    const st = img.style.borderStyle; const w = parseFloat(img.style.borderWidth) || 1;
+    return st === 'double' ? 'double' : st === 'dashed' ? 'dashed' : st === 'dotted' ? 'dotted' : st === 'groove' ? 'groove' : w >= 3 ? 'thick' : 'thin';
+  };
+  function showImgBorder(img) {
+    const style = imgBorderOf(img);
+    imgBorderSel.value = style;
+    if (style !== 'none') imgBorderColor.value = toHexColor(img.style.borderColor) || imgBorderColor.value;
+    modal.querySelector('[data-img-border-color]').hidden = style === 'none';
+    modal.querySelector('[data-color-for=imgBorderColor]').style.background = imgBorderColor.value;
+  }
+  function setImgBorder(img, style, color) {
+    img.style.border = ''; img.style.borderRadius = '';
+    if (style === 'rounded') { img.style.border = `3px solid ${color}`; img.style.borderRadius = '14px'; }
+    else if (LINE_CSS[style]) img.style.border = `${LINE_CSS[style]} ${color}`;
+    showImgBorder(img);
+    record();
+  }
+  imgBorderSel.addEventListener('change', () => { if (picked) setImgBorder(picked, imgBorderSel.value, imgBorderColor.value); });
+
   const pick = (img) => {
     editor.querySelectorAll('img.selected').forEach((i) => i.classList.remove('selected'));
     picked = img;
     img?.classList.add('selected');
     imgbar.hidden = !img;
-    if (img) { imgbar.querySelector('[data-img-border]').setAttribute('aria-pressed', String(Boolean(img.style.border))); showPlace(img); }
+    if (img) { showImgBorder(img); showPlace(img); }
   };
   editor.addEventListener('click', (e) => {
     const line = e.target.closest('hr, img');
@@ -1971,6 +1999,7 @@ function wireDesign(editor) {
     const sw = modal.querySelector(`[data-color-for="${t.name}"]`);
     if (sw) sw.style.background = t.value;
     if (t.name === 'lineColor') { if (e.type === 'change') changeLine({ color: t.value }); return; }
+    if (t.name === 'imgBorderColor') { if (picked && imgBorderSel.value !== 'none') setImgBorder(picked, imgBorderSel.value, t.value); return; }
     if (t.dataset.design === 'color') {
       if (hasSelection()) exec('foreColor', t.value);
       else { canvas.dataset.color = t.value; canvas.style.color = t.value; }
@@ -1979,7 +2008,7 @@ function wireDesign(editor) {
     if (t.dataset.design === 'background') { canvas.style.background = t.value; recordSoon(); }
     if (t.dataset.design === 'borderColor') { applyBorder(); recordSoon(); }
   };
-  for (const el of [bar, linebar]) { el.addEventListener('input', onColor); el.addEventListener('change', onColor); }
+  for (const el of [bar, linebar, imgbar]) { el.addEventListener('input', onColor); el.addEventListener('change', onColor); }
 
   // The color window: the color now on the swatch with its code, the colors already used in this
   // design (so text can match the background or border exactly), a palette, a code box, and the
@@ -2064,10 +2093,6 @@ function wireDesign(editor) {
     if (w) { picked.style.width = w; picked.style.maxWidth = '100%'; picked.style.height = 'auto'; }
     const where = e.target.closest('[data-img-place]')?.dataset.imgPlace;
     if (where) { place(picked, where); showPlace(picked); }
-    if (e.target.closest('[data-img-border]')) {
-      picked.style.border = picked.style.border ? '' : `3px solid ${borderColor.value}`;
-      imgbar.querySelector('[data-img-border]').setAttribute('aria-pressed', String(Boolean(picked.style.border)));
-    }
     if (e.target.closest('[data-img-remove]')) { picked.remove(); pick(null); }
     record();
   });
