@@ -127,6 +127,8 @@ Sign-up is by invitation only. Invite yourself (and anyone else) after the first
 
 Cognito emails a temporary password. Sign in with it and you're asked to choose your own. **Forgot password?** emails a 6-digit code.
 
+After **30 minutes without activity** (mouse, keyboard, scroll or touch) the app signs out, with a **Still there?** warning 2 minutes before; **Stay signed in** keeps any unsaved edits. Activity in one tab keeps every tab signed in, a computer that slept past the limit signs out when it wakes, and reopening the app more than 30 minutes after the last activity starts at the sign-in screen.
+
 **Settings** (account menu) has four tabs:
 - **Profile:** a profile photo (cropped to a square, shown in a circle here and beside your name at the top), your name, the name invitations come from, and your sign-in email (changing it emails a 6-digit code to the new address).
 - **Return address:** printed on envelopes and return-address labels.

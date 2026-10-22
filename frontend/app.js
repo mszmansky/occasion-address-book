@@ -2603,16 +2603,113 @@ document.addEventListener('submit', async (e) => {
 
 modal.addEventListener('close', () => { modal.innerHTML = ''; });
 
+// ---------- inactivity sign-out ----------
+// After 30 minutes with no mouse, keyboard, scroll or touch activity, the app signs out; a dialog
+// warns 2 minutes before. The last activity time is shared through localStorage, so working in one
+// tab keeps the others signed in, and a Mac that slept past the limit signs out when it wakes.
+// The warning sits on top of any open dialog, so "Stay signed in" keeps unsaved edits.
+const IDLE_LIMIT = 30 * 60_000;
+const IDLE_WARNING = 2 * 60_000;
+const ACTIVE_KEY = 'oab.lastActive';
+const idleEl = Object.assign(document.createElement('dialog'), { className: 'confirm-modal idle-modal' });
+idleEl.setAttribute('aria-labelledby', 'idle-title');
+document.body.append(idleEl);
+let lastActive = Date.now();
+let idleTimer = null;
+
+function readLastActive() {
+  try { return Math.max(lastActive, Number(localStorage.getItem(ACTIVE_KEY)) || 0); } catch { return lastActive; }
+}
+function markActive(force = false) {
+  const t = Date.now();
+  if (!force && t - lastActive < 10_000) return; // write at most every 10 seconds
+  lastActive = t;
+  try { localStorage.setItem(ACTIVE_KEY, String(t)); } catch { /* private mode: this tab only */ }
+}
+const fmtLeft = (ms) => { const sec = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+
+function showIdleWarning(left) {
+  if (!idleEl.open) {
+    idleEl.innerHTML = `<form method="dialog" class="confirm-box">
+      <h2 id="idle-title">Still there?</h2>
+      <p>You'll be signed out in <b data-idle-left>${fmtLeft(left)}</b>.</p>
+      <div class="confirm-buttons">
+        <button type="submit" value="out" class="btn">Sign out</button>
+        <button type="submit" value="stay" class="btn primary" data-idle-stay>Stay signed in</button>
+      </div></form>`;
+    idleEl.returnValue = '';
+    idleEl.onclose = () => {
+      if (idleEl.returnValue === 'out') auth.signOut();
+      else markActive(true); // "Stay signed in", or Esc
+    };
+    idleEl.showModal();
+    idleEl.querySelector('[data-idle-stay]').focus();
+  } else {
+    idleEl.querySelector('[data-idle-left]').textContent = fmtLeft(left);
+  }
+}
+
+function checkIdle() {
+  if (!state.session) { if (idleEl.open) { idleEl.onclose = null; idleEl.close(); } return; }
+  const idle = Date.now() - readLastActive();
+  if (idle >= IDLE_LIMIT) {
+    if (idleEl.open) { idleEl.onclose = null; idleEl.close(); }
+    auth.signOut();
+  } else if (idle >= IDLE_LIMIT - IDLE_WARNING) {
+    showIdleWarning(IDLE_LIMIT - idle);
+  } else if (idleEl.open) {
+    idleEl.onclose = null; idleEl.close(); // activity in another tab
+  }
+}
+
+// Still signed in from a visit that ended more than 30 minutes ago?
+function staleSession() {
+  try {
+    const stored = Number(localStorage.getItem(ACTIVE_KEY)) || 0;
+    return Boolean(stored) && Date.now() - stored >= IDLE_LIMIT;
+  } catch { return false; }
+}
+
+function startIdleWatch() {
+  markActive(true);
+  clearInterval(idleTimer);
+  idleTimer = setInterval(checkIdle, 1000);
+}
+function stopIdleWatch() {
+  clearInterval(idleTimer);
+  idleTimer = null;
+  if (idleEl.open) { idleEl.onclose = null; idleEl.close(); }
+}
+
+for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'scroll']) {
+  document.addEventListener(ev, () => { if (state.session && !idleEl.open) markActive(); }, { passive: true, capture: true });
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state.session) checkIdle(); });
+
+
 auth.onChange((event, session) => {
   const wasSignedIn = Boolean(state.session);
   state.session = session;
   if (!session) {
+    stopIdleWatch();
     Object.assign(state, { me: null, books: [], households: [], occasions: [], occasionId: null, occ: null, view: 'people' });
+    if (wasSignedIn && Date.now() - readLastActive() >= IDLE_LIMIT) { state.authErr = ''; state.authMsg = 'You were signed out after 30 minutes without activity.'; }
     if (wasSignedIn) state.bookId = storedBook(); // a different person may sign in next; loadAll checks the book is theirs
     if (modal.open) modal.close();
     if (wasSignedIn || event !== 'INITIAL_SESSION') state.authMode = 'signin';
     return renderAuth();
   }
-  if (!wasSignedIn) { state.authMode = 'signin'; state.authErr = ''; setTimeout(loadAll, 0); }
+  if (!wasSignedIn) {
+    // Reopening the app after more than 30 minutes away: sign out instead of picking up where it left off.
+    if (event === 'INITIAL_SESSION' && staleSession()) {
+      state.session = null;
+      state.authMsg = 'You were signed out after 30 minutes without activity.';
+      auth.signOut();
+      return renderAuth();
+    }
+    state.authMode = 'signin'; state.authErr = ''; state.authMsg = '';
+    startIdleWatch();
+    setTimeout(loadAll, 0);
+  }
   return undefined;
 });
