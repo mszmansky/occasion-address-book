@@ -980,8 +980,23 @@ label > span.hint { display: block; }
 .tb-pic.busy { cursor: progress; opacity: .6; }
 .tb-swatch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .tb-swatch .tb-label { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; color: var(--ink-2); }
-.tb-color { display: inline-flex; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; cursor: pointer; background: var(--surface); }
-.tb-color input { width: 44px; height: 44px; margin: -6px; border: 0; padding: 0; cursor: pointer; background: none; }
+.tb-color { display: inline-flex; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 7px; cursor: pointer; padding: 0; box-shadow: inset 0 0 0 2px var(--surface); }
+.tb-color:hover { border-color: var(--ink-3); }
+.native-color { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.tb-swatch { position: relative; }
+.modal-body { position: relative; }
+.color-pop { position: absolute; z-index: 20; width: 270px; display: grid; gap: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,.18); }
+.color-pop[hidden] { display: none; }
+.pop-now { display: flex; align-items: center; gap: 10px; }
+.pop-big { width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--line); flex: none; }
+.pop-row { display: grid; grid-template-columns: repeat(auto-fill, 24px); gap: 6px; }
+.pop-chip { width: 24px; height: 24px; border-radius: 6px; border: 1px solid rgba(0,0,0,.18); padding: 0; cursor: pointer; }
+.pop-chip:hover { transform: scale(1.12); }
+.pop-chip.on { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pop-code { display: flex; align-items: center; gap: 6px; }
+.pop-code input { width: 96px; font-family: var(--mono); text-transform: uppercase; padding: 5px 8px; }
+.color-pop .link { justify-self: start; }
+.mono { font-family: var(--mono); }
 .tb-spacer { flex: 1; }
 .tb-break { flex-basis: 100%; height: 0; }
 .tb-label { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; }

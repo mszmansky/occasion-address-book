@@ -1597,7 +1597,7 @@ function designModal() {
   loadAllFonts();
   // One font picker and one text color: with words selected they change those words; with nothing
   // selected they change the whole design's font or text color.
-  const colorInput = (name, value, label, title) => `<label class="tb-swatch" title="${title}"><span class="tb-label">${label}</span><span class="tb-color"><input type="color" name="${name}" value="${esc(value)}" data-design="${name}" aria-label="${title}"></span></label>`;
+  const colorInput = (name, value, label, title, extra = '') => `<span class="tb-swatch" ${extra}><span class="tb-label">${label}</span><button type="button" class="tb-color" data-color-for="${name}" title="${title}" aria-label="${title}" aria-haspopup="dialog" style="background:${esc(value)}"></button><input type="color" name="${name}" value="${esc(value)}" data-design="${name}" class="native-color" tabindex="-1" aria-hidden="true"></span>`;
   openModal(kindOf(o) === 'email' ? 'Design email' : 'Design invitation', `
     <div class="design-toolbar" role="toolbar" aria-label="Formatting">
       <span class="tb-group">
@@ -1624,9 +1624,10 @@ function designModal() {
       <span class="tb-spacer"></span>
       ${colorInput('background', d.background, 'Background', 'Background color')}
       <label class="tb-swatch"><span class="tb-label">Border</span><select data-design="border" aria-label="Border">${BORDERS.map((x) => `<option value="${x.key}" ${x.key === d.border ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select></label>
-      <label class="tb-swatch" title="Border color" data-border-color ${d.border === 'none' ? 'hidden' : ''}><span class="tb-label">Border color</span><span class="tb-color"><input type="color" name="borderColor" value="${esc(d.borderColor)}" data-design="borderColor" aria-label="Border color"></span></label>
+      ${colorInput('borderColor', d.borderColor, 'Border color', 'Border color', `data-border-color ${d.border === 'none' ? 'hidden' : ''}`)}
       <button type="button" class="tb" data-design-html aria-pressed="false" title="Edit or paste HTML">&lt;/&gt;</button>
     </div>
+    <div class="color-pop" data-color-pop hidden role="dialog" aria-label="Choose a color"></div>
     <div class="design-imgbar" data-design-imgbar hidden>
       <span class="small muted">Place</span>
       ${[['left', 'Left, text beside'], ['center', 'Centered'], ['right', 'Right, text beside'], ['inline', 'In the line']].map(([k, l]) => `<button type="button" class="btn sm" data-img-place="${k}" aria-pressed="false">${l}</button>`).join('')}
@@ -1651,6 +1652,9 @@ function designModal() {
   wireDesign(editor);
 }
 
+// Colors offered in the color window: classic invitation colors.
+const PALETTE = ['#000000', '#1d2125', '#4b5563', '#9ca3af', '#ffffff', '#fdf6e3', '#f5e6c8', '#c9a227', '#b8860b', '#7f1d1d',
+  '#9f1239', '#dc2626', '#f472b6', '#ea580c', '#facc15', '#14532d', '#16a34a', '#0f766e', '#1e3a8a', '#2563eb', '#7c3aed', '#78350f'];
 const UNDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3M2.75 6.5h6.5a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const REDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="m10.5 3.5 3 3-3 3M13.25 6.5h-6.5a4 4 0 0 0 0 8H9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ALIGN = (w) => `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="${{ l: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8', c: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8', r: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' }[w]}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
@@ -1716,6 +1720,9 @@ function wireDesign(editor) {
     canvas.dataset.color = s.color; canvas.style.color = s.color; colorIn.value = s.color;
     bgInput.value = s.background; canvas.style.background = s.background;
     borderSel.value = s.border; borderColor.value = s.borderColor; applyBorder();
+    for (const [n, v] of [['color', s.color], ['background', s.background], ['borderColor', s.borderColor]]) {
+      const sw = modal.querySelector(`[data-color-for="${n}"]`); if (sw) sw.style.background = v;
+    }
     pick(null);
     designRange = null;
     syncHistory();
@@ -1847,6 +1854,8 @@ function wireDesign(editor) {
   const onColor = (e) => {
     const t = e.target;
     if (t.type !== 'color') return;
+    const sw = bar.querySelector(`[data-color-for="${t.name}"]`);
+    if (sw) sw.style.background = t.value;
     if (t.dataset.design === 'color') {
       if (hasSelection()) exec('foreColor', t.value);
       else { canvas.dataset.color = t.value; canvas.style.color = t.value; }
@@ -1857,6 +1866,81 @@ function wireDesign(editor) {
   };
   bar.addEventListener('input', onColor);
   bar.addEventListener('change', onColor);
+
+  // The color window: the color now on the swatch with its code, the colors already used in this
+  // design (so text can match the background or border exactly), a palette, a code box, and the
+  // Mac's own color picker under "More colors…".
+  const pop = modal.querySelector('[data-color-pop]');
+  let popFor = null;
+  const toHex = (c) => {
+    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c);
+    if (m) return `#${[m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
+    return /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : null;
+  };
+  const usedColors = () => {
+    const found = [canvas.dataset.color, bgInput.value, borderColor.value];
+    editor.querySelectorAll('[style]').forEach((el) => { found.push(toHex(el.style.color), toHex(el.style.backgroundColor)); });
+    editor.querySelectorAll('font[color]').forEach((el) => found.push(toHex(el.getAttribute('color'))));
+    return [...new Set(found.filter(Boolean).map((c) => c.toLowerCase()))].slice(0, 14);
+  };
+  const chip = (c) => `<button type="button" class="pop-chip" data-pick="${c}" style="background:${c}" title="${c.toUpperCase()}" aria-label="${c.toUpperCase()}"></button>`;
+  const closePop = () => { pop.hidden = true; popFor = null; };
+  const pickColor = (hex) => {
+    const input = bar.querySelector(`input[name="${popFor}"]`);
+    input.value = hex;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    closePop();
+  };
+  const openPop = (btn) => {
+    const input = bar.querySelector(`input[name="${btn.dataset.colorFor}"]`);
+    popFor = input.name;
+    const now = input.value.toLowerCase();
+    pop.innerHTML = `
+      <div class="pop-now"><span class="pop-big" style="background:${now}"></span>
+        <div><div class="small muted">${esc(btn.title)}</div><b class="mono">${now.toUpperCase()}</b></div></div>
+      <div class="small muted">In this design</div>
+      <div class="pop-row">${usedColors().map(chip).join('')}</div>
+      <div class="small muted">Colors</div>
+      <div class="pop-row">${PALETTE.map(chip).join('')}</div>
+      <div class="pop-code"><label class="small muted" for="pop-hex">Color code</label>
+        <input id="pop-hex" data-pop-hex value="${now.toUpperCase()}" maxlength="7" spellcheck="false" autocomplete="off">
+        <button type="button" class="btn sm" data-pop-apply>Use</button></div>
+      <button type="button" class="link" data-pop-more>More colors…</button>`;
+    pop.querySelectorAll(`[data-pick="${now}"]`).forEach((c) => c.classList.add('on'));
+    const r = btn.getBoundingClientRect();
+    const host = modal.querySelector('.modal-body').getBoundingClientRect();
+    pop.hidden = false;
+    pop.style.left = `${Math.max(8, Math.min(r.left - host.left, host.width - pop.offsetWidth - 8))}px`;
+    pop.style.top = `${r.bottom - host.top + 6 + modal.querySelector('.modal-body').scrollTop}px`;
+  };
+  bar.addEventListener('click', (e) => {
+    const sw = e.target.closest('[data-color-for]');
+    if (!sw) return;
+    keepRange();
+    if (popFor === sw.dataset.colorFor) closePop(); else openPop(sw);
+  });
+  pop.addEventListener('mousedown', (e) => { if (!e.target.closest('input')) e.preventDefault(); }); // keep the text selection
+  pop.addEventListener('click', (e) => {
+    const c = e.target.closest('[data-pick]')?.dataset.pick;
+    if (c) return pickColor(c);
+    if (e.target.closest('[data-pop-apply]')) {
+      const v = pop.querySelector('[data-pop-hex]').value.trim();
+      const hex = /^#?[0-9a-f]{6}$/i.test(v) ? `#${v.replace('#', '').toLowerCase()}` : null;
+      if (hex) pickColor(hex); else pop.querySelector('[data-pop-hex]').focus();
+      return undefined;
+    }
+    if (e.target.closest('[data-pop-more]')) {
+      const input = bar.querySelector(`input[name="${popFor}"]`);
+      closePop();
+      input.click();
+    }
+    return undefined;
+  });
+  pop.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches('[data-pop-hex]')) { e.preventDefault(); pop.querySelector('[data-pop-apply]').click(); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePop(); }
+  });
+  modal.addEventListener('pointerdown', (e) => { if (!pop.hidden && !e.target.closest('[data-color-pop], [data-color-for]')) closePop(); });
   // A color picker takes focus: remember the selection before it opens.
   bar.addEventListener('pointerdown', (e) => { if (e.target.closest('input[type=color], select')) keepRange(); });
 
@@ -1888,7 +1972,7 @@ function wireDesign(editor) {
     }
     htmlBtn.setAttribute('aria-pressed', String(toSource));
     bar.querySelectorAll('select, button.tb:not([data-design-html]), input, .tb-pic').forEach((el) => {
-      if (el.matches('input[type=color][name=background], input[name=borderColor], [data-design=border]')) return;
+      if (el.matches('input[type=color], [data-color-for=background], [data-color-for=borderColor], [data-design=border]')) return;
       if (el.matches('[data-history]')) { el.disabled = toSource || (el.dataset.history === 'undo' ? at === 0 : at === history.length - 1); return; }
       el.classList.toggle('off', toSource);
       if ('disabled' in el) el.disabled = toSource;
