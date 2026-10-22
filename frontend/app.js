@@ -8,6 +8,7 @@ import {
   defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact,
 } from './csv-core.js';
 import { householdToVcard, fileBaseName } from './vcard-core.js';
+import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
 import {
   BORDERS, FONTS, FIELDS as DESIGN_FIELDS, DESIGN_DEFAULTS, borderByKey, fieldValues, fontByKey, fontLink, renderDesign, starterHtml,
 } from './design-core.js';
@@ -1572,7 +1573,7 @@ let designRange = null; // the editor selection, kept while the toolbar has focu
 
 function designHtml(editor) {
   const copy = editor.cloneNode(true);
-  copy.querySelectorAll('img').forEach((img) => img.classList.remove('selected'));
+  copy.querySelectorAll('.selected, .line-selected').forEach((el) => el.classList.remove('selected', 'line-selected'));
   return copy.innerHTML.replace(/ class=""/g, '');
 }
 
@@ -1616,6 +1617,7 @@ function designModal() {
       <button type="button" class="tb" data-cmd="insertUnorderedList" title="Bulleted list" aria-label="Bulleted list">•≡</button>
       <span class="tb-break"></span>
       <select data-design="field" aria-label="Insert a fill-in field" title="Insert a fill-in field"><option value="">Insert field</option>${DESIGN_FIELDS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
+      <button type="button" class="tb" data-insert-line title="Insert a line">${LINE_ICON} <span>Line</span></button>
       <label class="tb tb-pic" title="Insert a picture">${PICTURE} <span>Picture</span><input type="file" accept="${PICTURE_TYPES.join(',')}" data-design-picture hidden></label>
       <span class="tb-spacer"></span>
       ${colorInput('background', d.background, 'Background', 'Background color')}
@@ -1625,6 +1627,16 @@ function designModal() {
       <button type="button" class="tb tb-preview" data-design-preview aria-pressed="false" title="See it filled in for each household">${EYE_ICON} <span>Preview</span></button>
     </div>
     <div class="color-pop" data-color-pop hidden role="dialog" aria-label="Choose a color"></div>
+    <div class="design-imgbar" data-design-linebar hidden>
+      <span class="small muted">Line</span>
+      <select data-line-type aria-label="Line style">${LINE_STYLES.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}
+        <optgroup label="Calligraphy">${FLOURISHES.map((f) => `<option value="${f.key}">${esc(f.label.replace(' flourish', ''))}</option>`).join('')}</optgroup></select>
+      ${colorInput('lineColor', d.borderColor, 'Color', 'Line color')}
+      <span class="imgbar-sep"></span>
+      <span class="small muted">Length</span>
+      ${[['25%', 'Short'], ['50%', 'Medium'], ['75%', 'Long'], ['100%', 'Full width']].map(([w, l]) => `<button type="button" class="btn sm" data-line-width="${w}" aria-pressed="false">${l}</button>`).join('')}
+      <button type="button" class="btn sm danger" data-line-remove>Remove</button>
+    </div>
     <div class="design-imgbar" data-design-imgbar hidden>
       <span class="small muted">Place</span>
       ${[['left', 'Left, text beside'], ['center', 'Centered'], ['right', 'Right, text beside'], ['inline', 'In the line']].map(([k, l]) => `<button type="button" class="btn sm" data-img-place="${k}" aria-pressed="false">${l}</button>`).join('')}
@@ -1661,6 +1673,11 @@ function designModal() {
 const PALETTE = ['#000000', '#1d2125', '#4b5563', '#9ca3af', '#ffffff', '#fdf6e3', '#f5e6c8', '#c9a227', '#b8860b', '#7f1d1d',
   '#9f1239', '#dc2626', '#f472b6', '#ea580c', '#facc15', '#14532d', '#16a34a', '#0f766e', '#1e3a8a', '#2563eb', '#7c3aed', '#78350f'];
 const EYE_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+const LINE_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2 8h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M2 4.5h4M2 11.5h7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" opacity=".45"/></svg>';
+// Divider lines: the same styles as the page border (drawn by mail apps), plus calligraphy flourishes
+// (drawn here and saved as pictures).
+const LINE_STYLES = [['thin', 'Thin line'], ['thick', 'Thick line'], ['double', 'Double line'], ['dashed', 'Dashed'], ['dotted', 'Dotted'], ['rounded', 'Rounded'], ['groove', 'Engraved']];
+const LINE_CSS = { thin: '1px solid', thick: '4px solid', double: '5px double', dashed: '2px dashed', dotted: '3px dotted', groove: '6px groove' };
 const UNDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3M2.75 6.5h6.5a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const REDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="m10.5 3.5 3 3-3 3M13.25 6.5h-6.5a4 4 0 0 0 0 8H9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ALIGN = (w) => `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="${{ l: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8', c: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8', r: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' }[w]}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
@@ -1704,7 +1721,7 @@ function wireDesign(editor) {
     editor.style.padding = b.css ? '16px' : '';
   };
   applyBorder();
-  const snap = () => ({ html: editor.innerHTML.replace(/ class="selected"/g, ''), font: canvas.dataset.font, color: canvas.dataset.color, background: bgInput.value, border: borderSel.value, borderColor: borderColor.value });
+  const snap = () => ({ html: editor.innerHTML.replace(/ class="(line-)?selected"/g, ''), font: canvas.dataset.font, color: canvas.dataset.color, background: bgInput.value, border: borderSel.value, borderColor: borderColor.value });
   const same = (a, b) => ['html', 'font', 'color', 'background', 'border', 'borderColor'].every((k) => a[k] === b[k]);
   const history = [snap()];
   let at = 0;
@@ -1729,7 +1746,7 @@ function wireDesign(editor) {
     for (const [n, v] of [['color', s.color], ['background', s.background], ['borderColor', s.borderColor]]) {
       const sw = modal.querySelector(`[data-color-for="${n}"]`); if (sw) sw.style.background = v;
     }
-    pick(null);
+    pick(null); pickLine(null);
     designRange = null;
     syncHistory();
   };
@@ -1796,7 +1813,81 @@ function wireDesign(editor) {
     imgbar.hidden = !img;
     if (img) { imgbar.querySelector('[data-img-border]').setAttribute('aria-pressed', String(Boolean(img.style.border))); showPlace(img); }
   };
-  editor.addEventListener('click', (e) => pick(e.target.closest('img')));
+  editor.addEventListener('click', (e) => {
+    const line = e.target.closest('hr, img');
+    if (line && lineTypeOf(line)) { pick(null); pickLine(line); return; }
+    pickLine(null);
+    pick(e.target.closest('img'));
+  });
+
+  // ---- divider lines ----
+  const linebar = modal.querySelector('[data-design-linebar]');
+  const lineColorIn = modal.querySelector('[name=lineColor]');
+  let line = null; // the line being edited
+  const toHexColor = (c) => {
+    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c ?? '');
+    return m ? `#${[m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}` : (/^#[0-9a-f]{6}$/i.test(c ?? '') ? c : null);
+  };
+  function lineTypeOf(el) {
+    if (!el) return null;
+    if (el.dataset.line) return el.dataset.line;
+    if (el.tagName === 'IMG') return flourishByLabel(el.getAttribute('alt'))?.key ?? null;
+    if (el.tagName !== 'HR') return null;
+    if (el.style.backgroundColor && !el.style.borderTopStyle) return 'rounded';
+    const w = parseFloat(el.style.borderTopWidth) || 1;
+    const st = el.style.borderTopStyle;
+    return st === 'double' ? 'double' : st === 'dashed' ? 'dashed' : st === 'dotted' ? 'dotted' : st === 'groove' ? 'groove' : w >= 3 ? 'thick' : 'thin';
+  }
+  const lineColorOf = (el) => el.dataset.lineColor || toHexColor(el.style.borderTopColor) || toHexColor(el.style.backgroundColor) || lineColorIn.value;
+  const lineWidthOf = (el) => el.style.width || '50%';
+  // Builds the line as HTML: a styled <hr> for the plain styles, a flourish picture for the others.
+  async function lineHtml(type, color, width) {
+    const meta = `data-line="${type}" data-line-color="${color}"`;
+    if (LINE_CSS[type]) return `<hr ${meta} style="border:0;border-top:${LINE_CSS[type]} ${color};height:0;width:${width};margin:16px auto">`;
+    if (type === 'rounded') return `<hr ${meta} style="border:0;height:4px;border-radius:2px;background-color:${color};width:${width};margin:16px auto">`;
+    const f = FLOURISHES.find((x) => x.key === type) ?? FLOURISHES[0];
+    const url = await uploadPicture(await drawFlourish(f.key, color), 'image/png');
+    return `<img ${meta} src="${esc(url)}" alt="${esc(f.label)}" style="display:block;width:${width};max-width:100%;height:auto;margin:12px auto">`;
+  }
+  function pickLine(el) {
+    editor.querySelectorAll('.line-selected').forEach((x) => x.classList.remove('line-selected'));
+    line = el;
+    linebar.hidden = !el;
+    if (!el) return;
+    el.classList.add('line-selected');
+    imgbar.hidden = true;
+    linebar.querySelector('[data-line-type]').value = lineTypeOf(el);
+    lineColorIn.value = lineColorOf(el);
+    linebar.querySelector('[data-color-for=lineColor]').style.background = lineColorIn.value;
+    linebar.querySelectorAll('[data-line-width]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lineWidth === lineWidthOf(el))));
+  }
+  // Redraws the selected line with a new style, color or length (flourishes are redrawn and re-saved).
+  async function changeLine({ type = lineTypeOf(line), color = lineColorOf(line), width = lineWidthOf(line) } = {}) {
+    if (!line) return;
+    const old = line;
+    linebar.classList.add('busy');
+    try {
+      const html = await lineHtml(type, color, width);
+      const fresh = document.createRange().createContextualFragment(html).firstChild;
+      old.replaceWith(fresh);
+      pickLine(fresh);
+      record();
+    } catch (e) { modalError(e.message); } finally { linebar.classList.remove('busy'); }
+  }
+  modal.querySelector('[data-insert-line]').addEventListener('click', async () => {
+    const color = borderByKey(borderSel.value).css ? borderColor.value : canvas.dataset.color;
+    insertNode((await lineHtml('thin', color, '50%')).replace('<hr ', '<hr data-new '));
+    const inserted = editor.querySelector('[data-new]');
+    inserted?.removeAttribute('data-new');
+    pickLine(inserted);
+    record();
+  });
+  linebar.addEventListener('change', (e) => { if (e.target.matches('[data-line-type]')) changeLine({ type: e.target.value }); });
+  linebar.addEventListener('click', (e) => {
+    const w = e.target.closest('[data-line-width]')?.dataset.lineWidth;
+    if (w) changeLine({ width: w });
+    if (e.target.closest('[data-line-remove]')) { line.remove(); pickLine(null); record(); }
+  });
 
   // Drag a picture to move it to another spot in the text; drop a picture file from the Mac to add it.
   let dragged = null;
@@ -1860,8 +1951,9 @@ function wireDesign(editor) {
   const onColor = (e) => {
     const t = e.target;
     if (t.type !== 'color') return;
-    const sw = bar.querySelector(`[data-color-for="${t.name}"]`);
+    const sw = modal.querySelector(`[data-color-for="${t.name}"]`);
     if (sw) sw.style.background = t.value;
+    if (t.name === 'lineColor') { if (e.type === 'change') changeLine({ color: t.value }); return; }
     if (t.dataset.design === 'color') {
       if (hasSelection()) exec('foreColor', t.value);
       else { canvas.dataset.color = t.value; canvas.style.color = t.value; }
@@ -1870,8 +1962,7 @@ function wireDesign(editor) {
     if (t.dataset.design === 'background') { canvas.style.background = t.value; recordSoon(); }
     if (t.dataset.design === 'borderColor') { applyBorder(); recordSoon(); }
   };
-  bar.addEventListener('input', onColor);
-  bar.addEventListener('change', onColor);
+  for (const el of [bar, linebar]) { el.addEventListener('input', onColor); el.addEventListener('change', onColor); }
 
   // The color window: the color now on the swatch with its code, the colors already used in this
   // design (so text can match the background or border exactly), a palette, a code box, and the
@@ -1892,13 +1983,13 @@ function wireDesign(editor) {
   const chip = (c) => `<button type="button" class="pop-chip" data-pick="${c}" style="background:${c}" title="${c.toUpperCase()}" aria-label="${c.toUpperCase()}"></button>`;
   const closePop = () => { pop.hidden = true; popFor = null; };
   const pickColor = (hex) => {
-    const input = bar.querySelector(`input[name="${popFor}"]`);
+    const input = modal.querySelector(`input[name="${popFor}"]`);
     input.value = hex;
     input.dispatchEvent(new Event('change', { bubbles: true }));
     closePop();
   };
   const openPop = (btn) => {
-    const input = bar.querySelector(`input[name="${btn.dataset.colorFor}"]`);
+    const input = modal.querySelector(`input[name="${btn.dataset.colorFor}"]`);
     popFor = input.name;
     const now = input.value.toLowerCase();
     pop.innerHTML = `
@@ -1919,7 +2010,7 @@ function wireDesign(editor) {
     pop.style.left = `${Math.max(8, Math.min(r.left - host.left, host.width - pop.offsetWidth - 8))}px`;
     pop.style.top = `${r.bottom - host.top + 6 + modal.querySelector('.modal-body').scrollTop}px`;
   };
-  bar.addEventListener('click', (e) => {
+  modal.querySelector('form').addEventListener('click', (e) => {
     const sw = e.target.closest('[data-color-for]');
     if (!sw) return;
     keepRange();
@@ -1936,7 +2027,7 @@ function wireDesign(editor) {
       return undefined;
     }
     if (e.target.closest('[data-pop-more]')) {
-      const input = bar.querySelector(`input[name="${popFor}"]`);
+      const input = modal.querySelector(`input[name="${popFor}"]`);
       closePop();
       input.click();
     }
@@ -2027,7 +2118,7 @@ function wireDesign(editor) {
     if (on && !src.hidden) htmlBtn.click(); // leave the HTML view first
     pane.hidden = !on;
     canvas.hidden = on;
-    imgbar.hidden = true; pick(null); closePop();
+    imgbar.hidden = true; pick(null); pickLine(null); closePop();
     previewBtn.setAttribute('aria-pressed', String(on));
     lockToolbar(on, previewBtn);
     if (on) showPreview(); else editor.focus();
@@ -2055,6 +2146,13 @@ async function cleanForEditor(html) {
   return doc.body.innerHTML;
 }
 
+async function uploadPicture(blob, type) {
+  const { uploadUrl, url } = await api(`/occasions/${state.occasionId}/images`, { method: 'POST', body: { type, size: blob.size } });
+  const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'content-type': type }, body: blob });
+  if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+  return url;
+}
+
 async function insertPicture(file, insertNode) {
   if (!PICTURE_TYPES.includes(file.type)) return modalError('Pictures must be PNG, JPEG, GIF or WebP.');
   modalError('');
@@ -2075,10 +2173,7 @@ async function insertPicture(file, insertNode) {
       bitmap?.close?.();
     }
     if (blob.size > 5 * 1024 * 1024) throw new Error('That picture is too large (over 5 MB).');
-    const type = blob.type || file.type;
-    const { uploadUrl, url } = await api(`/occasions/${state.occasionId}/images`, { method: 'POST', body: { type, size: blob.size } });
-    const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'content-type': type }, body: blob });
-    if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+    const url = await uploadPicture(blob, blob.type || file.type);
     insertNode(`<img src="${esc(url)}" alt="" style="width:50%;max-width:100%;height:auto">`);
   } catch (e) {
     modalError(e.message);

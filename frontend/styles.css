@@ -1045,3 +1045,10 @@ label > span.hint { display: block; }
 .preview-page { max-width: 600px; margin: 0 auto; box-shadow: 0 1px 6px rgba(0,0,0,.12); border-radius: 4px; overflow: hidden; }
 .preview-page .design p { margin: 0 0 12px; }
 .preview-page .design img { max-width: 100%; height: auto; }
+
+/* divider lines in the editor: easy to click, outlined when chosen */
+.design-edit hr { cursor: pointer; position: relative; }
+.design-edit hr::after { content: ''; position: absolute; inset: -9px 0; }
+.design-edit .line-selected { outline: 2px solid var(--accent); outline-offset: 7px; }
+.design-imgbar.busy { opacity: .6; pointer-events: none; }
+.design-imgbar select { width: auto; min-width: 0; padding: 5px 8px; font-size: 13.5px; }

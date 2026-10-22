@@ -72,3 +72,10 @@ test('borders frame the design; unknown values fall back', async () => {
   assert.match(r({ html: 'x', border: 'rounded', borderColor: 'nope' }), /border:2px solid #9f1239;border-radius:18px;/);
   assert.doesNotMatch(r({ html: 'x', border: 'weird' }), /design-frame/);
 });
+
+test('divider lines survive cleaning', () => {
+  const hr = '<hr data-line="double" style="border:0;border-top:5px double #14532d;height:0;width:75%;margin:16px auto" />';
+  assert.equal(cleanDesignHtml(hr), '<hr style="border:0;border-top:5px double #14532d;height:0;width:75%;margin:16px auto" />');
+  const bar = '<hr style="border:0;height:4px;border-radius:2px;background-color:#9f1239;width:50%;margin:16px auto" />';
+  assert.equal(cleanDesignHtml(bar), bar);
+});
