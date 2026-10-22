@@ -1165,3 +1165,15 @@ label > span.hint { display: block; }
 .export-choices { display: grid; gap: 10px; }
 .export-choices .btn { display: grid; justify-items: start; gap: 2px; padding: 12px 14px; text-align: left; }
 .vc-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Import drop zone */
+.drop-zone { display: grid; justify-items: center; gap: 4px; padding: 26px 16px; border: 2px dashed var(--line); border-radius: 12px; background: var(--surface-2); text-align: center; cursor: pointer; font-weight: 400; transition: border-color .15s, background .15s; }
+.drop-zone:hover { border-color: var(--ink-3); }
+.drop-zone.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.drop-zone:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.drop-zone .dz-icon { color: var(--ink-3); margin-bottom: 4px; }
+.drop-zone.over .dz-icon { color: var(--accent); }
+.dz-main { font-weight: 600; color: var(--ink); }
+.dz-sub { font-size: 13.5px; color: var(--ink-2); }
+.drop-zone.has-file { padding: 14px 16px; border-style: solid; }
+.drop-zone.has-file .dz-icon { display: none; }

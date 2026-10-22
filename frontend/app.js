@@ -1236,13 +1236,20 @@ function importModal() {
   vcardImport = null;
   setUserMenu(false);
   openModal('Import', `
-    <label>A spreadsheet (.csv) or contacts (.vcf)<input type="file" accept=".csv,text/csv,.vcf,text/vcard,text/x-vcard" data-input="csv-file" class="imp-file"></label>
+    <label class="drop-zone" data-drop tabindex="0" role="button" aria-label="Choose a spreadsheet (.csv) or contacts (.vcf) file">
+      <input type="file" accept=".csv,text/csv,.vcf,text/vcard,text/x-vcard" data-input="csv-file" hidden>
+      ${UPLOAD_ICON}
+      <span class="dz-main" data-drop-label>Drop a spreadsheet (.csv) or contacts (.vcf) here</span>
+      <span class="dz-sub">or <span class="link">choose a file</span></span>
+    </label>
     <div data-import-step></div>`, { form: 'import', wide: true, foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary" disabled data-import-go>Import</button></div>' });
 }
 
 // A file chosen in Import: contacts (.vcf, e.g. exported from Contacts on a Mac or iPhone) or a CSV.
 async function readImportFile(file) {
   modalError('');
+  const zone = modal.querySelector('[data-drop]');
+  if (zone) { zone.classList.add('has-file'); zone.querySelector('[data-drop-label]').textContent = file.name; zone.querySelector('.dz-sub').innerHTML = 'Drop another file, or <span class="link">choose a different one</span>'; }
   const text = await file.text();
   if (/\.vcf$/i.test(file.name) || /^\uFEFF?\s*BEGIN:VCARD/i.test(text)) return readVcardFile(text);
   vcardImport = null;
@@ -1287,6 +1294,28 @@ function updateVcardSummary() {
   go.disabled = !n;
   go.textContent = n ? `Import ${plural(n, 'household')}` : 'Import';
 }
+// The Import drop zone: drag a file onto it (or click to choose one).
+modal.addEventListener('dragover', (e) => {
+  const zone = e.target.closest?.('[data-drop]');
+  if (!zone) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  zone.classList.add('over');
+});
+modal.addEventListener('keydown', (e) => {
+  const zone = e.target.closest?.('[data-drop]');
+  if (zone && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); zone.querySelector('input[type=file]').click(); }
+});
+modal.addEventListener('dragleave', (e) => { const zone = e.target.closest?.('[data-drop]'); if (zone && !zone.contains(e.relatedTarget)) zone.classList.remove('over'); });
+modal.addEventListener('drop', (e) => {
+  const zone = e.target.closest?.('[data-drop]');
+  if (!zone) return;
+  e.preventDefault();
+  zone.classList.remove('over');
+  const file = e.dataTransfer?.files?.[0];
+  if (file) readImportFile(file).catch((err) => modalError(err.message));
+});
+
 modal.addEventListener('change', (e) => {
   if (!vcardImport || !e.target.matches('[data-vc]')) return;
   const i = Number(e.target.dataset.vc);
@@ -1930,6 +1959,7 @@ const LINE_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="
 // (drawn here and saved as pictures).
 const LINE_STYLES = [['thin', 'Thin line'], ['thick', 'Thick line'], ['double', 'Double line'], ['dashed', 'Dashed'], ['dotted', 'Dotted'], ['rounded', 'Rounded'], ['groove', 'Engraved']];
 const LINE_CSS = { thin: '1px solid', thick: '4px solid', double: '5px double', dashed: '2px dashed', dotted: '3px dotted', groove: '6px groove' };
+const UPLOAD_ICON = '<svg class="dz-icon" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const UNDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3M2.75 6.5h6.5a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const REDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="m10.5 3.5 3 3-3 3M13.25 6.5h-6.5a4 4 0 0 0 0 8H9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ALIGN = (w) => `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="${{ l: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8', c: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8', r: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' }[w]}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
