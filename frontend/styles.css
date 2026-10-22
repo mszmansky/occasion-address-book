@@ -1056,3 +1056,6 @@ label > span.hint { display: block; }
 /* Emails: people to send to, one checkbox each */
 .people-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .people-checks .check { font-size: 13.5px; gap: 6px; }
+
+.btn-preview { display: inline-flex; align-items: center; gap: 6px; }
+.btn-preview[aria-pressed=true] { background: var(--ink); color: var(--surface); border-color: var(--ink); }

@@ -1649,7 +1649,6 @@ function designModal() {
       <label class="tb-swatch"><span class="tb-label">Border</span><select data-design="border" aria-label="Border">${BORDERS.map((x) => `<option value="${x.key}" ${x.key === d.border ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select></label>
       ${colorInput('borderColor', d.borderColor, 'Border color', 'Border color', `data-border-color ${d.border === 'none' ? 'hidden' : ''}`)}
       <button type="button" class="tb" data-design-html aria-pressed="false" title="Edit or paste HTML">&lt;/&gt;</button>
-      <button type="button" class="tb tb-preview" data-design-preview aria-pressed="false" title="See it filled in for each household">${EYE_ICON} <span>Preview</span></button>
     </div>
     <div class="color-pop" data-color-pop hidden role="dialog" aria-label="Choose a color"></div>
     <div class="design-imgbar" data-design-linebar hidden>
@@ -1686,7 +1685,7 @@ function designModal() {
       </div>
     </div>`, {
     form: 'design', wide: 'xl',
-    foot: `<div></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save design</button></div>`,
+    foot: `<div class="left-actions"><button type="button" class="btn btn-preview" data-design-preview aria-pressed="false" title="See it filled in for each household">${EYE_ICON} Preview</button></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save design</button></div>`,
   });
   try { document.execCommand('styleWithCSS', false, true); } catch { /* older browsers */ }
   const editor = modal.querySelector('[data-design-edit]');
