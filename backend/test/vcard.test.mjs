@@ -54,3 +54,52 @@ test('a single household exports as CSV that the import reads back', () => {
   assert.equal(rows.length, 2);
   assert.equal(rows[1][0], 'The Smith Family');
 });
+
+test('reads an Apple Contacts export and groups people at the same address', async () => {
+  const { parseVcards, contactsToHouseholds } = await import('../../frontend/vcard-core.js');
+  const { formatPhone } = await import('../../frontend/csv-core.js');
+  const vcf = [
+    'BEGIN:VCARD', 'VERSION:3.0', 'PRODID:-//Apple Inc.//macOS 15.0//EN',
+    'N:Smith;John;;;', 'FN:John Smith',
+    'EMAIL;type=INTERNET;type=HOME;type=pref:John@Example.com',
+    'TEL;type=CELL;type=VOICE;type=pref:2485550101',
+    'item1.ADR;type=HOME;type=pref:;;123 Maple Street\\nApt 4;Willow Bend;MI;49002;United States',
+    'item1.X-ABADR:us',
+    'PHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDA',
+    ' sLCxkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgN',
+    'END:VCARD',
+    'BEGIN:VCARD', 'VERSION:3.0', 'N:Smith;Mary;;;', 'FN:Mary Smith',
+    'EMAIL;type=INTERNET:mary@example.com',
+    'item1.ADR;type=HOME:;;123 Maple Street\\nApt 4;Willow Bend;MI;49002;United States',
+    'END:VCARD',
+    'BEGIN:VCARD', 'VERSION:3.0', "N:O'Brien;Grandma Rose;;;", "FN:Grandma Rose O'Brien",
+    'ADR;TYPE=HOME:;;40 Lake Drive;Juniper Ridge;MI;49004;', 'END:VCARD',
+    'BEGIN:VCARD', 'VERSION:3.0', 'N:;;;;', 'FN:Acme Plumbing', 'ORG:Acme Plumbing;', 'TEL;TYPE=WORK:555-0100', 'END:VCARD',
+  ].join('\r\n');
+  const contacts = parseVcards(vcf);
+  assert.equal(contacts.length, 4);
+  assert.deepEqual(contacts[0], {
+    firstName: 'John', lastName: 'Smith', fullName: 'John Smith', org: '', email: 'john@example.com', phone: '2485550101',
+    address: { line1: '123 Maple Street', line2: 'Apt 4', city: 'Willow Bend', state: 'MI', zip: '49002', country: 'United States' },
+  });
+  const hh = contactsToHouseholds(contacts, { phoneFormat: formatPhone });
+  assert.deepEqual(hh.map((h) => [h.labelName, h.greeting]), [
+    ['The Smith Family', 'John and Mary'], ["Grandma Rose O'Brien", 'Grandma Rose'], ['Acme Plumbing', undefined],
+  ]);
+  assert.equal(hh[0].address.country, '');
+  assert.deepEqual(hh[0].members.map((m) => [m.firstName, m.email, m.phone, m.primary]), [['John', 'john@example.com', '(248) 555-0101', true], ['Mary', 'mary@example.com', undefined, false]]);
+  assert.equal(hh[2].labelName, 'Acme Plumbing');
+});
+
+test('vCard 2.1 quoted-printable and vCard 4.0 parameters', async () => {
+  const { parseVcards } = await import('../../frontend/vcard-core.js');
+  const v21 = ['BEGIN:VCARD', 'VERSION:2.1', 'N;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:M=C3=BCller;J=C3=BCrgen;;;',
+    'ADR;HOME;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:;;Stra=C3=9Fe 1=0D=0A=', 'Hinterhaus;Berlin;;10115;Germany', 'EMAIL;PREF;INTERNET:j@example.de', 'END:VCARD'].join('\r\n');
+  const [c] = parseVcards(v21);
+  assert.deepEqual([c.firstName, c.lastName, c.email], ['Jürgen', 'Müller', 'j@example.de']);
+  assert.deepEqual(c.address, { line1: 'Straße 1', line2: 'Hinterhaus', city: 'Berlin', state: '', zip: '10115', country: 'Germany' });
+  const v4 = ['BEGIN:VCARD', 'VERSION:4.0', 'FN:Ann Lee', 'N:Lee;Ann;;;', 'EMAIL;TYPE=work:ann@work.example', 'EMAIL;TYPE="home,pref":ann@home.example',
+    'TEL;VALUE=uri;TYPE="voice,cell":tel:+1-248-555-0199', 'END:VCARD'].join('\n');
+  const [d] = parseVcards(v4);
+  assert.deepEqual([d.email, d.phone], ['ann@home.example', '+1-248-555-0199']);
+});

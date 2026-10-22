@@ -7,7 +7,7 @@ import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
   defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact, formatPhone,
 } from './csv-core.js';
-import { householdToVcard, fileBaseName } from './vcard-core.js';
+import { householdToVcard, fileBaseName, parseVcards, contactsToHouseholds } from './vcard-core.js';
 import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
 import {
   BORDERS, FONTS, FIELDS as DESIGN_FIELDS, DESIGN_DEFAULTS, borderByKey, fieldValues, fontByKey, fontLink, renderDesign, starterHtml,
@@ -477,6 +477,9 @@ function userChip(email) {
     <div class="menu" id="user-menu-list" role="menu" hidden>
       <button type="button" role="menuitem" data-action="settings">Settings</button>
       <button type="button" role="menuitem" data-action="trash">Trash</button>
+      <hr>
+      ${canEdit() ? '<button type="button" role="menuitem" data-action="import">Import…</button>' : ''}
+      <button type="button" role="menuitem" data-action="export">Export…</button>
       <a role="menuitem" href="help.html" target="_blank" rel="noopener">Help</a>
       <hr>
       <button type="button" role="menuitem" data-action="signout">Sign out</button>
@@ -505,15 +508,13 @@ function renderPeople() {
     return `<div class="panel empty">
       <h2>Start your address book</h2>
       <p>Add a household for each envelope you send: a family at one address, a couple, or one person. Then tag them for occasions like Christmas cards or a party, and print labels or envelopes.</p>
-      ${canEdit() ? '<div class="row-gap"><button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button><button class="btn" data-action="import">Import a spreadsheet (CSV)</button></div>' : ''}
+      ${canEdit() ? '<div class="row-gap"><button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button><button class="btn" data-action="import">Import…</button></div>' : ''}
     </div>`;
   }
   return `
   <div class="page-head">
     <h1>Address book <span class="muted count">${plural(state.households.length, 'household')}</span></h1>
     <div class="actions">
-      ${canEdit() ? '<button class="btn" data-action="import">Import CSV</button>' : ''}
-      <button class="btn" data-action="export">Export CSV</button>
       ${canEdit() ? '<button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button>' : ''}
     </div>
   </div>
@@ -1232,14 +1233,85 @@ let importRows = null;
 
 function importModal() {
   importRows = null;
-  openModal('Import a spreadsheet', `
-    <p style="margin:0">Save your list from Excel, Numbers or Google Sheets as <b>CSV</b>, with one row per household (or one row per person if each person has their own address).</p>
-    <input type="file" accept=".csv,text/csv" data-input="csv-file" class="imp-file">
+  vcardImport = null;
+  setUserMenu(false);
+  openModal('Import', `
+    <label>A spreadsheet (.csv) or contacts (.vcf)<input type="file" accept=".csv,text/csv,.vcf,text/vcard,text/x-vcard" data-input="csv-file" class="imp-file"></label>
     <div data-import-step></div>`, { form: 'import', wide: true, foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary" disabled data-import-go>Import</button></div>' });
 }
 
-async function readCsvFile(file) {
-  const rows = parseCsv(await file.text());
+// A file chosen in Import: contacts (.vcf, e.g. exported from Contacts on a Mac or iPhone) or a CSV.
+async function readImportFile(file) {
+  modalError('');
+  const text = await file.text();
+  if (/\.vcf$/i.test(file.name) || /^\uFEFF?\s*BEGIN:VCARD/i.test(text)) return readVcardFile(text);
+  vcardImport = null;
+  return readCsvFile(file, text);
+}
+
+// ---- contacts (vCard) import ----
+// Contacts become households (people at the same address together), listed with a checkbox each so
+// only the ones wanted come in. Households already in the address book start unticked.
+let vcardImport = null; // { households, picked: Set }
+const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function readVcardFile(text) {
+  importRows = null;
+  const households = contactsToHouseholds(parseVcards(text), { phoneFormat: formatPhone }).map((h) => ({
+    ...h, members: h.members.map((m) => ({ ...m, email: m.email && EMAIL_OK.test(m.email) ? m.email : undefined })),
+  }));
+  if (!households.length) return modalError('No contacts found in that file.');
+  const norm = (x) => String(x ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const have = new Set(state.households.flatMap((h) => [`n:${norm(h.labelName)}`, h.address?.line1 ? `a:${norm(h.address.line1)}|${norm(h.address.zip)}` : '']).filter(Boolean));
+  households.forEach((h, i) => {
+    h.idx = i;
+    h.exists = have.has(`n:${norm(h.labelName)}`) || Boolean(h.address?.line1 && have.has(`a:${norm(h.address.line1)}|${norm(h.address.zip)}`));
+  });
+  vcardImport = { households, picked: new Set(households.filter((h) => !h.exists).map((h) => h.idx)) };
+  modal.querySelector('[data-import-step]').innerHTML = `
+    <div class="vc-tools">
+      <input type="search" data-vc-search placeholder="Find…" aria-label="Find" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <button type="button" class="link" data-vc-all="1">Select all</button><button type="button" class="link" data-vc-all="">Select none</button>
+    </div>
+    <div class="imp-scroll tall"><div class="vc-list">${households.map((h) => `
+      <label class="vc-row" data-vc-row="${h.idx}" data-text="${esc([h.labelName, ...h.members.map((m) => `${m.firstName} ${m.lastName} ${m.email ?? ''}`), h.address?.city].join(' ').toLowerCase())}">
+        <input type="checkbox" data-vc="${h.idx}" ${vcardImport.picked.has(h.idx) ? 'checked' : ''}>
+        <span class="vc-main"><span class="vc-name"><b>${esc(h.labelName)}</b>${h.exists ? '<span class="pill unknown">Already in your address book</span>' : ''}</span>
+          <span class="small muted">${esc([h.members.map((m) => m.firstName || m.email).filter(Boolean).join(', '), isMailable(h.address) ? addressLines('', h.address).join(', ') : 'No mailing address'].filter(Boolean).join(' · '))}</span></span>
+      </label>`).join('')}</div></div>`;
+  updateVcardSummary();
+  return undefined;
+}
+function updateVcardSummary() {
+  const n = vcardImport.picked.size;
+  const go = modal.querySelector('[data-import-go]');
+  go.disabled = !n;
+  go.textContent = n ? `Import ${plural(n, 'household')}` : 'Import';
+}
+modal.addEventListener('change', (e) => {
+  if (!vcardImport || !e.target.matches('[data-vc]')) return;
+  const i = Number(e.target.dataset.vc);
+  if (e.target.checked) vcardImport.picked.add(i); else vcardImport.picked.delete(i);
+  updateVcardSummary();
+});
+modal.addEventListener('input', (e) => {
+  if (!vcardImport || !e.target.matches('[data-vc-search]')) return;
+  const q = e.target.value.trim().toLowerCase();
+  modal.querySelectorAll('[data-vc-row]').forEach((row) => { row.hidden = Boolean(q) && !row.dataset.text.includes(q); });
+});
+modal.addEventListener('click', (e) => {
+  const all = e.target.closest('[data-vc-all]');
+  if (!vcardImport || !all) return;
+  // Select all / none apply to the households shown by Find.
+  modal.querySelectorAll('[data-vc-row]:not([hidden]) [data-vc]').forEach((cb) => {
+    cb.checked = Boolean(all.dataset.vcAll);
+    const i = Number(cb.dataset.vc);
+    if (cb.checked) vcardImport.picked.add(i); else vcardImport.picked.delete(i);
+  });
+  updateVcardSummary();
+});
+
+async function readCsvFile(file, text) {
+  const rows = parseCsv(text ?? await file.text());
   if (!rows.length) return modalError('That file is empty.');
   const header = looksLikeHeader(rows[0]);
   const cols = Math.max(...rows.map((r) => r.length));
@@ -1294,8 +1366,17 @@ function updateImportSummary() {
   go.textContent = households.length ? `Import ${plural(households.length, 'household')}` : 'Import';
 }
 
+function exportModal() {
+  openModal('Export', `<div class="export-choices">
+      <button type="button" class="btn" data-action="export-as" data-kind="csv"><b>Spreadsheet (.csv)</b><span class="small muted">Excel, Numbers, Google Sheets; imports back here</span></button>
+      <button type="button" class="btn" data-action="export-as" data-kind="vcf"><b>Contacts (.vcf)</b><span class="small muted">Contacts on a Mac or iPhone, Google Contacts, Outlook</span></button>
+    </div>`, { form: 'export', foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button></div>' });
+}
+
 async function runImport(btn) {
-  const { households } = buildHouseholds(importRows.data, currentMapping());
+  const households = vcardImport
+    ? vcardImport.households.filter((h) => vcardImport.picked.has(h.idx)).map(({ idx, exists, ...h }) => h)
+    : buildHouseholds(importRows.data, currentMapping()).households;
   await withBusy(btn, async () => {
     for (let i = 0; i < households.length; i += 500) {
       await api('/households/import', { method: 'POST', body: { households: households.slice(i, i + 500) } });
@@ -3001,7 +3082,15 @@ document.addEventListener('click', async (e) => {
     case 'show-note': showNoteTip(el); break;
     case 'import': importModal(); break;
     case 'imp-row': showImportRow(importRows.at + Number(el.dataset.step)); break;
-    case 'export': download(`address-book-${new Date().toISOString().slice(0, 10)}.csv`, householdsToCsv([...state.households].sort(byName))); break;
+    case 'export': setUserMenu(false); exportModal(); break;
+    case 'export-as': {
+      const day = new Date().toISOString().slice(0, 10);
+      const list = [...state.households].sort(byName);
+      if (el.dataset.kind === 'vcf') download(`address-book-${day}.vcf`, list.map(householdToVcard).join(''), 'text/vcard');
+      else download(`address-book-${day}.csv`, householdsToCsv(list));
+      closeModal();
+      break;
+    }
     // occasions
     case 'add-occasion': occasionModal(); break;
     case 'open-occasion':
@@ -3181,7 +3270,7 @@ document.addEventListener('change', (e) => {
       .catch((err) => { toast(err.message, true); renderShareList(); })
       .finally(() => { t.disabled = false; });
   }
-  if (k === 'csv-file' && t.files?.[0]) readCsvFile(t.files[0]).catch((err) => modalError(err.message));
+  if (k === 'csv-file' && t.files?.[0]) readImportFile(t.files[0]).catch((err) => modalError(err.message));
   if (t.dataset?.map !== undefined) updateImportSummary();
   if (t.name === 'what' && t.form?.dataset.form === 'print') syncPrintForm();
 });
