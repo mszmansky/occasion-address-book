@@ -838,7 +838,8 @@ function showHouseholdTab(id, { focus = true } = {}) {
 
 // ---------- address checks (USPS) ----------
 // USPS allows 60 checks an hour for the whole app; the API counts them and says how many are left.
-// The button is hidden until address checks are set up, and disabled while the hour's checks are used up.
+// The button is hidden until address checks are set up, and disabled (no message) while the hour's checks
+// are used up; it turns itself back on when they're available again.
 let addressChecks = null; // { enabled, remaining, availableAt, at }
 let addressChecksTimer = null;
 
@@ -857,14 +858,8 @@ function showAddressChecks() {
   const c = addressChecks ?? {};
   box.hidden = !c.enabled;
   if (!c.enabled) return;
-  const btn = box.querySelector('[data-action=check-address]');
-  const quota = box.querySelector('[data-addr-quota]');
   const out = c.remaining <= 0;
-  btn.disabled = out;
-  btn.title = out ? 'USPS allows 60 address checks an hour' : '';
-  quota.textContent = out
-    ? `Checks used up${c.availableAt ? ` until ${new Date(c.availableAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ' for now'}`
-    : c.remaining <= 10 ? `${plural(c.remaining, 'check')} left this hour` : '';
+  box.querySelector('[data-action=check-address]').disabled = out;
   // Turn the button back on when the hour rolls over.
   clearTimeout(addressChecksTimer);
   if (out && c.availableAt) {
@@ -996,7 +991,7 @@ function householdModal(h) {
       ${pendingBox}
       ${addressFields(h.address)}
       <div class="addr-check" data-addr-check hidden>
-        <div class="addr-check-row"><button type="button" class="btn sm" data-action="check-address">${CHECK_ICON} Check address</button><span class="small muted" data-addr-quota></span></div>
+        <div class="addr-check-row"><button type="button" class="btn sm" data-action="check-address">${CHECK_ICON} Check address</button></div>
         <div data-addr-result></div>
       </div>
       ${h.addressConfirmedAt ? `<p class="hint">Confirmed by them ${fmtDate(h.addressConfirmedAt)}.</p>` : ''}
