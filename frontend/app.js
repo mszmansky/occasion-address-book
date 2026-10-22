@@ -43,7 +43,7 @@ const isEmailKind = (o) => kindOf(o) === 'email';
 const INVITE_BATCH = 25;
 
 const state = {
-  session: null, pendingEmail: null, books: [], bookId: '', authMode: 'signin', showLanding: !rememberedEmail(), authMsg: '', authErr: '', authEmail: rememberedEmail(),
+  session: null, pendingEmail: null, books: [], bookId: '', authMode: 'signin', showLanding: true, authMsg: '', authErr: '', authEmail: rememberedEmail(),
   me: null, households: [], occasions: [], loading: true,
   view: 'people',                 // 'people' | 'occasions'
   occasionId: null, occ: null,    // open occasion: { occasion, tags }
@@ -267,7 +267,7 @@ function renderLanding() {
 
 function renderAuth() {
   // Visitors who aren't signing in yet see the landing page first.
-  if (state.showLanding && state.authMode === 'signin' && !state.authErr && !state.authMsg) return renderLanding();
+  if (state.showLanding && state.authMode === 'signin') return renderLanding();
   const m = AUTH_TITLES[state.authMode] ? state.authMode : 'signin';
   const field = {
     email: `<label>Email<input type="email" name="email" autocomplete="username" value="${val(state.authEmail)}" required></label>`,
@@ -3308,6 +3308,7 @@ auth.onChange((event, session) => {
   state.session = session;
   if (!session) {
     stopIdleWatch();
+    if (wasSignedIn) state.showLanding = true; // signing out goes back to the welcome page
     Object.assign(state, { me: null, books: [], households: [], occasions: [], occasionId: null, occ: null, view: 'people' });
     if (wasSignedIn && Date.now() - readLastActive() >= IDLE_LIMIT) { state.authErr = ''; state.authMsg = 'You were signed out after 30 minutes without activity.'; }
     if (wasSignedIn) state.bookId = storedBook(); // a different person may sign in next; loadAll checks the book is theirs
