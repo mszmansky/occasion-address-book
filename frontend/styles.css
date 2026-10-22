@@ -859,7 +859,8 @@ label > span.hint { display: block; }
   padding: 4px 6px !important; font-size: 15px; box-shadow: none;
 }
 .chip-suggest {
-  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; max-height: 240px; overflow: auto;
+  position: absolute; left: 0; top: calc(100% + 4px); z-index: 20; max-height: 240px; overflow: auto;
+  width: max-content; min-width: 200px; max-width: min(300px, 100%);
   background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.14);
 }
 .chip-option { padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; }

@@ -3235,9 +3235,12 @@ document.addEventListener('mousedown', (e) => {
   } else if (e.target.matches?.('[data-chips]')) {
     e.preventDefault();
     e.target.querySelector('[data-chip-text]').focus();
+    showGroupSuggest(e.target);
   }
 });
-document.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-chip-text]')) showGroupSuggest(e.target.closest('[data-chips]')); });
+// The group suggestions open when you click into Groups or start typing (or press ↓), not just
+// because the box got the focus, so they don't cover the tab when it opens.
+document.addEventListener('click', (e) => { if (e.target.matches?.('[data-chip-text]')) showGroupSuggest(e.target.closest('[data-chips]')); });
 document.addEventListener('focusout', (e) => { if (e.target.matches?.('[data-chip-text]')) hideGroupSuggest(e.target.closest('[data-chips]')); });
 // Phone numbers tidy themselves into (248) 555-0101 when you leave the box.
 document.addEventListener('focusout', (e) => {
