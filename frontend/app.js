@@ -1637,7 +1637,7 @@ function designModal() {
       <button type="button" class="btn sm danger" data-img-remove>Remove</button>
     </div>
     <div class="design-stage">
-      <div class="design-canvas" data-design-canvas data-font="${esc(d.font)}" data-color="${esc(d.color)}" style=""background:${esc(d.background)};color:${esc(d.color)};font-family:${esc(fontByKey(d.font).stack)}">
+      <div class="design-canvas" data-design-canvas data-font="${esc(d.font)}" data-color="${esc(d.color)}" style="background:${esc(d.background)};color:${esc(d.color)};font-family:${esc(fontByKey(d.font).stack)}">
         <div class="design-edit" contenteditable="true" spellcheck="true" data-design-edit aria-label="Design">${(html)}</div>
       </div>
       <textarea class="design-src" data-design-src hidden spellcheck="false" aria-label="HTML"></textarea>
@@ -1842,8 +1842,11 @@ function wireDesign(editor) {
     if (what === 'field' && t.value) { exec('insertText', `{{${t.value}}}`); t.value = ''; }
     if (t.matches('[data-design-picture]') && t.files[0]) { const f = t.files[0]; t.value = ''; insertPicture(f, insertNode); }
   });
-  bar.addEventListener('input', (e) => {
+  // Colors: Safari's color panel may report a pick only as "change" (other browsers send "input" while
+  // dragging), so both are handled; applying the same color twice is harmless.
+  const onColor = (e) => {
     const t = e.target;
+    if (t.type !== 'color') return;
     if (t.dataset.design === 'color') {
       if (hasSelection()) exec('foreColor', t.value);
       else { canvas.dataset.color = t.value; canvas.style.color = t.value; }
@@ -1851,7 +1854,9 @@ function wireDesign(editor) {
     }
     if (t.dataset.design === 'background') { canvas.style.background = t.value; recordSoon(); }
     if (t.dataset.design === 'borderColor') { applyBorder(); recordSoon(); }
-  });
+  };
+  bar.addEventListener('input', onColor);
+  bar.addEventListener('change', onColor);
   // A color picker takes focus: remember the selection before it opens.
   bar.addEventListener('pointerdown', (e) => { if (e.target.closest('input[type=color], select')) keepRange(); });
 
