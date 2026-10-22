@@ -38,4 +38,5 @@ export const handler = createApi({
   appUrl: env.APP_URL,
   directory: createCognitoDirectory({ userPoolId: env.COGNITO_USER_POOL_ID }),
   files: env.FILES_BUCKET ? createS3Files({ bucket: env.FILES_BUCKET }) : undefined,
+  media: env.MEDIA_BUCKET ? createS3Files({ bucket: env.MEDIA_BUCKET }) : undefined,
 });

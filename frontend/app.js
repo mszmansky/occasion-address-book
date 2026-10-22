@@ -8,6 +8,9 @@ import {
   defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact,
 } from './csv-core.js';
 import { householdToVcard, fileBaseName } from './vcard-core.js';
+import {
+  FONTS, FIELDS as DESIGN_FIELDS, DESIGN_DEFAULTS, fieldValues, fontByKey, fontLink, renderDesign, starterHtml,
+} from './design-core.js';
 
 const cfg = window.APP_CONFIG ?? {};
 const root = document.getElementById('root');
@@ -30,7 +33,12 @@ function rememberEmail(email) {
   try { if (email) localStorage.setItem(REMEMBER_KEY, email); else localStorage.removeItem(REMEMBER_KEY); } catch { /* storage blocked */ }
 }
 
-const KIND_LABEL = { card: 'Cards', invite: 'Invitation', other: 'Other' };
+// Cards or Labels: print and track who was mailed. Invitations: the same, plus a designed invitation
+// to print. Emails: a designed email sent to chosen people. ("other" from earlier versions = cards.)
+const KIND_LABEL = { card: 'Cards or Labels', invite: 'Invitations', email: 'Emails' };
+const KIND_PILL = { card: 'due-soon', invite: 'ok', email: 'info' };
+const kindOf = (o) => (KIND_LABEL[o?.kind] ? o.kind : 'card');
+const isEmailKind = (o) => kindOf(o) === 'email';
 const INVITE_BATCH = 25;
 
 const state = {
@@ -61,6 +69,7 @@ const REQUIRED = '<span class="req" aria-hidden="true" title="Required">*</span>
 // The standard share icon: a box with an arrow coming up out of it.
 const SHARE_ICON = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 1.75v8.5M5.25 4.5 8 1.75l2.75 2.75M5.5 6.5H4.25c-.7 0-1.25.55-1.25 1.25v5.5c0 .7.55 1.25 1.25 1.25h7.5c.7 0 1.25-.55 1.25-1.25v-5.5c0-.7-.55-1.25-1.25-1.25H10.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const CHECK_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const BRUSH = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M13.6 2.4a1.4 1.4 0 0 0-2 0L6.8 7.2l2 2 4.8-4.8a1.4 1.4 0 0 0 0-2zM6 8.4c-1.4 0-2.4 1-2.4 2.4 0 .9-.5 1.6-1.6 2 .7.6 1.6.8 2.4.8 2 0 3.2-1.3 3.2-3.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>';
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const LOGO = '<img class="logo" src="icon-192.png" width="64" height="64" alt="">';
 
@@ -662,7 +671,7 @@ window.addEventListener('resize', hideNoteTip);
 
 // ---------- modal ----------
 function openModal(title, body, { form, foot = '', wide = false, head = '' } = {}) {
-  modal.style.width = wide ? 'min(760px, calc(100vw - 32px))' : '';
+  modal.style.width = wide === 'xl' ? 'min(980px, calc(100vw - 32px))' : wide ? 'min(760px, calc(100vw - 32px))' : '';
   modal.innerHTML = `<form data-form="${form}" novalidate>
     <div class="modal-head"><h2>${title}</h2><div class="head-actions">${head}<button type="button" class="btn ghost sm" data-action="close" aria-label="Close">✕</button></div></div>
     <div class="modal-body stack">${body}<p class="error" data-error hidden></p></div>
@@ -1178,10 +1187,10 @@ function renderOccasions() {
   </div>
   ${state.occasions.length ? `<div class="occ-grid">${state.occasions.map((o) => `
     <button class="occ-card" data-action="open-occasion" data-id="${esc(o.id)}">
-      <span class="occ-kind pill ${o.kind === 'invite' ? 'ok' : o.kind === 'card' ? 'due-soon' : 'unknown'}">${KIND_LABEL[o.kind]}</span>
+      <span class="occ-kind pill ${KIND_PILL[kindOf(o)]}">${KIND_LABEL[kindOf(o)]}</span>
       <span class="hh-name">${esc(o.name)}</span>
       <span class="small muted">${o.date ? fmtDate(o.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'No date'}</span>
-      <span class="small">${plural(o.counts.tagged, 'household')} on the list${o.kind !== 'invite' ? ` · ${o.counts.mailed} mailed` : ` · ${o.counts.invited} emailed`}</span>
+      <span class="small">${plural(o.counts.tagged, 'household')} on the list${isEmailKind(o) ? ` · ${o.counts.invited} emailed` : ` · ${o.counts.mailed} mailed`}</span>
     </button>`).join('')}</div>` : `<div class="panel empty">
       <h2>Plan an occasion</h2>
       <p>Create an occasion like <b>Christmas cards 2026</b> or <b>Graduation party</b>, tick who it's for, then print labels or envelopes and email invitations.</p>
@@ -1210,26 +1219,29 @@ function renderOccasion() {
   const noAddr = onList.filter((h) => !isMailable(h.address)).length;
   const withEmail = onList.filter((h) => allEmails(h).length).length;
   const when = [o.date && fmtDate(o.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }), o.time].filter(Boolean).join(' at ');
+  const kind = kindOf(o);
   return `
   <button class="link back" data-action="view" data-view="occasions">← Occasions</button>
   <div class="page-head">
     <div><h1>${esc(o.name)}</h1>
-      <p class="muted" style="margin:2px 0 0">${[KIND_LABEL[o.kind], when, o.location].filter(Boolean).map(esc).join(' · ')}</p></div>
+      <p class="muted" style="margin:2px 0 0">${[KIND_LABEL[kind], when, o.location].filter(Boolean).map(esc).join(' · ')}</p></div>
     <div class="actions">
       ${canEdit() ? `<button class="btn" data-action="edit-occasion">${PENCIL} Edit</button>
-      <button class="btn" data-action="invites" ${withEmail ? '' : 'disabled title="Nobody on the list has an email address"'}>${MAIL} Email invitations…</button>` : ''}
-      <button class="btn primary" data-action="print" ${onList.length ? '' : 'disabled title="Tick households for this occasion first"'}>Print labels / envelopes…</button>
+      ${kind !== 'card' ? `<button class="btn" data-action="design">${BRUSH} ${kind === 'email' ? 'Design email' : 'Design invitation'}</button>` : ''}
+      ${kind === 'email' ? `<button class="btn primary" data-action="invites" ${withEmail ? '' : 'disabled'}>${MAIL} Send emails…</button>` : ''}` : ''}
+      ${kind !== 'email' ? `<button class="btn primary" data-action="print" ${onList.length ? '' : 'disabled'}>Print…</button>` : ''}
     </div>
   </div>
   <div class="stats">
     <div><b>${onList.length}</b><span>on the list</span></div>
-    <div><b>${mailed}</b><span>mailed</span></div>
-    <div><b>${invited}</b><span>emailed</span></div>
-    ${noAddr ? `<div class="warn"><b>${noAddr}</b><span>missing an address</span></div>` : ''}
+    ${kind === 'email' ? `<div><b>${invited}</b><span>emailed</span></div>
+    ${onList.length - withEmail ? `<div class="warn"><b>${onList.length - withEmail}</b><span>no email</span></div>` : ''}`
+    : `<div><b>${mailed}</b><span>mailed</span></div>
+    ${noAddr ? `<div class="warn"><b>${noAddr}</b><span>missing an address</span></div>` : ''}`}
   </div>
   <div class="filters">
     <div class="seg" role="group" aria-label="Show">
-      ${[['all', 'Everyone'], ['on', 'On the list'], ['off', 'Not on the list'], ['unmailed', 'Not mailed yet']].map(([k, l]) => `<button type="button" data-action="occ-filter" data-filter="${k}" aria-pressed="${state.occFilter === k}">${l}</button>`).join('')}
+      ${[['all', 'Everyone'], ['on', 'On the list'], ['off', 'Not on the list'], ['unmailed', kind === 'email' ? 'Not emailed yet' : 'Not mailed yet']].map(([k, l]) => `<button type="button" data-action="occ-filter" data-filter="${k}" aria-pressed="${state.occFilter === k}">${l}</button>`).join('')}
     </div>
     <input type="search" data-input="occ-search" placeholder="Search…" value="${val(state.occSearch)}" aria-label="Search">
     ${filterButton('occ')}
@@ -1239,7 +1251,7 @@ function renderOccasion() {
     ${canEdit() ? `<button class="link" data-action="bulk-tag" data-add="1">Add all shown to the list</button>
     <button class="link" data-action="bulk-tag" data-add="">Remove all shown</button>` : ''}
   </div>
-  <div class="panel tight"><table class="items rcpt">
+  <div class="panel tight"><table class="items rcpt kind-${kind}">
     <thead><tr><th style="width:44px"><span class="sr">On the list</span></th><th>Household</th><th>Greeting</th><th>Address</th><th class="col-mailed">Mailed</th><th class="col-email">Email</th></tr></thead>
     <tbody id="rcpt-rows"></tbody></table></div>`;
 }
@@ -1250,7 +1262,7 @@ function shownRecipients() {
     const t = tags.get(h.id);
     if (state.occFilter === 'on' && !t) return false;
     if (state.occFilter === 'off' && t) return false;
-    if (state.occFilter === 'unmailed' && (!t || t.mailedAt)) return false;
+    if (state.occFilter === 'unmailed' && (!t || (isEmailKind(state.occ?.occasion) ? t.invitedAt : t.mailedAt))) return false;
     return matchesFilter(h, state.filters.occ) && matchesSearch(h, state.occSearch);
   }).sort(byName);
 }
@@ -1310,25 +1322,21 @@ function nameStyleOptions(current, householdIds = []) {
 function occasionModal(o) {
   const isNew = !o;
   o ??= { kind: 'card', nameStyle: 'label', invite: {} };
+  const kind = kindOf(o);
   const copyable = state.occasions.filter((x) => x.counts.tagged);
   openModal(isNew ? 'New occasion' : 'Edit occasion', `
     <label>Name<input name="name" required maxlength="120" value="${val(o.name)}" placeholder="Christmas cards ${new Date().getFullYear()}"></label>
     <div class="grid-3">
-      <label>Type<select name="kind">${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}" ${o.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label>Type<select name="kind" data-occ-kind>${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label>Date <span class="muted">(optional)</span><input type="date" name="date" value="${val(o.date)}"></label>
       <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
     </div>
     <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
-    <label>Name printed on labels and envelopes<select name="nameStyle">
-      ${nameStyleOptions(o.nameStyle, isNew ? [] : (state.occ?.tags ?? []).map((t) => t.householdId))}</select>
-      <span class="hint">You can still switch it each time you print.</span></label>
+    <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Name printed on labels and envelopes<select name="nameStyle">
+      ${nameStyleOptions(o.nameStyle, isNew ? [] : (state.occ?.tags ?? []).map((t) => t.householdId))}</select></label>
+    <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email subject<input name="subject" maxlength="200" value="${val(o.invite?.subject)}" placeholder="You're invited: ${val(o.name) || 'our holiday open house'}"></label>
     ${isNew && copyable.length ? `<label>Start with the list from <span class="muted">(optional)</span><select name="copyFrom"><option value="">Nobody yet</option>
       ${copyable.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} (${x.counts.tagged})</option>`).join('')}</select></label>` : ''}
-    <fieldset><legend>Email invitation <span class="muted">(optional)</span></legend>
-      <label>Subject<input name="subject" maxlength="200" value="${val(o.invite?.subject)}" placeholder="You're invited: ${val(o.name) || 'our holiday open house'}"></label>
-      <label>Message<textarea name="message" rows="5" maxlength="5000" placeholder="Join us for…">${esc(o.invite?.message ?? '')}</textarea></label>
-      <p class="hint">Each household gets one email to all of its addresses, starting "Dear …" with their greeting name, followed by your message and the date, time and location. Replies come to you.</p>
-    </fieldset>
     <label>Notes<textarea name="notes" rows="2" maxlength="2000">${esc(o.notes ?? '')}</textarea></label>`, {
     form: isNew ? 'occasion-new' : 'occasion-edit',
     wide: true,
@@ -1342,7 +1350,8 @@ async function saveOccasion(form) {
   const body = {
     name: f.namedItem('name').value.trim(), kind: f.kind.value, date: f.date.value, time: f.time.value.trim(), location: f.location.value.trim(),
     nameStyle: f.nameStyle.value, notes: f.notes.value.trim(),
-    invite: { subject: f.subject.value.trim(), message: f.message.value.trim() },
+    // The plain message from earlier versions is kept; designs are saved from the design window.
+    invite: { subject: f.subject.value.trim(), message: (form.dataset.form === 'occasion-new' ? '' : state.occ?.occasion?.invite?.message) || undefined },
     copyFrom: f.copyFrom?.value || undefined,
   };
   if (!body.name) return modalError('Give the occasion a name.');
@@ -1387,9 +1396,11 @@ function printModal() {
   const tags = tagMap();
   const unmailed = [...tags.values()].filter((t) => !t.mailedAt).length;
   const hasReturn = returnLines().length > 0;
-  openModal('Print labels or envelopes', `
+  const invite = kindOf(o) === 'invite';
+  openModal('Print', `
     <fieldset><legend>What to print</legend>
-      <label class="check"><input type="radio" name="what" value="labels" checked> ${esc(LABEL_SHEETS.avery5160.name)}</label>
+      ${invite ? `<label class="check"><input type="radio" name="what" value="invitations" checked ${o.design?.html ? '' : 'disabled'}> Invitations (your design)</label>` : ''}
+      <label class="check"><input type="radio" name="what" value="labels" ${invite && o.design?.html ? '' : 'checked'}> ${esc(LABEL_SHEETS.avery5160.name)}</label>
       <label class="check"><input type="radio" name="what" value="envelopes"> ${esc(ENVELOPES.a7.name)}, printed directly</label>
       <label class="check"><input type="radio" name="what" value="return"> Return-address labels on Avery 5160 / 8160 ${hasReturn ? '' : '<span class="muted">(set your return address in Settings)</span>'}</label>
     </fieldset>
@@ -1401,11 +1412,14 @@ function printModal() {
       <label>Order<select name="order"><option value="name">By last name</option><option value="zip">By ZIP code</option></select></label>
     </div>
     <label data-for="name">Name printed on the first line<select name="nameStyle">
-      ${nameStyleOptions(o.nameStyle, [...tags.keys()])}</select>
-      <span class="hint">Households with no Formal Greeting use their Household Greeting either way.</span></label>
+      ${nameStyleOptions(o.nameStyle, [...tags.keys()])}</select></label>
+    <div class="grid-2" data-for="inv">
+      <label>Paper size<select name="paper">${Object.entries(INVITE_PAPER).map(([k, p]) => `<option value="${k}" ${k === '5x7' ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></label>
+      <label>Greeting<select name="greetStyle"><option value="informal">Informal</option><option value="formal">Formal</option><option value="household">Household</option></select></label>
+    </div>
     <label data-for="start">Start on label number <span class="muted">(1–30, to use up a partly used sheet)</span><input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
     <label class="check" data-for="ret"><input type="checkbox" name="withReturn" ${hasReturn ? 'checked' : 'disabled'}> Print my return address in the corner</label>
-    <label class="check"><input type="checkbox" name="outline"> Draw outlines (for a test print on plain paper)</label>
+    <label class="check" data-for="outline"><input type="checkbox" name="outline"> Draw outlines (for a test print on plain paper)</label>
     <p class="hint" data-hint></p>
     <div data-after hidden class="notice"></div>`, {
     form: 'print',
@@ -1418,20 +1432,89 @@ function syncPrintForm() {
   const f = modal.querySelector('form').elements;
   const what = f.what.value;
   const show = (k, on) => { modal.querySelector(`[data-for=${k}]`).hidden = !on; };
+  const inv = what === 'invitations';
   show('who', what !== 'return');
-  show('name', what !== 'return');
-  show('start', what !== 'envelopes');
+  show('name', what !== 'return' && !inv);
+  show('start', what !== 'envelopes' && !inv);
   show('ret', what === 'envelopes');
-  modal.querySelector('[data-hint]').innerHTML = what === 'envelopes'
+  show('inv', inv);
+  modal.querySelector('.modal-foot .btn.primary').textContent = inv ? 'Print invitations' : 'Make PDF';
+  modal.querySelector('[data-for=outline]').hidden = inv;
+  modal.querySelector('[data-hint]').innerHTML = inv ? ''
+    : what === 'envelopes'
     ? 'In the print dialog choose the <b>A7 envelope</b> paper size (5.25 × 7.25 in), <b>Actual size / 100%</b> scale, and feed envelopes as your printer shows. Fine-tune the position in Settings if it lands off-center.'
     : what === 'return'
       ? 'Prints a full sheet of 30 return-address labels. Print at <b>Actual size / 100%</b> on Letter paper.'
       : 'Print at <b>Actual size / 100%</b> (not "Fit to page") on Letter paper. Try one sheet on plain paper with outlines first, holding it over a label sheet to check alignment.';
 }
 
+// Printed invitations: one page per household, the design filled in with their greeting. They open in a
+// new tab with the print dialog, where "Save as PDF" makes a PDF.
+const INVITE_PAPER = {
+  '4x6': { label: '4 × 6 in postcard', w: '4in', h: '6in', pad: '0.3in' },
+  '5x7': { label: '5 × 7 in card', w: '5in', h: '7in', pad: '0.4in' },
+  half: { label: '5.5 × 8.5 in (half Letter)', w: '5.5in', h: '8.5in', pad: '0.45in' },
+  letter: { label: '8.5 × 11 in Letter', w: '8.5in', h: '11in', pad: '0.75in' },
+};
+
+function chosenHouseholds(f, { needAddress }) {
+  const tags = tagMap();
+  const byId = hhById();
+  const shownIds = new Set(shownRecipients().map((h) => h.id));
+  let households = [...tags.values()]
+    .filter((t) => f.who.value === 'all' || (f.who.value === 'unmailed' ? !t.mailedAt : shownIds.has(t.householdId)))
+    .map((t) => byId.get(t.householdId)).filter(Boolean);
+  const skipped = needAddress ? households.filter((h) => !isMailable(h.address)) : [];
+  if (needAddress) households = households.filter((h) => isMailable(h.address));
+  households.sort(f.order.value === 'zip'
+    ? (a, b) => String(a.address?.zip ?? '').localeCompare(String(b.address?.zip ?? '')) || byName(a, b)
+    : byName);
+  return { households, skipped };
+}
+
+async function printInvitations(form) {
+  const f = form.elements;
+  const o = state.occ.occasion;
+  const { households } = chosenHouseholds(f, { needAddress: false });
+  if (!households.length) return modalError('Nobody to print for.');
+  if (!o.design?.html) return modalError('Design the invitation first.');
+  const paper = INVITE_PAPER[f.paper.value] ?? INVITE_PAPER['5x7'];
+  const win = window.open('', '_blank'); // opened right away so the browser doesn't block it
+  if (!win) return modalError('Your browser blocked the new tab. Allow pop-ups for this site and try again.');
+  const link = fontLink(o.design);
+  const pages = households.map((h) => `<section class="print-page">${renderDesign(o.design, fieldValues({ occasion: o, greeting: greetingFor(h, f.greetStyle.value, 'default'), fromName: fromName() }), { padding: paper.pad })}</section>`).join('');
+  win.document.open();
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(o.name)} - invitations</title>
+    ${link ? `<link rel="stylesheet" href="${esc(link)}">` : ''}
+    <style>
+      @page { size: ${paper.w} ${paper.h}; margin: 0; }
+      html, body { margin: 0; }
+      .print-page { width: ${paper.w}; height: ${paper.h}; overflow: hidden; break-after: page; page-break-after: always; }
+      .print-page:last-child { break-after: auto; page-break-after: auto; }
+      .print-page .design { height: 100%; box-sizing: border-box; }
+      .design p { margin: 0 0 12px; }
+      .design img { max-width: 100%; height: auto; }
+      @media screen { body { background: #8a8a8a; padding: 16px 0; } .print-page { margin: 0 auto 16px; box-shadow: 0 2px 10px rgba(0,0,0,.35); } }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    </style></head><body>${pages}</body></html>`);
+  win.document.close();
+  lastPrinted = households.map((h) => h.id);
+  const after = modal.querySelector('[data-after]');
+  after.hidden = false;
+  after.innerHTML = `<span>${plural(households.length, 'invitation')} opened in a new tab.${canEdit() ? ` Once they're in the mail, mark ${plural(households.length, 'household')} as mailed.` : ''}</span>
+    ${canEdit() ? '<button type="button" class="btn sm primary" data-action="mark-printed">Mark mailed</button>' : ''}`;
+  // Print once the fonts and pictures have loaded.
+  await win.document.fonts?.ready.catch(() => {});
+  await Promise.all([...win.document.images].map((img) => (img.complete ? null : new Promise((r) => { img.onload = r; img.onerror = r; }))));
+  win.focus();
+  win.print();
+  return undefined;
+}
+
 async function makePdf(form) {
   const f = form.elements;
   const what = f.what.value;
+  if (what === 'invitations') return printInvitations(form);
   const print = state.me?.profile?.print ?? {};
   const outline = f.outline.checked;
   await withBusy(form.querySelector('.btn.primary'), async () => {
@@ -1477,61 +1560,360 @@ async function makePdf(form) {
   });
 }
 
+// ---------- design window (Invitations and Emails) ----------
+// A small word processor: fonts, sizes, colors, alignment, lists, pictures and fill-in fields
+// ({{greeting}} and friends, as plain text so they take the formatting around them), or HTML pasted
+// in. The API cleans it on save.
+const FONT_SIZES = [['2', 'Small'], ['3', 'Normal'], ['4', 'Large'], ['5', 'Larger'], ['6', 'Huge']];
+const PICTURE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+let designRange = null; // the editor selection, kept while the toolbar has focus
+
+function designHtml(editor) {
+  const copy = editor.cloneNode(true);
+  copy.querySelectorAll('img').forEach((img) => img.classList.remove('selected'));
+  return copy.innerHTML.replace(/ class=""/g, '');
+}
+
+function loadFont(design) {
+  const href = fontLink(design);
+  if (!href || document.querySelector(`link[href="${CSS.escape(href)}"]`)) return;
+  document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href }));
+}
+// All web fonts, so the font list shows each one in its own face.
+function loadAllFonts() {
+  loadFont({ html: FONTS.filter((f) => f.web).map((f) => f.stack).join(' '), font: '' });
+}
+
+function designModal() {
+  const o = state.occ.occasion;
+  const d = { ...DESIGN_DEFAULTS, ...(o.design ?? {}) };
+  const html = o.design?.html ?? starterHtml(o.invite?.message);
+  loadAllFonts();
+  const colorInput = (name, value, label) => `<label class="tb-color" title="${label}"><span class="sr">${label}</span><input type="color" name="${name}" value="${esc(value)}" data-design="${name}"></label>`;
+  openModal(kindOf(o) === 'email' ? 'Design email' : 'Design invitation', `
+    <div class="design-toolbar" role="toolbar" aria-label="Formatting">
+      <select data-design="fontName" aria-label="Font" title="Font"><option value="">Font</option>${FONTS.map((f) => `<option value="${esc(f.stack)}" style="font-family:${esc(f.stack)}">${esc(f.label)}</option>`).join('')}</select>
+      <select data-design="fontSize" aria-label="Size" title="Size"><option value="">Size</option>${FONT_SIZES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+      <span class="tb-group">
+        <button type="button" class="tb" data-cmd="bold" title="Bold" aria-label="Bold"><b>B</b></button>
+        <button type="button" class="tb" data-cmd="italic" title="Italic" aria-label="Italic"><i>I</i></button>
+        <button type="button" class="tb" data-cmd="underline" title="Underline" aria-label="Underline"><u>U</u></button>
+      </span>
+      ${colorInput('foreColor', '#9f1239', 'Text color')}
+      <span class="tb-group">
+        <button type="button" class="tb" data-cmd="justifyLeft" title="Align left" aria-label="Align left">${ALIGN('l')}</button>
+        <button type="button" class="tb" data-cmd="justifyCenter" title="Center" aria-label="Center">${ALIGN('c')}</button>
+        <button type="button" class="tb" data-cmd="justifyRight" title="Align right" aria-label="Align right">${ALIGN('r')}</button>
+      </span>
+      <button type="button" class="tb" data-cmd="insertUnorderedList" title="Bulleted list" aria-label="Bulleted list">•≡</button>
+      <span class="tb-break"></span>
+      <select data-design="field" aria-label="Insert a fill-in field" title="Insert a fill-in field"><option value="">Insert field</option>${DESIGN_FIELDS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
+      <label class="tb tb-pic" title="Insert a picture">${PICTURE} <span>Picture</span><input type="file" accept="${PICTURE_TYPES.join(',')}" data-design-picture hidden></label>
+      <span class="tb-spacer"></span>
+      <span class="tb-page"><span class="tb-label">Page</span>
+      ${colorInput('background', d.background, 'Page color')}
+      ${colorInput('color', d.color, 'Page text color')}
+      <select data-design="pageFont" aria-label="Page font" title="Page font">${FONTS.map((f) => `<option value="${f.key}" ${f.key === d.font ? 'selected' : ''} style="font-family:${esc(f.stack)}">${esc(f.label)}</option>`).join('')}</select></span>
+      <button type="button" class="tb" data-design-html aria-pressed="false" title="Edit or paste HTML">&lt;/&gt;</button>
+    </div>
+    <div class="design-imgbar" data-design-imgbar hidden>
+      <span class="small muted">Picture size</span>
+      ${[['25%', 'Small'], ['50%', 'Medium'], ['75%', 'Large'], ['100%', 'Full width']].map(([w, l]) => `<button type="button" class="btn sm" data-img-width="${w}">${l}</button>`).join('')}
+      <button type="button" class="btn sm danger" data-img-remove>Remove</button>
+    </div>
+    <div class="design-stage">
+      <div class="design-canvas" data-design-canvas style="background:${esc(d.background)};color:${esc(d.color)};font-family:${esc(fontByKey(d.font).stack)}">
+        <div class="design-edit" contenteditable="true" spellcheck="true" data-design-edit aria-label="Design">${(html)}</div>
+      </div>
+      <textarea class="design-src" data-design-src hidden spellcheck="false" aria-label="HTML"></textarea>
+    </div>`, {
+    form: 'design', wide: 'xl',
+    foot: `<div></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save design</button></div>`,
+  });
+  try { document.execCommand('styleWithCSS', false, true); } catch { /* older browsers */ }
+  const editor = modal.querySelector('[data-design-edit]');
+  editor.focus();
+  wireDesign(editor);
+}
+
+const ALIGN = (w) => `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="${{ l: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8', c: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8', r: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' }[w]}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const PICTURE = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="6.25" r="1.25" fill="currentColor"/><path d="m2.5 12 3.8-3.8 2.4 2.4 1.8-1.8L13.5 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+
+function wireDesign(editor) {
+  const canvas = modal.querySelector('[data-design-canvas]');
+  const src = modal.querySelector('[data-design-src]');
+  const imgbar = modal.querySelector('[data-design-imgbar]');
+  let picked = null; // the picture being resized
+
+  const keepRange = () => {
+    const sel = window.getSelection();
+    if (sel.rangeCount && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) designRange = sel.getRangeAt(0).cloneRange();
+  };
+  const restore = () => {
+    editor.focus();
+    if (!designRange) return;
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(designRange);
+  };
+  const exec = (cmd, value = null) => { restore(); document.execCommand(cmd, false, value); keepRange(); };
+  // Fields and pictures go in at the caret as real nodes (insertHTML splits paragraphs around chips).
+  const insertNode = (html) => {
+    restore();
+    const sel = window.getSelection();
+    if (!sel.rangeCount || !editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+      const r = document.createRange(); r.selectNodeContents(editor); r.collapse(false); sel.removeAllRanges(); sel.addRange(r);
+    }
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    const frag = range.createContextualFragment(html);
+    const last = frag.lastChild;
+    range.insertNode(frag);
+    range.setStartAfter(last); range.collapse(true);
+    sel.removeAllRanges(); sel.addRange(range);
+    keepRange();
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  editor.addEventListener('keyup', keepRange);
+  editor.addEventListener('mouseup', keepRange);
+  editor.addEventListener('input', keepRange);
+
+  const pick = (img) => {
+    editor.querySelectorAll('img.selected').forEach((i) => i.classList.remove('selected'));
+    picked = img;
+    img?.classList.add('selected');
+    imgbar.hidden = !img;
+  };
+  editor.addEventListener('click', (e) => pick(e.target.closest('img')));
+
+  const bar = modal.querySelector('.design-toolbar');
+  // Buttons act without stealing the selection.
+  bar.addEventListener('mousedown', (e) => { if (e.target.closest('button.tb')) e.preventDefault(); });
+  bar.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cmd]');
+    if (b) exec(b.dataset.cmd);
+  });
+  bar.addEventListener('change', (e) => {
+    const t = e.target;
+    const what = t.dataset.design;
+    if (what === 'fontName' && t.value) { exec('fontName', t.value); t.value = ''; }
+    if (what === 'fontSize' && t.value) { exec('fontSize', t.value); t.value = ''; }
+    if (what === 'field' && t.value) { exec('insertText', `{{${t.value}}}`); t.value = ''; }
+    if (what === 'pageFont') canvas.style.fontFamily = fontByKey(t.value).stack;
+    if (t.matches('[data-design-picture]') && t.files[0]) { const f = t.files[0]; t.value = ''; insertPicture(f, insertNode); }
+  });
+  bar.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.dataset.design === 'foreColor') exec('foreColor', t.value);
+    if (t.dataset.design === 'background') canvas.style.background = t.value;
+    if (t.dataset.design === 'color') canvas.style.color = t.value;
+  });
+  // A color picker takes focus: remember the selection before it opens.
+  bar.addEventListener('pointerdown', (e) => { if (e.target.closest('input[type=color], select')) keepRange(); });
+
+  imgbar.addEventListener('click', (e) => {
+    if (!picked) return;
+    const w = e.target.closest('[data-img-width]')?.dataset.imgWidth;
+    if (w) { picked.style.width = w; picked.style.maxWidth = '100%'; picked.style.height = 'auto'; }
+    if (e.target.closest('[data-img-remove]')) { picked.remove(); pick(null); }
+  });
+
+  // HTML view: edit or paste HTML; switching back shows it (cleaned) in the editor.
+  const htmlBtn = modal.querySelector('[data-design-html]');
+  htmlBtn.addEventListener('click', async () => {
+    const toSource = src.hidden;
+    if (toSource) {
+      src.value = designHtml(editor);
+      canvas.hidden = true; src.hidden = false; src.focus();
+    } else {
+      editor.innerHTML = (await cleanForEditor(src.value));
+      src.hidden = true; canvas.hidden = false; editor.focus();
+    }
+    htmlBtn.setAttribute('aria-pressed', String(toSource));
+    bar.querySelectorAll('select, button.tb:not([data-design-html]), input, .tb-pic').forEach((el) => {
+      if (el.matches('input[type=color][name=background], input[type=color][name=color], [data-design=pageFont]')) return;
+      el.classList.toggle('off', toSource);
+      if ('disabled' in el) el.disabled = toSource;
+    });
+  });
+}
+
+// HTML typed or pasted in is cleaned before it's shown in the app (the API cleans it again, more
+// strictly, on save). Parsed in an inert document, so nothing in it runs or loads while cleaning.
+const UNSAFE_TAGS = 'script, style, link, meta, base, iframe, frame, frameset, object, embed, applet, form, input, button, select, textarea, svg, math, template, noscript';
+async function cleanForEditor(html) {
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  doc.body.querySelectorAll(UNSAFE_TAGS).forEach((el) => el.remove());
+  doc.body.querySelectorAll('*').forEach((el) => {
+    for (const { name, value } of [...el.attributes]) {
+      const v = value.replace(/[\s\u0000-\u001f]/g, '').toLowerCase();
+      if (name.startsWith('on') || name === 'class' || name === 'id' || name === 'srcdoc' || name === 'formaction'
+        || (['href', 'src', 'xlink:href', 'action', 'background'].includes(name) && !/^(https?:|mailto:|tel:|#)/.test(v))) el.removeAttribute(name);
+      if (name === 'style' && /url\(|expression\(/i.test(value)) el.removeAttribute(name);
+    }
+  });
+  return doc.body.innerHTML;
+}
+
+async function insertPicture(file, insertNode) {
+  if (!PICTURE_TYPES.includes(file.type)) return modalError('Pictures must be PNG, JPEG, GIF or WebP.');
+  modalError('');
+  const label = modal.querySelector('.tb-pic');
+  label.classList.add('busy');
+  try {
+    let blob = file;
+    // Big photos are scaled down to 1600px wide (animated GIFs are left alone).
+    if (file.type !== 'image/gif') {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
+      if (bitmap && bitmap.width > 1600) {
+        const scale = 1600 / bitmap.width;
+        const canvas = Object.assign(document.createElement('canvas'), { width: 1600, height: Math.round(bitmap.height * scale) });
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        blob = await new Promise((r) => canvas.toBlob(r, type, 0.88));
+      }
+      bitmap?.close?.();
+    }
+    if (blob.size > 5 * 1024 * 1024) throw new Error('That picture is too large (over 5 MB).');
+    const type = blob.type || file.type;
+    const { uploadUrl, url } = await api(`/occasions/${state.occasionId}/images`, { method: 'POST', body: { type, size: blob.size } });
+    const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'content-type': type }, body: blob });
+    if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+    insertNode(`<img src="${esc(url)}" alt="" style="width:50%;max-width:100%;height:auto">`);
+  } catch (e) {
+    modalError(e.message);
+  } finally {
+    label.classList.remove('busy');
+  }
+  return undefined;
+}
+
+async function saveDesign(form) {
+  const editor = form.querySelector('[data-design-edit]');
+  const src = form.querySelector('[data-design-src]');
+  if (!src.hidden) editor.innerHTML = (await cleanForEditor(src.value));
+  const body = {
+    html: designHtml(editor),
+    background: form.querySelector('[name=background]').value,
+    color: form.querySelector('[name=color]').value,
+    font: form.querySelector('[data-design=pageFont]').value,
+  };
+  await withBusy(form.querySelector('.btn.primary'), async () => {
+    const res = await api(`/occasions/${state.occasionId}/design`, { method: 'PUT', body });
+    state.occ.occasion = res.occasion;
+    closeModal();
+    toast('Design saved');
+    render();
+  });
+}
+
 // ---------- invitations ----------
 function invitesModal() {
   const o = state.occ.occasion;
   const tags = tagMap();
   const byId = hhById();
   const on = [...tags.values()].map((t) => ({ t, h: byId.get(t.householdId) })).filter((x) => x.h);
-  const withEmail = on.filter((x) => allEmails(x.h).length);
+  const withEmail = on.filter((x) => allEmails(x.h).length).sort((a, b) => byName(a.h, b.h));
   const notSent = withEmail.filter((x) => !x.t.invitedAt);
-  if (!o.invite?.message) {
-    openModal('Email invitations', `<p style="margin:0">Write the invitation first: open <b>Edit</b> and fill in the email message.</p>`, {
-      form: 'noop', foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button><button type="button" class="btn primary" data-action="edit-occasion">Edit occasion</button></div>',
+  if (!o.design?.html && !o.invite?.message) {
+    openModal('Send emails', '<p style="margin:0">Design the email first.</p>', {
+      form: 'noop', foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button><button type="button" class="btn primary" data-action="design">Design email</button></div>',
     });
     return;
   }
-  const several = withEmail.filter((x) => (x.h.members ?? []).filter((m) => m.email).length > 1).sort((a, b) => byName(a.h, b.h));
-  openModal('Email invitations', `
-    <div class="invite-preview"><div class="small muted">Subject</div><div><b>${esc(o.invite.subject || `You're invited: ${o.name}`)}</b></div>
-      <div class="small muted" style="margin-top:8px">Message</div><div class="pre">${esc(o.invite.message)}</div></div>
-    <label class="check"><input type="radio" name="who" value="new" checked> Not sent yet (${notSent.length})</label>
-    <label class="check"><input type="radio" name="who" value="all"> Everyone with email (${withEmail.length})</label>
-    ${several.length ? `<fieldset><legend>Send to</legend><div class="sendto-list">${several.map(({ h }) => sendToRow(h)).join('')}</div></fieldset>` : ''}
+  const sample = withEmail[0]?.h;
+  const design = o.design?.html ? o.design : { html: starterHtml(o.invite?.message) };
+  loadFont(design);
+  openModal('Send emails', `
+    <div class="invite-preview"><div class="small muted">Subject</div><div><b>${esc(o.invite?.subject || `You're invited: ${o.name}`)}</b></div></div>
+    <div class="email-preview">${renderDesign(design, fieldValues({ occasion: o, greeting: sample ? greetingFor(sample, 'informal', 'default') : 'Friend', fromName: fromName() }), { padding: '20px' })}</div>
+    <div class="row-gap">
+      <label class="check"><input type="radio" name="who" value="new" checked data-who> Not sent yet (${notSent.length})</label>
+      <label class="check"><input type="radio" name="who" value="all" data-who> Everyone with email (${withEmail.length})</label>
+    </div>
+    ${withEmail.length ? `<div class="send-table-wrap"><table class="items send-table"><thead><tr><th>Household</th><th>Send to</th><th>Greeting</th></tr></thead><tbody>
+      ${withEmail.map(({ h, t }) => sendRow(h, t)).join('')}</tbody></table></div>` : ''}
     <div data-progress hidden class="notice"></div>`, {
-    form: 'invites',
+    form: 'invites', wide: true,
     foot: `<div class="left-actions"><button type="button" class="btn" data-action="test-invite">Send a test to me</button></div>
       <div class="right"><button type="button" class="btn" data-action="close">Close</button><button class="btn primary">Send</button></div>`,
+  });
+  syncSendRows();
+}
+
+// Who an email goes to: 'default' (the default contact), a person's id, or 'all'.
+function recipientsFor(h, to) {
+  const people = (h.members ?? []).filter((m) => m.email);
+  if (to === 'all') return people;
+  return [people.find((m) => m.id === to) ?? defaultPerson(h.members)].filter(Boolean);
+}
+const joinNames = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0] ?? '');
+/** The greeting text: informal (default), formal, household, or the first names of whoever it's sent to. */
+function greetingFor(h, style, to) {
+  if (style === 'formal') return effectiveFormalName(h) || h.labelName;
+  if (style === 'household') return h.labelName;
+  if (style === 'first') return joinNames(recipientsFor(h, to).map((m) => m.firstName).filter(Boolean)) || h.greeting || h.labelName;
+  return h.greeting || h.labelName;
+}
+
+function sendRow(h, t) {
+  const people = (h.members ?? []).filter((m) => m.email);
+  const d = defaultPerson(h.members);
+  const id = esc(h.id);
+  return `<tr data-send-row="${id}" data-sent="${t.invitedAt ? '1' : ''}">
+    <td>${esc(h.labelName)}${t.invitedAt ? ` <span class="pill ok">Sent ${fmtDate(t.invitedAt, { month: 'short', day: 'numeric' })}</span>` : ''}</td>
+    <td><select data-sendto="${id}" aria-label="Send ${esc(h.labelName)}'s email to">
+      ${people.map((m) => `<option value="${m === d ? 'default' : esc(m.id)}" ${m === d ? 'selected' : ''}>${esc(personName(m))}</option>`).join('')}
+      ${people.length > 1 ? `<option value="all">${people.length === 2 ? 'Both' : 'Everyone'}</option>` : ''}</select></td>
+    <td><select data-greeting="${id}" aria-label="Greeting for ${esc(h.labelName)}"></select></td>
+  </tr>`;
+}
+
+// Fills each row's Greeting choices with the actual words, which follow who it's sent to.
+function syncSendRows(changed) {
+  const byId = hhById();
+  const showAll = modal.querySelector('[data-who][value=all]')?.checked;
+  modal.querySelectorAll('[data-send-row]').forEach((row) => {
+    row.hidden = !showAll && row.dataset.sent === '1';
+    const h = byId.get(row.dataset.sendRow);
+    const to = row.querySelector('[data-sendto]').value;
+    const sel = row.querySelector('[data-greeting]');
+    let style = sel.value || 'informal';
+    // Picking one person (the football party): greet them by first name.
+    if (changed === row && to !== 'default' && to !== 'all' && style === 'informal') style = 'first';
+    const opts = [['informal', 'Informal'], ['formal', 'Formal'], ['household', 'Household'], ['first', 'First name']]
+      .map(([k, l]) => [k, l, greetingFor(h, k, to)]);
+    sel.innerHTML = opts.map(([k, l, text]) => `<option value="${k}" ${k === style ? 'selected' : ''}>${esc(text)} · ${l}</option>`).join('');
   });
 }
 
 const personName = (m) => [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
 
-function sendToRow(h) {
-  const people = (h.members ?? []).filter((m) => m.email);
-  const d = defaultPerson(h.members);
-  return `<label class="sendto-row"><span>${esc(h.labelName)}</span><select data-sendto="${esc(h.id)}" aria-label="Send ${esc(h.labelName)}'s invitation to">
-    ${people.map((m) => `<option value="${m === d ? 'default' : esc(m.id)}" ${m === d ? 'selected' : ''}>${esc(personName(m))}${m === d ? ' (default)' : ''}</option>`).join('')}
-    <option value="all">${people.length === 2 ? 'Both' : 'Everyone'}</option></select></label>`;
-}
-
 async function sendInvites(form) {
-  const tags = tagMap();
   const byId = hhById();
-  const ids = [...tags.values()]
-    .filter((t) => byId.get(t.householdId) && allEmails(byId.get(t.householdId)).length && (form.elements.who.value === 'all' || !t.invitedAt))
-    .map((t) => t.householdId);
-  if (!ids.length) return modalError('Nobody to send to.');
-  if (!await askConfirm({ title: 'Send invitations?', text: `Email the invitation to ${plural(ids.length, 'household')} now.`, ok: 'Send' })) return undefined;
+  const rows = [...modal.querySelectorAll('[data-send-row]')].filter((r) => !r.hidden);
+  if (!rows.length) return modalError('Nobody to send to.');
+  if (!await askConfirm({ title: 'Send emails?', text: `Email ${plural(rows.length, 'household')} now.`, ok: 'Send' })) return undefined;
+  const pick = (row) => {
+    const h = byId.get(row.dataset.sendRow);
+    const to = row.querySelector('[data-sendto]').value;
+    return [h.id, to, greetingFor(h, row.querySelector('[data-greeting]').value, to)];
+  };
+  const chosen = rows.map(pick);
   const prog = modal.querySelector('[data-progress]');
   prog.hidden = false;
   const results = [];
   await withBusy(form.querySelector('.btn.primary'), async () => {
-    for (let i = 0; i < ids.length; i += INVITE_BATCH) {
-      prog.textContent = `Sending… ${Math.min(i, ids.length)} of ${ids.length}`;
-      const batch = ids.slice(i, i + INVITE_BATCH);
-      const recipients = Object.fromEntries(batch.map((id) => [id, form.querySelector(`[data-sendto="${CSS.escape(id)}"]`)?.value ?? 'default']));
-      const res = await api(`/occasions/${state.occasionId}/invites`, { method: 'POST', body: { householdIds: batch, recipients } });
+    for (let i = 0; i < chosen.length; i += INVITE_BATCH) {
+      prog.textContent = `Sending… ${Math.min(i, chosen.length)} of ${chosen.length}`;
+      const batch = chosen.slice(i, i + INVITE_BATCH);
+      const res = await api(`/occasions/${state.occasionId}/invites`, {
+        method: 'POST',
+        body: {
+          householdIds: batch.map(([id]) => id),
+          recipients: Object.fromEntries(batch.map(([id, to]) => [id, to])),
+          greetings: Object.fromEntries(batch.map(([id, , g]) => [id, g])),
+        },
+      });
       results.push(...res.results);
     }
   });
@@ -1539,8 +1921,9 @@ async function sendInvites(form) {
   await refreshOccasions();
   const sent = results.filter((r) => r.status === 'sent').length;
   const problems = results.filter((r) => r.status !== 'sent');
-  prog.innerHTML = `<div><b>${plural(sent, 'invitation')} sent.</b>${problems.length ? `<ul class="small">${problems.map((r) => `<li>${esc(byId.get(r.householdId)?.labelName ?? '?')}: ${esc(r.reason)}</li>`).join('')}</ul>` : ''}</div>`;
+  prog.innerHTML = `<div><b>${plural(sent, 'email')} sent.</b>${problems.length ? `<ul class="small">${problems.map((r) => `<li>${esc(byId.get(r.householdId)?.labelName ?? '?')}: ${esc(r.reason)}</li>`).join('')}</ul>` : ''}</div>`;
   render();
+  return undefined;
 }
 
 // ---------- settings ----------
@@ -2091,6 +2474,7 @@ document.addEventListener('click', async (e) => {
       });
       break;
     case 'invites': invitesModal(); break;
+    case 'design': designModal(); break;
     case 'test-invite':
       await withBusy(el, async () => {
         const res = await api(`/occasions/${state.occasionId}/invites`, { method: 'POST', body: { test: true } });
@@ -2143,6 +2527,11 @@ document.addEventListener('input', (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (t.matches?.('[data-sendto]')) syncSendRows(t.closest('[data-send-row]'));
+  if (t.matches?.('[data-who]')) syncSendRows();
+  if (t.matches?.('[data-occ-kind]')) {
+    modal.querySelectorAll('[data-kinds]').forEach((el) => { el.hidden = !el.dataset.kinds.split(' ').includes(t.value); });
+  }
   if (t.dataset?.m === 'primary' && t.checked) {
     t.closest('[data-members]').querySelectorAll('[data-m=primary]').forEach((cb) => { if (cb !== t) cb.checked = false; });
   }
@@ -2186,6 +2575,7 @@ document.addEventListener('submit', async (e) => {
   if (kind.startsWith('occasion-')) return saveOccasion(form);
   if (kind === 'print') return makePdf(form);
   if (kind === 'invites') return sendInvites(form);
+  if (kind === 'design') return saveDesign(form);
   if (kind === 'import') return runImport(form.querySelector('[data-import-go]'));
   if (kind === 'share') return addShare(form);
   if (kind === 'settings-password') return withBusy(form.querySelector('button[type=submit]'), () => changePassword(form));

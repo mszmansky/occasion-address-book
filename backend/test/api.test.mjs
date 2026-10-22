@@ -21,7 +21,7 @@ function createFakeDirectory(existing = {}) {
   };
 }
 
-async function setup({ addressChecker, mailer = createFakeMailer(), allowedEmails = '*', files = createFakeFiles(), directory = createFakeDirectory({ 'kim@example.com': 'user-kim', 'mike@example.com': 'user-1' }) } = {}) {
+async function setup({ media = createFakeFiles(), addressChecker, mailer = createFakeMailer(), allowedEmails = '*', files = createFakeFiles(), directory = createFakeDirectory({ 'kim@example.com': 'user-kim', 'mike@example.com': 'user-1' }) } = {}) {
   const repo = createMemoryRepo();
   const tokens = await createTokenFactory();
   let clock = new Date('2026-11-01T15:00:00Z');
@@ -32,6 +32,7 @@ async function setup({ addressChecker, mailer = createFakeMailer(), allowedEmail
     appUrl: 'https://cards.example.com',
     files,
     directory,
+    media,
     addressChecker,
     now: () => clock,
     log: { error() {} },
@@ -160,7 +161,7 @@ test('invites: one email per household, skips no-email, records failures', async
   const occ = (await call('POST', '/occasions', { name: 'Holiday open house', kind: 'invite', date: '2026-12-12', time: '7 PM' })).body.occasion;
   await call('PUT', `/occasions/${occ.id}/tags`, { add: [a.id, b.id, c.id] });
 
-  assert.match((await call('POST', `/occasions/${occ.id}/invites`, { householdIds: [a.id] })).body.error, /invitation message/);
+  assert.match((await call('POST', `/occasions/${occ.id}/invites`, { householdIds: [a.id] })).body.error, /Design the email first/);
   await call('PUT', `/occasions/${occ.id}`, { ...occ, invite: { subject: 'Come over!', message: 'Join us for cocoa.\n\nKids welcome.' } });
 
   const test = await call('POST', `/occasions/${occ.id}/invites`, { test: true });
@@ -550,4 +551,53 @@ test('address checks: the hourly limit reaches the browser with when it opens up
   const r = await call('POST', '/address-check', { address: { line1: '1 Elm', city: 'Troy', state: 'MI' } });
   assert.equal(r.status, 429);
   assert.deepEqual(r.body.checks, checks);
+});
+
+test('occasion types: cards, invitations, emails; old "other" reads as cards', async () => {
+  const { call, repo } = await setup();
+  for (const kind of ['card', 'invite', 'email']) assert.equal((await call('POST', '/occasions', { name: kind, kind })).body.occasion.kind, kind);
+  assert.equal((await call('POST', '/occasions', { name: 'x', kind: 'other' })).body.occasion.kind, 'card');
+  assert.equal((await call('POST', '/occasions', { name: 'x', kind: 'party' })).status, 400);
+  await repo.put({ PK: 'USER#user-1', SK: 'OCC#old', id: 'old', name: 'Old', kind: 'other', createdAt: '2025-01-01T00:00:00Z' });
+  assert.equal((await call('GET', '/occasions/old')).body.occasion.kind, 'card');
+  assert.equal((await call('GET', '/occasions')).body.occasions.find((o) => o.id === 'old').kind, 'card');
+});
+
+test('designs are cleaned when saved and kept when the occasion is edited', async () => {
+  const { call } = await setup();
+  const o = (await call('POST', '/occasions', { name: 'Party', kind: 'invite' })).body.occasion;
+  let r = await call('PUT', `/occasions/${o.id}/design`, { html: '<p style="color:#ff0000">Hi {{greeting}}</p><script>x()</script>', background: '#fef3c7', font: 'great-vibes' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.occasion.design, { html: '<p style="color:#ff0000">Hi {{greeting}}</p>', background: '#fef3c7', font: 'great-vibes' });
+  assert.equal((await call('PUT', `/occasions/${o.id}/design`, { html: 'x', background: 'red' })).status, 400);
+  assert.equal((await call('PUT', `/occasions/${o.id}/design`, { html: 'x', font: 'comic-sans' })).status, 400);
+  assert.equal((await call('PUT', `/occasions/${o.id}/design`, { html: 'x'.repeat(100_001) })).status, 400);
+  r = await call('PUT', `/occasions/${o.id}`, { name: 'Party!', kind: 'invite' });
+  assert.equal(r.body.occasion.design.html, '<p style="color:#ff0000">Hi {{greeting}}</p>');
+});
+
+test('pictures for designs: signed upload to a public, unguessable address', async () => {
+  const { call } = await setup();
+  const o = (await call('POST', '/occasions', { name: 'Party', kind: 'email' })).body.occasion;
+  const r = await call('POST', `/occasions/${o.id}/images`, { type: 'image/png', size: 1234 });
+  assert.equal(r.status, 200);
+  assert.match(r.body.url, /^https:\/\/cards.example.com\/media\/[0-9a-f]{32}\.png$/);
+  assert.match(r.body.uploadUrl, /^https:\/\/s3.example\/media\/[0-9a-f]{32}\.png\?put&type=image%2Fpng&size=1234$/);
+  assert.equal((await call('POST', `/occasions/${o.id}/images`, { type: 'image/svg+xml', size: 10 })).status, 400);
+  assert.equal((await call('POST', `/occasions/${o.id}/images`, { type: 'image/png', size: 6 * 1024 * 1024 })).status, 400);
+});
+
+test('emails: a designed email to one chosen person with the chosen greeting', async () => {
+  const { call, mailer } = await setup();
+  const h = (await call('POST', '/households', smiths)).body.household;
+  const o = (await call('POST', '/occasions', { name: 'Football', kind: 'email', invite: { subject: 'Beer and wings' } })).body.occasion;
+  assert.equal((await call('POST', `/occasions/${o.id}/invites`, { householdIds: [h.id] })).status, 400); // no design yet
+  await call('PUT', `/occasions/${o.id}/design`, { html: '<p>Hey {{greeting}}, game at {{time}}</p>' });
+  await call('PUT', `/occasions/${o.id}/tags`, { add: [h.id] });
+  const john = h.members.find((m) => m.firstName === 'John');
+  const r = await call('POST', `/occasions/${o.id}/invites`, { householdIds: [h.id], recipients: { [h.id]: john.id }, greetings: { [h.id]: 'John' } });
+  assert.deepEqual(r.body.results.map((x) => [x.status, x.to]), [['sent', ['john@example.com']]]);
+  const sent = mailer.sent.at(-1);
+  assert.equal(sent.subject, 'Beer and wings');
+  assert.match(sent.html, /Hey John, game at/);
 });

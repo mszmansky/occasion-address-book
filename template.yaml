@@ -67,6 +67,7 @@ Globals:
       Variables:
         TABLE_NAME: !Ref Table
         FILES_BUCKET: !Ref FilesBucket
+        MEDIA_BUCKET: !Ref MediaBucket
         ALLOWED_EMAILS: !Ref AllowedEmails
         SENDER_EMAIL: !Ref SenderEmail
         SES_CONFIGURATION_SET: !Ref SesConfigurationSet
@@ -143,6 +144,55 @@ Resources:
             Resource:
               - !GetAtt FilesBucket.Arn
               - !Sub ${FilesBucket.Arn}/*
+            Condition:
+              Bool: { 'aws:SecureTransport': 'false' }
+
+  # ---------- Pictures in designed invitations and emails ----------
+  # Uploaded through short-lived signed links; readable by anyone through CloudFront at
+  # https://<site>/media/<random name>, because guests' mail apps have to load them.
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: ['*']   # uploads need a signed link anyway
+            AllowedMethods: [PUT]
+            AllowedHeaders: [content-type]
+            MaxAge: 3000
+
+  MediaBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MediaBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub ${MediaBucket.Arn}/media/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+          - Sid: HttpsOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt MediaBucket.Arn
+              - !Sub ${MediaBucket.Arn}/*
             Condition:
               Bool: { 'aws:SecureTransport': 'false' }
 
@@ -250,6 +300,7 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref Table }
         - S3CrudPolicy: { BucketName: !Ref FilesBucket }
+        - S3WritePolicy: { BucketName: !Ref MediaBucket }
         - Statement:
             - Effect: Allow   # USPS credentials for address checks
               Action: ssm:GetParameter
@@ -335,6 +386,18 @@ Resources:
             OriginAccessControlId: !GetAtt WebOac.Id
             S3OriginConfig:
               OriginAccessIdentity: ''
+          - Id: media
+            DomainName: !GetAtt MediaBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt WebOac.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        CacheBehaviors:
+          - PathPattern: media/*
+            TargetOriginId: media
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6          # Managed-CachingOptimized
+            ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # Managed-SecurityHeadersPolicy
         DefaultCacheBehavior:
           TargetOriginId: web
           ViewerProtocolPolicy: redirect-to-https
@@ -414,6 +477,9 @@ Outputs:
   FilesBucketName:
     Description: Private bucket holding profile photos
     Value: !Ref FilesBucket
+  MediaBucketName:
+    Description: Pictures used in designed invitations and emails
+    Value: !Ref MediaBucket
   DistributionId:
     Value: !Ref Distribution
   TableName:

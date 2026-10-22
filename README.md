@@ -32,7 +32,14 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
 
   The button stays hidden until that parameter exists.
 - **Import / export CSV.** Bring in a list from Excel, Numbers or Google Sheets. Columns are guessed from the headers ("First Name", "Spouse", "Zip Code"…) and can be changed before importing. The app's own export imports back unchanged; its People column keeps each person's email and phone, e.g. `John Smith <john@x.com> (248-555-0101); Mary Smith`.
-- **Occasions.** Create one ("Christmas cards 2026"), tick who it's for and track who's been mailed. You can tick households one at a time, or everyone shown after a search or group filter. A new occasion can start from an earlier one's list, so next year's cards begin with this year's list.
+- **Occasions.** Create one ("Christmas cards 2026"), tick who it's for and track who's been mailed or emailed. You can tick households one at a time, or everyone shown after a search or group filter. A new occasion can start from an earlier one's list, so next year's cards begin with this year's list. Each occasion has a type:
+  - **Cards or Labels:** print labels or envelopes and mark who was mailed.
+  - **Invitations:** the same, plus a designed invitation (see below) printed one page per household, filled in with each one's greeting.
+  - **Emails:** a designed email sent to the households on the list. For each household the send window picks who gets it (the default contact, one person, or everyone) and the greeting (Informal by default, Formal, Household, or the recipients' first names). Picking one person switches the greeting to their first name, e.g. a football party for just the guys.
+
+  Occasions saved as "Other" by earlier versions show as Cards or Labels.
+- **Design window** (Invitations and Emails): fonts, sizes, bold/italic/underline, colors, alignment, bullets, pictures (PNG, JPEG, GIF, WebP up to 5 MB; big photos are scaled to 1600 px), a page color, text color and font, and fill-in fields: `{{greeting}}`, `{{occasion}}`, `{{date}}`, `{{time}}`, `{{location}}`, `{{from}}`. The **</>** button shows the HTML to edit or paste in. The API cleans every saved design (sanitize-html allow list: formatting tags and styles only; no scripts, event handlers, frames, forms or `data:`/`javascript:` links). Fonts include standard ones and a few Google Fonts (Great Vibes, Dancing Script, Playfair Display, Cinzel, Lobster, Pacifico, Mountains of Christmas, Amatic SC); these always show in the app and on printed invitations, and in Apple Mail, while Gmail and Outlook use each one's fallback font. Pictures are stored in a separate bucket and served publicly by CloudFront at `/media/<random name>`, because guests' mail apps must load them.
+- **Printing invitations:** Print > Invitations opens the filled-in pages (4×6, 5×7, half Letter or Letter) in a new tab with the print dialog; Save as PDF there makes a PDF.
 - **Trash.** Deleting a household or occasion moves it to the Trash (account menu) for 30 days. **Restore** brings a household back onto the occasion lists it was on, and an occasion back with its list (including who was mailed and invited); links between two items that are both in the bin come back with whichever is restored second. **Delete forever** and **Empty trash** are there too. After 30 days items are removed automatically (DynamoDB TTL on the item, and the app also hides and purges anything past 30 days since TTL can lag a day or two). Each address book, shared or not, has its own bin; View-only people can look but not restore.
 - **Printing.** Makes a PDF in the browser (jsPDF):
   - Avery 5160 / 8160 address labels, 30 per sheet, with "start at label N" for a partly used sheet;
@@ -40,7 +47,7 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
   - a sheet of return-address labels.
 
   Text shrinks (and long names wrap) to fit, so nothing runs off a label. Settings has printer alignment offsets and alignment test pages. After printing, one click marks those households as mailed.
-- **Email invitations.** Each household gets one email, sent to its default contact (the person ticked as default, or else the first person with an email). Where a household has more than one address, the send dialog's **Send to** lets you pick someone else or **Both** / **Everyone**. It opens "Dear {greeting}," and continues with your message, date, time and location. Replies go to you. You can send yourself a test first, and each household shows whether its email was sent or failed.
+- **Sending emails** (Emails occasions). One email per household, to the person and with the greeting chosen in the send window. Replies go to you. You can send yourself a test first, and each household shows whether its email was sent or failed.
 - **Address checks.** Email a household a private link, valid for 30 days, to confirm or correct their address. Their reply comes back for you to review side by side and accept or discard. You also get an email when they answer. Links are stored only as hashes and expire through DynamoDB TTL.
 
 ## Architecture
@@ -73,6 +80,8 @@ Browser ── Cognito user pool (sign-in from the browser, no SDK: frontend/aut
 | `frontend/print-core.js` | Label and envelope layout (unit tested) |
 | `frontend/filter-core.js` | Household filters (groups, city, state, ZIP, email, address, review) (unit tested) |
 | `backend/src/lib/usps.mjs` | USPS address checks and the hourly limit |
+| `frontend/design-core.js` | Design fonts, fill-in fields and rendering; `backend/src/lib/design-core.mjs` is an exact copy (a test checks) |
+| `backend/src/lib/sanitize.mjs` | Cleans designed HTML on save |
 | `frontend/vcard-core.js` | vCard for sharing a household (unit tested) |
 | `frontend/csv-core.js` | CSV parsing, column guessing, export (unit tested) |
 | `frontend/app.js` | The single-page app (vanilla JS, no build step) |
@@ -85,7 +94,7 @@ Browser ── Cognito user pool (sign-in from the browser, no SDK: frontend/aut
 PK = USER#<Cognito user id (sub)>
   SK = PROFILE                   name, return address, printer offsets
   SK = HH#<id>                   household
-  SK = OCC#<id>                  occasion
+  SK = OCC#<id>                  occasion (kind card | invite | email; design: { html, background, color, font })
   SK = TAG#<occasionId>#<hhId>   household on an occasion's list (mailedAt, invitedAt)
   SK = TRASH#<household|occasion>#<id>  a deleted item and its occasion-list rows, removed by TTL after 30 days
 PK = TOKEN#<sha256(token)>, SK = TOKEN    address-check link, removed by TTL after 30 days

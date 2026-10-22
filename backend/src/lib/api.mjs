@@ -6,6 +6,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { HttpError } from './auth.mjs';
 import { userPk } from './repo.mjs';
 import { buildAddressReceived, buildAddressRequest, buildInvite, buildShareNotice } from './email.mjs';
+import { cleanDesignHtml } from './sanitize.mjs';
+import { FONTS } from './design-core.mjs';
 
 export const LINK_DAYS = 30;          // address-update links expire after this many days
 export const TRASH_DAYS = 30;         // deleted households and occasions stay in the Trash this long
@@ -133,12 +135,15 @@ export function parseHousehold(b) {
   };
 }
 
-const KINDS = ['card', 'invite', 'other'];
+// Cards or Labels (print), Invitations (designed, printed), Emails (designed, emailed).
+// "other" from earlier versions is treated as cards.
+const KINDS = ['card', 'invite', 'email'];
+export const kindOf = (o) => (KINDS.includes(o?.kind) ? o.kind : 'card');
 const NAME_STYLES = ['label', 'formal'];
 
 function parseOccasion(b) {
-  const kind = b.kind ?? 'card';
-  if (!KINDS.includes(kind)) throw new HttpError(400, 'Type must be card, invite or other');
+  const kind = b.kind === undefined || b.kind === 'other' ? 'card' : b.kind;
+  if (!KINDS.includes(kind)) throw new HttpError(400, 'Type must be card, invite or email');
   const nameStyle = b.nameStyle ?? 'label';
   if (!NAME_STYLES.includes(nameStyle)) throw new HttpError(400, 'Name style must be label or formal');
   const inv = b.invite ?? {};
@@ -156,6 +161,20 @@ function parseOccasion(b) {
       message: str(inv.message, 'Email message', { max: 5000 }),
     },
   };
+}
+
+export const DESIGN_MAX = 100_000; // characters of HTML
+const HEX = /^#[0-9a-f]{6}$/i;
+export function parseDesign(b) {
+  if (!b || typeof b !== 'object') throw new HttpError(400, 'Design is invalid');
+  if (typeof (b.html ?? '') !== 'string') throw new HttpError(400, 'Design must be HTML text');
+  if (String(b.html ?? '').length > DESIGN_MAX) throw new HttpError(400, 'The design is too large. Use fewer or smaller pictures pasted as links.');
+  const html = cleanDesignHtml(b.html);
+  for (const [k, label] of [['background', 'Background color'], ['color', 'Text color']]) {
+    if (b[k] !== undefined && b[k] !== '' && !HEX.test(b[k])) throw new HttpError(400, `${label} must look like #ffffff`);
+  }
+  if (b.font !== undefined && !FONTS.some((f) => f.key === b.font)) throw new HttpError(400, 'Unknown font');
+  return { html, background: b.background || undefined, color: b.color || undefined, font: b.font || undefined };
 }
 
 export const PROFILE_DEFAULTS = {
@@ -207,9 +226,10 @@ export function householdEmails(h) {
 }
 
 const strip = ({ PK, SK, GSI1PK, GSI1SK, ...rest }) => rest;
+const occOut = (o) => ({ ...strip(o), kind: kindOf(o) });
 const fullName = (p) => [p.firstName, p.lastName].filter(Boolean).join(' ');
 
-export function createApi({ repo, verify, mailer, appUrl, files, directory, addressChecker, now = () => new Date(), log = console, pause = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function createApi({ repo, verify, mailer, appUrl, files, media, directory, addressChecker, now = () => new Date(), log = console, pause = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const routes = [];
   // open: no sign-in (the address-check page). write: changes the book or sends email, so
   // View-only people can't.
@@ -581,7 +601,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, addr
       if (t.invitedAt) c.invited++;
     }
     return {
-      occasions: occasions.map((o) => ({ ...strip(o), counts: counts[o.id] ?? { tagged: 0, mailed: 0, invited: 0 } }))
+      occasions: occasions.map((o) => ({ ...occOut(o), counts: counts[o.id] ?? { tagged: 0, mailed: 0, invited: 0 } }))
         .sort((a, b) => (b.date ?? b.createdAt).localeCompare(a.date ?? a.createdAt)),
     };
   });
@@ -600,20 +620,20 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, addr
     }
     await repo.put(item);
     if (tags.length) await repo.batchPut(tags);
-    return { occasion: strip(item), copied: tags.length };
+    return { occasion: occOut(item), copied: tags.length };
   }, { write: true });
 
   route('GET', '/occasions/:id', async ({ user, params }) => {
     const o = await mustGet(user, `OCC#${params.id}`, 'Occasion');
     const tags = await repo.query(bk(user), `TAG#${params.id}#`);
-    return { occasion: strip(o), tags: tags.map(strip) };
+    return { occasion: occOut(o), tags: tags.map(strip) };
   });
 
   route('PUT', '/occasions/:id', async ({ user, params, body }) => {
     const current = await mustGet(user, `OCC#${params.id}`, 'Occasion');
     const item = { ...current, ...parseOccasion(body), updatedAt: nowIso() };
     await repo.put(item);
-    return { occasion: strip(item) };
+    return { occasion: occOut(item) };
   }, { write: true });
 
   // Deleting moves the occasion, with its list (and who was mailed / invited), to the Trash.
@@ -743,9 +763,29 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, addr
 
   // Emails the invitation to tagged households. Each household gets one email addressed to all of
   // its people. With test: true, one sample goes to the signed-in user only.
+  // The designed invitation or email (Invitations and Emails). Cleaned of anything but formatting.
+  route('PUT', '/occasions/:id/design', async ({ user, params, body }) => {
+    const current = await mustGet(user, `OCC#${params.id}`, 'Occasion');
+    const item = { ...current, design: parseDesign(body), updatedAt: nowIso() };
+    await repo.put(item);
+    return { occasion: occOut(item) };
+  }, { write: true });
+
+  // Pictures for designs. They're public (guests' mail apps load them), under unguessable names.
+  const MEDIA_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+  route('POST', '/occasions/:id/images', async ({ user, params, body }) => {
+    if (!media) throw new HttpError(503, 'Picture uploads are not set up');
+    await mustGet(user, `OCC#${params.id}`, 'Occasion');
+    const ext = MEDIA_TYPES[body.type];
+    if (!ext) throw new HttpError(400, 'Pictures must be PNG, JPEG, GIF or WebP');
+    const size = num(body.size, 'Size', { min: 1, max: 5 * 1024 * 1024, required: true });
+    const key = `media/${randomBytes(16).toString('hex')}.${ext}`;
+    return { uploadUrl: await media.signUpload(key, { type: body.type, size }), url: `${String(appUrl).replace(/\/$/, '')}/${key}` };
+  }, { write: true });
+
   route('POST', '/occasions/:id/invites', async ({ user, params, body }) => {
     const o = await mustGet(user, `OCC#${params.id}`, 'Occasion');
-    if (!o.invite?.message) throw new HttpError(400, 'Write the invitation message first (Edit occasion)');
+    if (!o.design?.html && !o.invite?.message) throw new HttpError(400, 'Design the email first');
     const profile = await getProfile(user);
     const fromName = senderName(profile);
 
@@ -765,6 +805,8 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, addr
     const hids = ids(body.householdIds, 'householdIds', { max: INVITE_BATCH });
     // Per household: 'default' (the default contact), 'all', or a person's id. Missing = default.
     const choices = body.recipients && typeof body.recipients === 'object' ? body.recipients : {};
+    // Per household: the greeting text chosen in the send window (Informal, Formal, a first name…).
+    const greetings = body.greetings && typeof body.greetings === 'object' ? body.greetings : {};
     const results = [];
     for (const [i, hid] of hids.entries()) {
       const tag = await repo.get(bk(user), `TAG#${params.id}#${hid}`);
@@ -775,7 +817,8 @@ export function createApi({ repo, verify, mailer, appUrl, files, directory, addr
       if (!to.length) { results.push({ householdId: hid, status: 'skipped', reason: 'No email address' }); continue; }
       try {
         if (i) await pause(120); // stay under SES's per-second send rate
-        await mailer.send({ to, ...buildInvite({ occasion: o, household: h, fromName }), fromName, replyTo: user.email });
+        const greeting = typeof greetings[hid] === 'string' && greetings[hid].trim() ? greetings[hid].trim().slice(0, 160) : undefined;
+        await mailer.send({ to, ...buildInvite({ occasion: o, household: h, fromName, greeting }), fromName, replyTo: user.email });
         const { inviteError, ...t } = tag;
         await repo.put({ ...t, invitedAt: nowIso(), invitedTo: to });
         results.push({ householdId: hid, status: 'sent', to });

@@ -11,6 +11,8 @@ export const fmtDate = (iso) => (iso
   })
   : '');
 
+import { designText, fieldValues, fontLink, renderDesign } from './design-core.mjs';
+
 // Plain text the user typed → paragraphs, keeping single line breaks.
 const paragraphs = (text) => String(text ?? '').trim().split(/\n{2,}/).filter(Boolean)
   .map((p) => `<p style="margin:0 0 14px">${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
@@ -36,10 +38,11 @@ const button = (url, label) => `<p style="margin:22px 0"><a href="${esc(url)}" s
  * @param {object} p.household  { labelName }
  * @param {string} p.fromName   who it's from, e.g. "Mike Szmansky"
  */
-export function buildInvite({ occasion, household, fromName, test = false }) {
+export function buildInvite({ occasion, household, fromName, greeting: chosen, test = false }) {
   const inv = occasion.invite ?? {};
   const subject = `${test ? '[Test] ' : ''}${inv.subject || `You're invited: ${occasion.name}`}`;
-  const greeting = household?.greeting || household?.labelName || '';
+  const greeting = chosen || household?.greeting || household?.labelName || '';
+  if (occasion.design?.html) return designedEmail({ occasion, greeting, fromName, subject });
   const details = [
     occasion.date && ['When', [fmtDate(occasion.date), occasion.time].filter(Boolean).join(' at ')],
     occasion.location && ['Where', occasion.location],
@@ -72,6 +75,25 @@ export function buildInvite({ occasion, household, fromName, test = false }) {
     'Reply to this email to respond.',
   ].filter((l) => l !== null && l !== undefined && l !== false).join('\n');
 
+  return { subject, html, text };
+}
+
+// A designed email: the design itself, centered, with a one-line footer. Web fonts are linked for
+// mail apps that load them (Apple Mail); others use each font's fallback.
+function designedEmail({ occasion, greeting, fromName, subject }) {
+  const values = fieldValues({ occasion, greeting, fromName });
+  const link = fontLink(occasion.design);
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+${link ? `<link href="${esc(link)}" rel="stylesheet">` : ''}
+<style>.design img{max-width:100%;height:auto}.design p{margin:0 0 12px}</style></head>
+<body style="margin:0;background:#f4f2ee;padding:24px 12px">
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px"><tr><td>
+${renderDesign(occasion.design, values)}
+</td></tr>
+<tr><td style="padding:14px 4px;font:12.5px/1.5 Arial,sans-serif;color:#868e96;text-align:center">Reply to this email to respond${fromName ? ` to ${esc(fromName)}` : ''}.</td></tr>
+</table></td></tr></table></body></html>`;
+  const text = `${designText(occasion.design.html, values)}\n\nReply to this email to respond.`;
   return { subject, html, text };
 }
 
