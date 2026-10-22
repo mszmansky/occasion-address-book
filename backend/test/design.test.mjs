@@ -64,3 +64,11 @@ test('a designed email uses the design and the chosen greeting', () => {
   // Without a chosen greeting: the household's informal one.
   assert.match(buildInvite({ occasion, household: { labelName: 'The Smith Family', greeting: 'John and Mary' }, fromName: 'Mike' }).html, /Hey John and Mary!/);
 });
+
+test('borders frame the design; unknown values fall back', async () => {
+  const { renderDesign: r } = await import('../../frontend/design-core.js');
+  const framed = r({ html: '<p>x</p>', border: 'double', borderColor: '#14532d' }, {}, { padding: '32px' });
+  assert.match(framed, /padding:calc\(32px \/ 2\)"><div class="design-frame" style="border:5px double #14532d;padding:calc\(32px \/ 2\);height:100%;box-sizing:border-box"><p>x<\/p><div style="clear:both"><\/div><\/div><\/div>$/);
+  assert.match(r({ html: 'x', border: 'rounded', borderColor: 'nope' }), /border:2px solid #9f1239;border-radius:18px;/);
+  assert.doesNotMatch(r({ html: 'x', border: 'weird' }), /design-frame/);
+});

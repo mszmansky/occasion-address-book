@@ -9,7 +9,7 @@ import {
 } from './csv-core.js';
 import { householdToVcard, fileBaseName } from './vcard-core.js';
 import {
-  FONTS, FIELDS as DESIGN_FIELDS, DESIGN_DEFAULTS, fieldValues, fontByKey, fontLink, renderDesign, starterHtml,
+  BORDERS, FONTS, FIELDS as DESIGN_FIELDS, DESIGN_DEFAULTS, borderByKey, fieldValues, fontByKey, fontLink, renderDesign, starterHtml,
 } from './design-core.js';
 
 const cfg = window.APP_CONFIG ?? {};
@@ -1227,7 +1227,6 @@ function renderOccasion() {
       <p class="muted" style="margin:2px 0 0">${[KIND_LABEL[kind], when, o.location].filter(Boolean).map(esc).join(' · ')}</p></div>
     <div class="actions">
       ${canEdit() ? `<button class="btn" data-action="edit-occasion">${PENCIL} Edit</button>
-      ${kind !== 'card' ? `<button class="btn" data-action="design">${BRUSH} ${kind === 'email' ? 'Design email' : 'Design invitation'}</button>` : ''}
       ${kind === 'email' ? `<button class="btn primary" data-action="invites" ${withEmail ? '' : 'disabled'}>${MAIL} Send emails…</button>` : ''}` : ''}
       ${kind !== 'email' ? `<button class="btn primary" data-action="print" ${onList.length ? '' : 'disabled'}>Print…</button>` : ''}
     </div>
@@ -1334,6 +1333,8 @@ function occasionModal(o) {
     <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
     <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Name printed on labels and envelopes<select name="nameStyle">
       ${nameStyleOptions(o.nameStyle, isNew ? [] : (state.occ?.tags ?? []).map((t) => t.householdId))}</select></label>
+    <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design invitation…</button></div>
+    <div data-kinds="email" ${kind === 'email' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design email…</button></div>
     <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email subject<input name="subject" maxlength="200" value="${val(o.invite?.subject)}" placeholder="You're invited: ${val(o.name) || 'our holiday open house'}"></label>
     ${isNew && copyable.length ? `<label>Start with the list from <span class="muted">(optional)</span><select name="copyFrom"><option value="">Nobody yet</option>
       ${copyable.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} (${x.counts.tagged})</option>`).join('')}</select></label>` : ''}
@@ -1345,7 +1346,8 @@ function occasionModal(o) {
   });
 }
 
-async function saveOccasion(form) {
+// thenDesign: the Design button on this screen saves the occasion first, then opens the design window.
+async function saveOccasion(form, { thenDesign = false } = {}) {
   const f = form.elements;
   const body = {
     name: f.namedItem('name').value.trim(), kind: f.kind.value, date: f.date.value, time: f.time.value.trim(), location: f.location.value.trim(),
@@ -1364,6 +1366,7 @@ async function saveOccasion(form) {
     if (isNew) { state.occFilter = res.copied ? 'on' : 'all'; state.occSearch = ''; }
     await openOccasion(res.occasion.id);
     render();
+    if (thenDesign) { designModal(); return; }
     toast(isNew ? (res.copied ? `Created with ${plural(res.copied, 'household')} from the earlier list` : 'Created. Tick who it\'s for.') : 'Saved');
   });
 }
@@ -1589,17 +1592,23 @@ function designModal() {
   const d = { ...DESIGN_DEFAULTS, ...(o.design ?? {}) };
   const html = o.design?.html ?? starterHtml(o.invite?.message);
   loadAllFonts();
-  const colorInput = (name, value, label) => `<label class="tb-color" title="${label}"><span class="sr">${label}</span><input type="color" name="${name}" value="${esc(value)}" data-design="${name}"></label>`;
+  // One font picker and one text color: with words selected they change those words; with nothing
+  // selected they change the whole design's font or text color.
+  const colorInput = (name, value, label, title) => `<label class="tb-swatch" title="${title}"><span class="tb-label">${label}</span><span class="tb-color"><input type="color" name="${name}" value="${esc(value)}" data-design="${name}" aria-label="${title}"></span></label>`;
   openModal(kindOf(o) === 'email' ? 'Design email' : 'Design invitation', `
     <div class="design-toolbar" role="toolbar" aria-label="Formatting">
-      <select data-design="fontName" aria-label="Font" title="Font"><option value="">Font</option>${FONTS.map((f) => `<option value="${esc(f.stack)}" style="font-family:${esc(f.stack)}">${esc(f.label)}</option>`).join('')}</select>
+      <span class="tb-group">
+        <button type="button" class="tb" data-history="undo" title="Undo (⌘Z)" aria-label="Undo" disabled>${UNDO_ICON}</button>
+        <button type="button" class="tb" data-history="redo" title="Redo (⇧⌘Z)" aria-label="Redo" disabled>${REDO_ICON}</button>
+      </span>
+      <select data-design="font" aria-label="Font" title="Font">${FONTS.map((f) => `<option value="${f.key}" ${f.key === d.font ? 'selected' : ''} style="font-family:${esc(f.stack)}">${esc(f.label)}</option>`).join('')}</select>
       <select data-design="fontSize" aria-label="Size" title="Size"><option value="">Size</option>${FONT_SIZES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
       <span class="tb-group">
         <button type="button" class="tb" data-cmd="bold" title="Bold" aria-label="Bold"><b>B</b></button>
         <button type="button" class="tb" data-cmd="italic" title="Italic" aria-label="Italic"><i>I</i></button>
         <button type="button" class="tb" data-cmd="underline" title="Underline" aria-label="Underline"><u>U</u></button>
       </span>
-      ${colorInput('foreColor', '#9f1239', 'Text color')}
+      ${colorInput('color', d.color, 'Text', 'Text color')}
       <span class="tb-group">
         <button type="button" class="tb" data-cmd="justifyLeft" title="Align left" aria-label="Align left">${ALIGN('l')}</button>
         <button type="button" class="tb" data-cmd="justifyCenter" title="Center" aria-label="Center">${ALIGN('c')}</button>
@@ -1610,19 +1619,22 @@ function designModal() {
       <select data-design="field" aria-label="Insert a fill-in field" title="Insert a fill-in field"><option value="">Insert field</option>${DESIGN_FIELDS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
       <label class="tb tb-pic" title="Insert a picture">${PICTURE} <span>Picture</span><input type="file" accept="${PICTURE_TYPES.join(',')}" data-design-picture hidden></label>
       <span class="tb-spacer"></span>
-      <span class="tb-page"><span class="tb-label">Page</span>
-      ${colorInput('background', d.background, 'Page color')}
-      ${colorInput('color', d.color, 'Page text color')}
-      <select data-design="pageFont" aria-label="Page font" title="Page font">${FONTS.map((f) => `<option value="${f.key}" ${f.key === d.font ? 'selected' : ''} style="font-family:${esc(f.stack)}">${esc(f.label)}</option>`).join('')}</select></span>
+      ${colorInput('background', d.background, 'Background', 'Background color')}
+      <label class="tb-swatch"><span class="tb-label">Border</span><select data-design="border" aria-label="Border">${BORDERS.map((x) => `<option value="${x.key}" ${x.key === d.border ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select></label>
+      <label class="tb-swatch" title="Border color" data-border-color ${d.border === 'none' ? 'hidden' : ''}><span class="tb-label">Border color</span><span class="tb-color"><input type="color" name="borderColor" value="${esc(d.borderColor)}" data-design="borderColor" aria-label="Border color"></span></label>
       <button type="button" class="tb" data-design-html aria-pressed="false" title="Edit or paste HTML">&lt;/&gt;</button>
     </div>
     <div class="design-imgbar" data-design-imgbar hidden>
-      <span class="small muted">Picture size</span>
+      <span class="small muted">Place</span>
+      ${[['left', 'Left, text beside'], ['center', 'Centered'], ['right', 'Right, text beside'], ['inline', 'In the line']].map(([k, l]) => `<button type="button" class="btn sm" data-img-place="${k}" aria-pressed="false">${l}</button>`).join('')}
+      <span class="imgbar-sep"></span>
+      <span class="small muted">Size</span>
       ${[['25%', 'Small'], ['50%', 'Medium'], ['75%', 'Large'], ['100%', 'Full width']].map(([w, l]) => `<button type="button" class="btn sm" data-img-width="${w}">${l}</button>`).join('')}
+      <button type="button" class="btn sm" data-img-border aria-pressed="false">Border</button>
       <button type="button" class="btn sm danger" data-img-remove>Remove</button>
     </div>
     <div class="design-stage">
-      <div class="design-canvas" data-design-canvas style="background:${esc(d.background)};color:${esc(d.color)};font-family:${esc(fontByKey(d.font).stack)}">
+      <div class="design-canvas" data-design-canvas data-font="${esc(d.font)}" data-color="${esc(d.color)}" style=""background:${esc(d.background)};color:${esc(d.color)};font-family:${esc(fontByKey(d.font).stack)}">
         <div class="design-edit" contenteditable="true" spellcheck="true" data-design-edit aria-label="Design">${(html)}</div>
       </div>
       <textarea class="design-src" data-design-src hidden spellcheck="false" aria-label="HTML"></textarea>
@@ -1636,6 +1648,8 @@ function designModal() {
   wireDesign(editor);
 }
 
+const UNDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3M2.75 6.5h6.5a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const REDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="m10.5 3.5 3 3-3 3M13.25 6.5h-6.5a4 4 0 0 0 0 8H9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ALIGN = (w) => `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="${{ l: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8', c: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8', r: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' }[w]}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 const PICTURE = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="6.25" r="1.25" fill="currentColor"/><path d="m2.5 12 3.8-3.8 2.4 2.4 1.8-1.8L13.5 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 
@@ -1656,6 +1670,72 @@ function wireDesign(editor) {
     sel.removeAllRanges(); sel.addRange(designRange);
   };
   const exec = (cmd, value = null) => { restore(); document.execCommand(cmd, false, value); keepRange(); };
+  const hasSelection = () => Boolean(designRange && !designRange.collapsed && editor.contains(designRange.commonAncestorContainer));
+
+  // Undo / redo: the app keeps its own history of the whole design (text, pictures, font, colors), so
+  // every change can be undone, not just typing. Typing is grouped into one step per pause.
+  const bgInput = modal.querySelector('[name=background]');
+  const colorIn = modal.querySelector('[data-design=color]');
+  const fontSel = modal.querySelector('[data-design=font]');
+  const undoBtn = modal.querySelector('[data-history=undo]');
+  const redoBtn = modal.querySelector('[data-history=redo]');
+  const borderSel = modal.querySelector('[data-design=border]');
+  const borderColor = modal.querySelector('[name=borderColor]');
+  // The page border, drawn like the finished design: a frame a little inside the edge.
+  const applyBorder = () => {
+    const b = borderByKey(borderSel.value);
+    modal.querySelector('[data-border-color]').hidden = !b.css;
+    canvas.style.padding = b.css ? '16px' : '';
+    editor.style.border = b.css ? `${b.css} ${borderColor.value}` : '';
+    editor.style.borderRadius = b.radius ?? '';
+    editor.style.padding = b.css ? '16px' : '';
+  };
+  applyBorder();
+  const snap = () => ({ html: editor.innerHTML.replace(/ class="selected"/g, ''), font: canvas.dataset.font, color: canvas.dataset.color, background: bgInput.value, border: borderSel.value, borderColor: borderColor.value });
+  const same = (a, b) => ['html', 'font', 'color', 'background', 'border', 'borderColor'].every((k) => a[k] === b[k]);
+  const history = [snap()];
+  let at = 0;
+  let pending = null;
+  const syncHistory = () => { undoBtn.disabled = at === 0; redoBtn.disabled = at === history.length - 1; };
+  const record = () => {
+    clearTimeout(pending); pending = null;
+    const now = snap();
+    if (same(now, history[at])) return;
+    history.splice(at + 1, Infinity, now);
+    if (history.length > 200) history.shift();
+    at = history.length - 1;
+    syncHistory();
+  };
+  const recordSoon = () => { clearTimeout(pending); pending = setTimeout(record, 500); };
+  const apply = (s) => {
+    editor.innerHTML = s.html;
+    canvas.dataset.font = s.font; canvas.style.fontFamily = fontByKey(s.font).stack; fontSel.value = s.font;
+    canvas.dataset.color = s.color; canvas.style.color = s.color; colorIn.value = s.color;
+    bgInput.value = s.background; canvas.style.background = s.background;
+    borderSel.value = s.border; borderColor.value = s.borderColor; applyBorder();
+    pick(null);
+    designRange = null;
+    syncHistory();
+  };
+  const step = (dir) => {
+    if (pending) record(); // finish the step being typed
+    const to = at + dir;
+    if (to < 0 || to >= history.length) return;
+    at = to;
+    apply(history[at]);
+    editor.focus();
+  };
+  modal.querySelector('.design-toolbar').addEventListener('click', (e) => {
+    const h = e.target.closest('[data-history]');
+    if (h) step(h.dataset.history === 'undo' ? -1 : 1);
+  });
+  editor.addEventListener('input', recordSoon);
+  editor.addEventListener('keydown', (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z') { e.preventDefault(); step(e.shiftKey ? 1 : -1); }
+    else if (k === 'y') { e.preventDefault(); step(1); }
+  });
   // Fields and pictures go in at the caret as real nodes (insertHTML splits paragraphs around chips).
   const insertNode = (html) => {
     restore();
@@ -1677,13 +1757,67 @@ function wireDesign(editor) {
   editor.addEventListener('mouseup', keepRange);
   editor.addEventListener('input', keepRange);
 
+  // Where a picture sits. Floats (with the align attribute for Outlook) are what mail apps understand;
+  // free positioning anywhere on the page doesn't survive email, so pictures are dragged within the text.
+  const PLACES = {
+    left: { float: 'left', display: '', margin: '0 16px 12px 0', align: 'left' },
+    right: { float: 'right', display: '', margin: '0 0 12px 16px', align: 'right' },
+    center: { float: '', display: 'block', margin: '12px auto', align: '' },
+    inline: { float: '', display: '', margin: '', align: '' },
+  };
+  const placeOf = (img) => (img.style.float === 'left' ? 'left' : img.style.float === 'right' ? 'right' : img.style.display === 'block' ? 'center' : 'inline');
+  const place = (img, where) => {
+    const p = PLACES[where];
+    img.style.float = p.float; img.style.display = p.display; img.style.margin = p.margin;
+    if (p.align) img.setAttribute('align', p.align); else img.removeAttribute('align');
+  };
+  const showPlace = (img) => imgbar.querySelectorAll('[data-img-place]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.imgPlace === placeOf(img))));
+
   const pick = (img) => {
     editor.querySelectorAll('img.selected').forEach((i) => i.classList.remove('selected'));
     picked = img;
     img?.classList.add('selected');
     imgbar.hidden = !img;
+    if (img) { imgbar.querySelector('[data-img-border]').setAttribute('aria-pressed', String(Boolean(img.style.border))); showPlace(img); }
   };
   editor.addEventListener('click', (e) => pick(e.target.closest('img')));
+
+  // Drag a picture to move it to another spot in the text; drop a picture file from the Mac to add it.
+  let dragged = null;
+  const caretAt = (x, y) => {
+    if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+    const pos = document.caretPositionFromPoint?.(x, y);
+    if (!pos) return null;
+    const r = document.createRange(); r.setStart(pos.offsetNode, pos.offset); r.collapse(true);
+    return r;
+  };
+  editor.addEventListener('dragstart', (e) => {
+    dragged = e.target.closest?.('img') ?? null;
+    if (!dragged) return;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+  });
+  editor.addEventListener('dragend', () => { dragged = null; });
+  editor.addEventListener('dragover', (e) => {
+    if (dragged || [...(e.dataTransfer?.items ?? [])].some((i) => i.kind === 'file')) { e.preventDefault(); e.dataTransfer.dropEffect = dragged ? 'move' : 'copy'; }
+  });
+  editor.addEventListener('drop', (e) => {
+    const file = [...(e.dataTransfer?.files ?? [])].find((f) => PICTURE_TYPES.includes(f.type));
+    if (!dragged && !file) return;
+    e.preventDefault();
+    const r = caretAt(e.clientX, e.clientY);
+    if (!r || !editor.contains(r.startContainer)) { dragged = null; return; }
+    if (file) {
+      designRange = r; // the picture goes where it was dropped
+      insertPicture(file, insertNode);
+      return;
+    }
+    if (dragged.contains(r.startContainer)) { dragged = null; return; }
+    r.insertNode(dragged);
+    pick(dragged);
+    dragged = null;
+    record();
+  });
 
   const bar = modal.querySelector('.design-toolbar');
   // Buttons act without stealing the selection.
@@ -1695,17 +1829,25 @@ function wireDesign(editor) {
   bar.addEventListener('change', (e) => {
     const t = e.target;
     const what = t.dataset.design;
-    if (what === 'fontName' && t.value) { exec('fontName', t.value); t.value = ''; }
+    if (what === 'font') {
+      if (hasSelection()) { exec('fontName', fontByKey(t.value).stack); t.value = canvas.dataset.font; } // just these words
+      else { canvas.dataset.font = t.value; canvas.style.fontFamily = fontByKey(t.value).stack; }      // the whole design
+      record();
+    }
+    if (what === 'border') { applyBorder(); record(); }
     if (what === 'fontSize' && t.value) { exec('fontSize', t.value); t.value = ''; }
     if (what === 'field' && t.value) { exec('insertText', `{{${t.value}}}`); t.value = ''; }
-    if (what === 'pageFont') canvas.style.fontFamily = fontByKey(t.value).stack;
     if (t.matches('[data-design-picture]') && t.files[0]) { const f = t.files[0]; t.value = ''; insertPicture(f, insertNode); }
   });
   bar.addEventListener('input', (e) => {
     const t = e.target;
-    if (t.dataset.design === 'foreColor') exec('foreColor', t.value);
-    if (t.dataset.design === 'background') canvas.style.background = t.value;
-    if (t.dataset.design === 'color') canvas.style.color = t.value;
+    if (t.dataset.design === 'color') {
+      if (hasSelection()) exec('foreColor', t.value);
+      else { canvas.dataset.color = t.value; canvas.style.color = t.value; }
+      recordSoon(); // dragging through colors is one step
+    }
+    if (t.dataset.design === 'background') { canvas.style.background = t.value; recordSoon(); }
+    if (t.dataset.design === 'borderColor') { applyBorder(); recordSoon(); }
   });
   // A color picker takes focus: remember the selection before it opens.
   bar.addEventListener('pointerdown', (e) => { if (e.target.closest('input[type=color], select')) keepRange(); });
@@ -1714,7 +1856,14 @@ function wireDesign(editor) {
     if (!picked) return;
     const w = e.target.closest('[data-img-width]')?.dataset.imgWidth;
     if (w) { picked.style.width = w; picked.style.maxWidth = '100%'; picked.style.height = 'auto'; }
+    const where = e.target.closest('[data-img-place]')?.dataset.imgPlace;
+    if (where) { place(picked, where); showPlace(picked); }
+    if (e.target.closest('[data-img-border]')) {
+      picked.style.border = picked.style.border ? '' : `3px solid ${borderColor.value}`;
+      imgbar.querySelector('[data-img-border]').setAttribute('aria-pressed', String(Boolean(picked.style.border)));
+    }
     if (e.target.closest('[data-img-remove]')) { picked.remove(); pick(null); }
+    record();
   });
 
   // HTML view: edit or paste HTML; switching back shows it (cleaned) in the editor.
@@ -1727,10 +1876,12 @@ function wireDesign(editor) {
     } else {
       editor.innerHTML = (await cleanForEditor(src.value));
       src.hidden = true; canvas.hidden = false; editor.focus();
+      record();
     }
     htmlBtn.setAttribute('aria-pressed', String(toSource));
     bar.querySelectorAll('select, button.tb:not([data-design-html]), input, .tb-pic').forEach((el) => {
-      if (el.matches('input[type=color][name=background], input[type=color][name=color], [data-design=pageFont]')) return;
+      if (el.matches('input[type=color][name=background], input[name=borderColor], [data-design=border]')) return;
+      if (el.matches('[data-history]')) { el.disabled = toSource || (el.dataset.history === 'undo' ? at === 0 : at === history.length - 1); return; }
       el.classList.toggle('off', toSource);
       if ('disabled' in el) el.disabled = toSource;
     });
@@ -1794,8 +1945,10 @@ async function saveDesign(form) {
   const body = {
     html: designHtml(editor),
     background: form.querySelector('[name=background]').value,
-    color: form.querySelector('[name=color]').value,
-    font: form.querySelector('[data-design=pageFont]').value,
+    color: form.querySelector('[data-design-canvas]').dataset.color,
+    font: form.querySelector('[data-design-canvas]').dataset.font,
+    border: form.querySelector('[data-design=border]').value,
+    borderColor: form.querySelector('[name=borderColor]').value,
   };
   await withBusy(form.querySelector('.btn.primary'), async () => {
     const res = await api(`/occasions/${state.occasionId}/design`, { method: 'PUT', body });
@@ -2475,6 +2628,7 @@ document.addEventListener('click', async (e) => {
       break;
     case 'invites': invitesModal(); break;
     case 'design': designModal(); break;
+    case 'design-from-edit': await saveOccasion(el.closest('form'), { thenDesign: true }); break;
     case 'test-invite':
       await withBusy(el, async () => {
         const res = await api(`/occasions/${state.occasionId}/invites`, { method: 'POST', body: { test: true } });

@@ -33,7 +33,23 @@ export const FIELDS = [
   ['from', 'Your name'],
 ];
 
-export const DESIGN_DEFAULTS = { background: '#ffffff', color: '#1d2125', font: 'georgia' };
+export const DESIGN_DEFAULTS = { background: '#ffffff', color: '#1d2125', font: 'georgia', border: 'none', borderColor: '#9f1239' };
+
+// Page borders: a frame drawn a little inside the edge of the invitation or email.
+export const BORDERS = [
+  { key: 'none', label: 'No border' },
+  { key: 'thin', label: 'Thin line', css: '1px solid' },
+  { key: 'thick', label: 'Thick line', css: '4px solid' },
+  { key: 'double', label: 'Double line', css: '5px double' },
+  { key: 'dashed', label: 'Dashed', css: '2px dashed' },
+  { key: 'dotted', label: 'Dotted', css: '3px dotted' },
+  { key: 'rounded', label: 'Rounded', css: '2px solid', radius: '18px' },
+  { key: 'groove', label: 'Engraved', css: '6px groove' },
+];
+// Ends the design below any picture placed beside the text.
+const CLEAR = '<div style="clear:both"></div>';
+
+export const borderByKey = (key) => BORDERS.find((b) => b.key === key) ?? BORDERS[0];
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export const fontByKey = (key) => FONTS.find((f) => f.key === key) ?? FONTS[0];
@@ -71,7 +87,13 @@ export function renderDesign(design = {}, values = {}, { padding = '32px' } = {}
   const d = { ...DESIGN_DEFAULTS, ...design };
   const bg = /^#[0-9a-f]{6}$/i.test(d.background) ? d.background : DESIGN_DEFAULTS.background;
   const color = /^#[0-9a-f]{6}$/i.test(d.color) ? d.color : DESIGN_DEFAULTS.color;
-  return `<div class="design" style="background:${bg};color:${color};font-family:${fontByKey(d.font).stack.replace(/"/g, "'")};font-size:16px;line-height:1.5;padding:${padding}">${fillFields(d.html, values)}</div>`;
+  const font = fontByKey(d.font).stack.replace(/"/g, "'");
+  const b = borderByKey(d.border);
+  if (!b.css) return `<div class="design" style="background:${bg};color:${color};font-family:${font};font-size:16px;line-height:1.5;padding:${padding}">${fillFields(d.html, values)}${CLEAR}</div>`;
+  const edge = /^#[0-9a-f]{6}$/i.test(d.borderColor) ? d.borderColor : DESIGN_DEFAULTS.borderColor;
+  // The frame sits about half the padding in from the edge, with the rest of the padding inside it.
+  return `<div class="design" style="background:${bg};color:${color};font-family:${font};font-size:16px;line-height:1.5;padding:calc(${padding} / 2)">`
+    + `<div class="design-frame" style="border:${b.css} ${edge};${b.radius ? `border-radius:${b.radius};` : ''}padding:calc(${padding} / 2);height:100%;box-sizing:border-box">${fillFields(d.html, values)}${CLEAR}</div></div>`;
 }
 
 /** Plain-text version of filled-in content, for the text part of an email. */

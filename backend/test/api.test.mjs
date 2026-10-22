@@ -571,6 +571,11 @@ test('designs are cleaned when saved and kept when the occasion is edited', asyn
   assert.deepEqual(r.body.occasion.design, { html: '<p style="color:#ff0000">Hi {{greeting}}</p>', background: '#fef3c7', font: 'great-vibes' });
   assert.equal((await call('PUT', `/occasions/${o.id}/design`, { html: 'x', background: 'red' })).status, 400);
   assert.equal((await call('PUT', `/occasions/${o.id}/design`, { html: 'x', font: 'comic-sans' })).status, 400);
+  assert.equal((await call('PUT', `/occasions/${o.id}/design`, { html: 'x', border: 'zigzag' })).status, 400);
+  r = await call('PUT', `/occasions/${o.id}/design`, { html: '<img src="https://x.example/a.png" align="left" style="float:left;margin:0 16px 12px 0;border:3px solid #9f1239">', border: 'double', borderColor: '#14532d' });
+  assert.deepEqual([r.body.occasion.design.border, r.body.occasion.design.borderColor], ['double', '#14532d']);
+  assert.match(r.body.occasion.design.html, /align="left" style="float:left;margin:0 16px 12px 0;border:3px solid #9f1239"/);
+  r = await call('PUT', `/occasions/${o.id}/design`, { html: '<p style="color:#ff0000">Hi {{greeting}}</p><script>x()</script>', background: '#fef3c7', font: 'great-vibes', border: 'none', borderColor: '#000000' });
   assert.equal((await call('PUT', `/occasions/${o.id}/design`, { html: 'x'.repeat(100_001) })).status, 400);
   r = await call('PUT', `/occasions/${o.id}`, { name: 'Party!', kind: 'invite' });
   assert.equal(r.body.occasion.design.html, '<p style="color:#ff0000">Hi {{greeting}}</p>');

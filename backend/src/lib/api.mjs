@@ -7,7 +7,7 @@ import { HttpError } from './auth.mjs';
 import { userPk } from './repo.mjs';
 import { buildAddressReceived, buildAddressRequest, buildInvite, buildShareNotice } from './email.mjs';
 import { cleanDesignHtml } from './sanitize.mjs';
-import { FONTS } from './design-core.mjs';
+import { BORDERS, FONTS } from './design-core.mjs';
 
 export const LINK_DAYS = 30;          // address-update links expire after this many days
 export const TRASH_DAYS = 30;         // deleted households and occasions stay in the Trash this long
@@ -174,7 +174,12 @@ export function parseDesign(b) {
     if (b[k] !== undefined && b[k] !== '' && !HEX.test(b[k])) throw new HttpError(400, `${label} must look like #ffffff`);
   }
   if (b.font !== undefined && !FONTS.some((f) => f.key === b.font)) throw new HttpError(400, 'Unknown font');
-  return { html, background: b.background || undefined, color: b.color || undefined, font: b.font || undefined };
+  if (b.border !== undefined && !BORDERS.some((x) => x.key === b.border)) throw new HttpError(400, 'Unknown border');
+  if (b.borderColor !== undefined && b.borderColor !== '' && !HEX.test(b.borderColor)) throw new HttpError(400, 'Border color must look like #ffffff');
+  return {
+    html, background: b.background || undefined, color: b.color || undefined, font: b.font || undefined,
+    border: b.border && b.border !== 'none' ? b.border : undefined, borderColor: b.border && b.border !== 'none' ? b.borderColor || undefined : undefined,
+  };
 }
 
 export const PROFILE_DEFAULTS = {
