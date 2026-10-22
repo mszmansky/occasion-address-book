@@ -329,6 +329,31 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
 
   const publicHousehold = (h) => strip(h);
 
+  // ---------- two people editing at once ----------
+  // Each household, occasion and design carries updatedAt. The app sends the one it started from
+  // (baseUpdatedAt); if someone else saved in the meantime, the save is refused with 409 and their
+  // version, so the app can offer "Load their version" or "Save mine anyway" (which resends with
+  // their updatedAt). Saves without baseUpdatedAt (older app versions) still go through.
+  const stampOf = async (user) => ({ updatedBy: user.sub, updatedByName: fullName(await getProfile(user)) || user.email });
+  async function saveChecked(user, current, item, base, out) {
+    const who = await stampOf(user);
+    const next = { ...item, ...who };
+    if (base === undefined) { await repo.put(next); return next; }
+    try {
+      if (base !== (current.updatedAt ?? null)) throw Object.assign(new Error('changed'), { name: 'ConditionalCheckFailedException' });
+      await repo.putIfUnchanged(next, current.updatedAt);
+      return next;
+    } catch (e) {
+      if (e.name !== 'ConditionalCheckFailedException') throw e;
+      const latest = await repo.get(current.PK, current.SK);
+      const mine = latest?.updatedBy === user.sub;
+      const err = new HttpError(409, `${mine ? 'You' : latest?.updatedByName || 'Someone'} changed this while you were editing it`, 'conflict');
+      err.extra = { current: latest ? out(latest) : null, changedBy: mine ? 'you' : latest?.updatedByName || 'Someone' };
+      throw err;
+    }
+  }
+  const baseOf = (body) => (body.baseUpdatedAt === undefined ? undefined : typeof body.baseUpdatedAt === 'string' ? body.baseUpdatedAt : null);
+
   // ---------- profile ----------
   // The profile as the app sees it: the stored photo becomes a link that works for an hour.
   async function publicProfile(p) {
@@ -520,8 +545,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
   route('PUT', '/households/:id', async ({ user, params, body }) => {
     const current = await mustGet(user, `HH#${params.id}`, 'Household');
     const item = { ...current, ...parseHousehold(body), updatedAt: nowIso() };
-    await repo.put(item);
-    return { household: publicHousehold(item) };
+    return { household: publicHousehold(await saveChecked(user, current, item, baseOf(body), publicHousehold)) };
   }, { write: true });
 
   // Deleting moves the household to the Trash, with its places on occasion lists so a restore puts them back.
@@ -538,9 +562,10 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     const h = await mustGet(user, `HH#${params.id}`, 'Household');
     if (!h.pendingUpdate) throw new HttpError(409, 'There is no address waiting to be reviewed');
     const { pendingUpdate, ...rest } = h;
+    // Accepting changes the address, so it counts as an edit; discarding leaves the household as it was.
     const item = params.action === 'accept'
-      ? { ...rest, address: pendingUpdate.address, addressConfirmedAt: pendingUpdate.receivedAt, updatedAt: nowIso() }
-      : { ...rest, updatedAt: nowIso() };
+      ? { ...rest, address: pendingUpdate.address, addressConfirmedAt: pendingUpdate.receivedAt, updatedAt: nowIso(), ...await stampOf(user) }
+      : rest;
     await repo.put(item);
     return { household: publicHousehold(item) };
   }, { write: true });
@@ -592,7 +617,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
       await repo.del(tokenPk(token), 'TOKEN');
       throw new HttpError(502, sesHint(e, 'The email could not be sent.'));
     }
-    const item = { ...h, addressRequest: { sentAt: nowIso(), sentTo: to, expiresAt: expires.toISOString() }, updatedAt: nowIso() };
+    const item = { ...h, addressRequest: { sentAt: nowIso(), sentTo: to, expiresAt: expires.toISOString() } };
     await repo.put(item);
     return { household: publicHousehold(item), sentTo: to };
   }, { write: true });
@@ -639,8 +664,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
   route('PUT', '/occasions/:id', async ({ user, params, body }) => {
     const current = await mustGet(user, `OCC#${params.id}`, 'Occasion');
     const item = { ...current, ...parseOccasion(body), updatedAt: nowIso() };
-    await repo.put(item);
-    return { occasion: occOut(item) };
+    return { occasion: occOut(await saveChecked(user, current, item, baseOf(body), occOut)) };
   }, { write: true });
 
   // Deleting moves the occasion, with its list (and who was mailed / invited), to the Trash.
@@ -794,7 +818,17 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
   // The designed invitation or email (Invitations and Emails). Cleaned of anything but formatting.
   route('PUT', '/occasions/:id/design', async ({ user, params, body }) => {
     const current = await mustGet(user, `OCC#${params.id}`, 'Occasion');
-    const item = { ...current, design: parseDesign(body), updatedAt: nowIso() };
+    // The design has its own stamp, so editing the occasion's details doesn't clash with its design.
+    const design = { ...parseDesign(body), updatedAt: nowIso() };
+    const base = baseOf(body);
+    if (base !== undefined && base !== (current.design?.updatedAt ?? null)) {
+      const mine = current.design?.updatedBy === user.sub;
+      const err = new HttpError(409, `${mine ? 'You' : current.design?.updatedByName || 'Someone'} changed this design while you were editing it`, 'conflict');
+      err.extra = { current: occOut(current), changedBy: mine ? 'you' : current.design?.updatedByName || 'Someone' };
+      throw err;
+    }
+    Object.assign(design, await stampOf(user));
+    const item = { ...current, design }; // the occasion's own stamp is for its details
     await repo.put(item);
     return { occasion: occOut(item) };
   }, { write: true });
@@ -895,8 +929,8 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
 
     const { pendingUpdate, ...rest } = h;
     const item = unchanged
-      ? { ...rest, addressConfirmedAt: update.receivedAt, updatedAt: nowIso() }
-      : { ...rest, pendingUpdate: update, updatedAt: nowIso() };
+      ? { ...rest, addressConfirmedAt: update.receivedAt }
+      : { ...rest, pendingUpdate: update }; // not an edit: what they sent waits for review
     await repo.put(item);
     await repo.put({ ...t, submittedAt: update.receivedAt });
     try {

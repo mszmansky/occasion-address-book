@@ -129,7 +129,7 @@ async function switchBook(id) {
  * for Cancel, Escape or a click outside.
  *   askConfirm({ title, text, ok: 'Move to Trash', danger: true })
  */
-function askConfirm({ title, text = '', ok = 'OK', cancel = 'Cancel', danger = false }) {
+function askConfirm({ title, text = '', ok = 'OK', cancel = 'Cancel', danger = false, strict = false }) {
   return new Promise((resolve) => {
     confirmEl.innerHTML = `<form method="dialog" class="confirm-box">
       <h2 id="confirm-title">${esc(title)}</h2>
@@ -141,7 +141,8 @@ function askConfirm({ title, text = '', ok = 'OK', cancel = 'Cancel', danger = f
     </form>`;
     const done = (yes) => { confirmEl.onclose = null; if (confirmEl.open) confirmEl.close(); resolve(yes); };
     confirmEl.onclose = () => done(confirmEl.returnValue === 'yes');
-    confirmEl.onclick = (e) => { if (e.target === confirmEl) done(false); }; // the backdrop
+    confirmEl.onclick = (e) => { if (e.target === confirmEl && !strict) done(false); }; // the backdrop
+    confirmEl.oncancel = (e) => { if (strict) e.preventDefault(); }; // strict: only the buttons answer
     confirmEl.returnValue = '';
     confirmEl.showModal();
     confirmEl.querySelector('[data-confirm-ok]').focus();
@@ -304,6 +305,48 @@ async function loadAll() {
 
 async function refreshHouseholds() { state.households = (await api('/households')).households; }
 async function refreshOccasions() { state.occasions = (await api('/occasions')).occasions; }
+
+// ---------- keeping up with the other person ----------
+// With a shared book, the other person's changes show up without reloading: the lists are fetched
+// again when this window comes back into view and once a minute while it's open. The screen is
+// redrawn only if something changed, and never while you're typing in a box or using a menu or the
+// Filter panel (the change then shows on the next check). Open edit windows aren't touched; saving
+// one that someone else changed meanwhile asks which version to keep.
+let refreshing = false;
+let lastRefresh = 0;
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function safeToRedraw() {
+  const a = document.activeElement;
+  const typing = a && a !== document.body && root.contains(a) && a.matches('input, textarea, select');
+  const menuOpen = document.querySelector('.menu:not([hidden])');
+  return !typing && !menuOpen && !filterPanelScope;
+}
+async function refreshQuietly({ force = false } = {}) {
+  if (refreshing || !state.session || !state.me || document.hidden) return;
+  if (!force && Date.now() - lastRefresh < 15_000) return;
+  refreshing = true;
+  lastRefresh = Date.now();
+  try {
+    const openId = state.view === 'occasions' ? state.occasionId : null;
+    const [hh, occs, occ] = await Promise.all([
+      api('/households'), api('/occasions'), openId ? api(`/occasions/${openId}`).catch(() => null) : null,
+    ]);
+    if (!state.session || state.occasionId !== openId && openId) return; // moved on meanwhile
+    const changed = !sameJson(hh.households, state.households) || !sameJson(occs.occasions, state.occasions)
+      || (openId && occ && !sameJson(occ, state.occ));
+    if (!changed) return;
+    if (!safeToRedraw()) { lastRefresh = 0; return; } // try again on the next check
+    state.households = hh.households;
+    state.occasions = occs.occasions;
+    if (openId && occ) state.occ = occ;
+    render();
+  } catch { /* offline for a moment: the next check tries again */ } finally {
+    refreshing = false;
+  }
+}
+setInterval(() => refreshQuietly({ force: true }), 60_000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshQuietly(); });
+window.addEventListener('focus', () => refreshQuietly());
 
 function upsertHousehold(h) {
   const i = state.households.findIndex((x) => x.id === h.id);
@@ -664,9 +707,9 @@ window.addEventListener('scroll', hideNoteTip, true);
 window.addEventListener('resize', hideNoteTip);
 
 // ---------- modal ----------
-function openModal(title, body, { form, foot = '', wide = false, head = '' } = {}) {
+function openModal(title, body, { form, foot = '', wide = false, head = '', base = '' } = {}) {
   modal.style.width = wide === 'xl' ? 'min(980px, calc(100vw - 32px))' : wide ? 'min(760px, calc(100vw - 32px))' : '';
-  modal.innerHTML = `<form data-form="${form}" novalidate>
+  modal.innerHTML = `<form data-form="${form}" data-base="${esc(base)}" novalidate>
     <div class="modal-head"><h2>${title}</h2><div class="head-actions">${head}<button type="button" class="btn ghost sm" data-action="close" aria-label="Close">✕</button></div></div>
     <div class="modal-body stack">${body}<p class="error" data-error hidden></p></div>
     <div class="modal-foot">${foot}</div>
@@ -1011,6 +1054,7 @@ function householdModal(h) {
       <label>Notes<textarea name="notes" rows="4" maxlength="2000">${esc(h.notes ?? '')}</textarea></label>`)}
     </div>`, {
     form: isNew ? 'household-new' : `household-${h.id}`,
+    base: isNew ? '' : h.updatedAt ?? '',
     wide: true,
     head: isNew ? '' : shareMenu(),
     foot: `<div class="left-actions">${isNew ? '' : `<button type="button" class="btn danger" data-action="delete-household" data-id="${esc(h.id)}">Delete</button>
@@ -1056,16 +1100,36 @@ function readHousehold(form) {
   };
 }
 
+// Someone else (or this person in another window) saved the same thing first. The API refuses the
+// save and sends their version; this asks which to keep. Only the two buttons answer, so a stray
+// click can't throw away either version.
+async function resolveConflict(err, what, { loadTheirs, saveMine }) {
+  if (err.status !== 409 || err.data?.code !== 'conflict' || !err.data.current) throw err;
+  const who = err.data.changedBy === 'you' ? 'You' : err.data.changedBy;
+  const mine = await askConfirm({
+    title: err.data.changedBy === 'you' ? `You changed this ${what} in another window while editing it here` : `${who} changed this ${what} while you were editing it`,
+    text: 'Load their version to see the latest (what you typed here is dropped), or save yours over it.',
+    ok: 'Save mine anyway', cancel: 'Load their version', strict: true,
+  });
+  return mine ? saveMine(err.data.current) : loadTheirs(err.data.current);
+}
+
 async function saveHousehold(form) {
   const id = form.dataset.form.replace(/^household-/, '');
   const body = readHousehold(form);
   if (!body.labelName) { showHouseholdTab('greetings'); return modalError('Enter the Household Greeting.'); }
+  const done = (household, msg) => { upsertHousehold(household); closeModal(); toast(msg); render(); };
   await withBusy(form.querySelector('.btn.primary'), async () => {
-    const res = id === 'new' ? await api('/households', { method: 'POST', body }) : await api(`/households/${id}`, { method: 'PUT', body });
-    upsertHousehold(res.household);
-    closeModal();
-    toast(id === 'new' ? 'Household added' : 'Saved');
-    render();
+    if (id === 'new') return done((await api('/households', { method: 'POST', body })).household, 'Household added');
+    const put = (base) => api(`/households/${id}`, { method: 'PUT', body: { ...body, baseUpdatedAt: base } });
+    try {
+      return done((await put(form.dataset.base || null)).household, 'Saved');
+    } catch (err) {
+      return resolveConflict(err, 'household', {
+        saveMine: async (theirs) => done((await put(theirs.updatedAt ?? null)).household, 'Saved'),
+        loadTheirs: (theirs) => { upsertHousehold(theirs); render(); householdModal(theirs); toast('Showing their version'); },
+      });
+    }
   });
 }
 
@@ -1358,6 +1422,7 @@ function occasionModal(o) {
       ${copyable.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} (${x.counts.tagged})</option>`).join('')}</select></label>` : ''}
     <label>Notes<textarea name="notes" rows="2" maxlength="2000">${esc(o.notes ?? '')}</textarea></label>`, {
     form: isNew ? 'occasion-new' : 'occasion-edit',
+    base: isNew ? '' : o.updatedAt ?? '',
     wide: true,
     foot: `<div class="left-actions">${isNew ? '' : '<button type="button" class="btn danger" data-action="delete-occasion">Delete</button>'}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">${isNew ? 'Create' : 'Save'}</button></div>`,
@@ -1377,7 +1442,15 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
   if (!body.name) return modalError('Give the occasion a name.');
   const isNew = form.dataset.form === 'occasion-new';
   await withBusy(form.querySelector('.btn.primary'), async () => {
-    const res = isNew ? await api('/occasions', { method: 'POST', body }) : await api(`/occasions/${state.occasionId}`, { method: 'PUT', body });
+    let res;
+    try {
+      res = isNew ? await api('/occasions', { method: 'POST', body }) : await api(`/occasions/${state.occasionId}`, { method: 'PUT', body: { ...body, baseUpdatedAt: form.dataset.base || null } });
+    } catch (err) {
+      return resolveConflict(err, 'occasion', {
+        saveMine: async (theirs) => { form.dataset.base = theirs.updatedAt ?? ''; return saveOccasion(form, { thenDesign }); },
+        loadTheirs: async (theirs) => { await openOccasion(state.occasionId); await refreshOccasions(); render(); occasionModal(theirs); toast('Showing their version'); },
+      });
+    }
     await refreshOccasions();
     closeModal();
     state.view = 'occasions';
@@ -1613,7 +1686,7 @@ function designModal() {
   // One font picker and one text color: with words selected they change those words; with nothing
   // selected they change the whole design's font or text color.
   const colorInput = (name, value, label, title, extra = '') => `<span class="tb-swatch" ${extra}><span class="tb-label">${label}</span><button type="button" class="tb-color" data-color-for="${name}" title="${title}" aria-label="${title}" aria-haspopup="dialog" style="background:${esc(value)}"></button><input type="color" name="${name}" value="${esc(value)}" data-design="${name}" class="native-color" tabindex="-1" aria-hidden="true"></span>`;
-  openModal(kindOf(o) === 'email' ? 'Design email' : 'Design invitation', `
+  openModal(kindOf(o) === 'email' ? 'Email Designer' : 'Design invitation', `
     <div class="design-toolbar" role="toolbar" aria-label="Formatting">
       <span class="tb-group">
         <button type="button" class="tb" data-history="undo" title="Undo (⌘Z)" aria-label="Undo" disabled>${UNDO_ICON}</button>
@@ -1680,7 +1753,7 @@ function designModal() {
         <div data-preview-body></div>
       </div>
     </div>`, {
-    form: 'design', wide: 'xl',
+    form: 'design', wide: 'xl', base: o.design?.updatedAt ?? '',
     foot: `<div class="left-actions"><button type="button" class="btn btn-preview" data-design-preview aria-pressed="false" title="See it filled in for each household">${EYE_ICON} Preview</button></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save design</button></div>`,
   });
   try { document.execCommand('styleWithCSS', false, true); } catch { /* older browsers */ }
@@ -2237,12 +2310,17 @@ async function saveDesign(form) {
     border: form.querySelector('[data-design=border]').value,
     borderColor: form.querySelector('[name=borderColor]').value,
   };
+  const done = (occasion) => { state.occ.occasion = occasion; closeModal(); toast('Design saved'); render(); };
+  const put = (base) => api(`/occasions/${state.occasionId}/design`, { method: 'PUT', body: { ...body, baseUpdatedAt: base } });
   await withBusy(form.querySelector('.btn.primary'), async () => {
-    const res = await api(`/occasions/${state.occasionId}/design`, { method: 'PUT', body });
-    state.occ.occasion = res.occasion;
-    closeModal();
-    toast('Design saved');
-    render();
+    try {
+      return done((await put(form.dataset.base || null)).occasion);
+    } catch (err) {
+      return resolveConflict(err, 'design', {
+        saveMine: async (theirs) => done((await put(theirs.design?.updatedAt ?? null)).occasion),
+        loadTheirs: (theirs) => { state.occ.occasion = theirs; render(); designModal(); toast('Showing their version'); },
+      });
+    }
   });
 }
 

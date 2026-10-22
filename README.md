@@ -147,6 +147,8 @@ Everyone has their own private address book (with its own occasions). You can sh
 - Shares are tied to each person's account (their permanent Cognito id), not their email, so either person can change their sign-in email without re-sharing.
 - **Settings > Sharing** always manages *your own* book, and also lists the books shared with you.
 
+**Two people at once.** Each household, occasion and design carries the time it was last saved and who saved it. The app sends the version it started from; if the other person saved in between, the save is refused (409) and the app asks *"Teri changed this household while you were editing it"*: **Load their version** or **Save mine anyway**. Only those buttons answer, so a stray click can't lose either version. Lists also refresh by themselves when the window comes back into view and once a minute, redrawing only when something changed and never while you're typing in a box or have a menu or the Filter panel open.
+
 Stored as `USER#<owner> / SHARE#<member id>` (the owner's list) and `MEMBER#<member id> / BOOK#<owner id>` (the books shared with someone). The app names the open book in an `x-book` request header; the API checks it against these. Shares saved by earlier versions (`SHARED#<email>`, `MEMBER#<id> / BOOK`) move over automatically the next time that person signs in.
 
 ## Printing tips

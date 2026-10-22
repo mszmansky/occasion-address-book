@@ -11,6 +11,13 @@ export function createMemoryRepo() {
     rows,
     async get(pk, sk) { return clone(rows.get(key(pk, sk))); },
     async put(item) { rows.set(key(item.PK, item.SK), clone(item)); return item; },
+    async putIfUnchanged(item, updatedAt) {
+      const cur = rows.get(key(item.PK, item.SK));
+      if ((cur?.updatedAt ?? undefined) !== (updatedAt || undefined)) {
+        const e = new Error('The conditional request failed'); e.name = 'ConditionalCheckFailedException'; throw e;
+      }
+      rows.set(key(item.PK, item.SK), clone(item)); return item;
+    },
     async del(pk, sk) { rows.delete(key(pk, sk)); },
     async query(pk, prefix = '') {
       return sorted([...rows.values()].filter((r) => r.PK === pk && r.SK.startsWith(prefix)).map(clone));

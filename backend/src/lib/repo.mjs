@@ -57,6 +57,19 @@ export function createDynamoRepo({ tableName, client } = {}) {
       await doc.send(new PutCommand({ TableName: tableName, Item: item }));
       return item;
     },
+    /**
+     * Saves only if the stored item still has the given updatedAt (nobody saved in between);
+     * otherwise throws an error named ConditionalCheckFailedException.
+     */
+    async putIfUnchanged(item, updatedAt) {
+      await doc.send(new PutCommand({
+        TableName: tableName, Item: item,
+        ...(updatedAt
+          ? { ConditionExpression: 'updatedAt = :u', ExpressionAttributeValues: { ':u': updatedAt } }
+          : { ConditionExpression: 'attribute_not_exists(updatedAt)' }),
+      }));
+      return item;
+    },
     async del(pk, sk) {
       await doc.send(new DeleteCommand({ TableName: tableName, Key: { PK: pk, SK: sk } }));
     },
