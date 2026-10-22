@@ -795,7 +795,6 @@ label > span.hint { display: block; }
 @media (hover: none) { .btn kbd { display: none; } }
 
 /* sharing */
-.shared-note { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-size: 14px; color: var(--ink-2); }
 .share-list { display: grid; gap: 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 12px; }
 .share-list > p { padding: 10px 0; }
 .share-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }

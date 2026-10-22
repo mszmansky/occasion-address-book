@@ -79,13 +79,6 @@ const canEdit = () => state.me?.book?.canEdit !== false;
 const isOwner = () => !state.me?.book || state.me.book.role === 'owner';
 const ROLE_LABEL = { edit: 'Can edit', view: 'View only' };
 
-function sharedNote() {
-  const b = state.me?.book;
-  if (!b || b.role === 'owner') return '';
-  return `<div class="shared-note">You're in <b>${esc(b.ownerName || b.ownerEmail)}</b>'s shared address book · ${ROLE_LABEL[b.role]}.
-    ${state.books.length > 1 ? '<button class="link" data-action="switch-book" data-id="">Go to my address book</button>' : ''}</div>`;
-}
-
 // ----- address books: your own, plus any shared with you; the open one is remembered on this device -----
 const BOOK_KEY = 'oab.book';
 const storedBook = () => { try { return localStorage.getItem(BOOK_KEY) || ''; } catch { return ''; } };
@@ -333,7 +326,7 @@ function render() {
     </nav>
     <div class="actions">${userChip(email)}</div>
   </header>
-  <main class="page">${sharedNote()}${state.loading && !state.me ? '<p class="boot">Loading your address book…</p>'
+  <main class="page">${state.loading && !state.me ? '<p class="boot">Loading your address book…</p>'
     : state.view === 'people' ? renderPeople() : state.occasionId && state.occ ? renderOccasion() : renderOccasions()}</main>`;
   document.title = currentBook() && !currentBook().own ? `${bookLabel(currentBook())} · ${APP_NAME}` : APP_NAME;
   if (state.view === 'people') renderHouseholdList();
