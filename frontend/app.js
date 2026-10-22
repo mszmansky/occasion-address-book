@@ -406,7 +406,7 @@ function renderPeople() {
   ${pending ? `<div class="notice"><span><b>${plural(pending, 'household')}</b> sent back ${pending === 1 ? 'an address' : 'addresses'} to review.</span>
     <button class="btn sm" data-action="pending-only">${state.filters.people.review ? 'Show everyone' : (pending === 1 ? 'Show it' : 'Show them')}</button></div>` : ''}
   <div class="filters">
-    <input type="search" data-input="search" placeholder="Search names, streets, cities, emails…" value="${val(state.search)}" aria-label="Search">
+    <input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-input="search" placeholder="Search names, streets, cities, emails…" value="${val(state.search)}" aria-label="Search">
     ${filterButton('people')}
   </div>
   <div class="filter-chips" id="fchips-people">${filterChipsHtml('people')}</div>
@@ -478,7 +478,7 @@ function matchSummary(scope) {
 function checklist(name, options, chosen, { search = false } = {}) {
   if (!options.length) return '<p class="muted small" style="margin:0">None yet</p>';
   const picked = new Set(chosen.map((v) => v.toLowerCase()));
-  return `${search && options.length > 8 ? `<input type="search" class="fp-search" data-fp-search="${name}" placeholder="Find…" aria-label="Find">` : ''}
+  return `${search && options.length > 8 ? `<input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="fp-search" data-fp-search="${name}" placeholder="Find…" aria-label="Find">` : ''}
     <div class="fp-list" data-fp-list="${name}">${options.map((o) => `<label class="check fp-opt" data-label="${esc(o.value.toLowerCase())}">
       <input type="checkbox" data-f="${name}" value="${esc(o.value)}" ${picked.has(o.value.toLowerCase()) ? 'checked' : ''}>
       <span>${esc(o.value)}</span><span class="fp-n">${o.count}</span></label>`).join('')}</div>`;
@@ -1243,7 +1243,7 @@ function renderOccasion() {
     <div class="seg" role="group" aria-label="Show">
       ${[['all', 'Everyone'], ['on', 'On the list'], ['off', 'Not on the list'], ['unmailed', kind === 'email' ? 'Not emailed yet' : 'Not mailed yet']].map(([k, l]) => `<button type="button" data-action="occ-filter" data-filter="${k}" aria-pressed="${state.occFilter === k}">${l}</button>`).join('')}
     </div>
-    <input type="search" data-input="occ-search" placeholder="Search…" value="${val(state.occSearch)}" aria-label="Search">
+    <input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-input="occ-search" placeholder="Search…" value="${val(state.occSearch)}" aria-label="Search">
     ${filterButton('occ')}
   </div>
   <div class="filter-chips" id="fchips-occ">${filterChipsHtml('occ')}</div>
