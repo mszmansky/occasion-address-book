@@ -608,3 +608,24 @@ test('emails: a designed email to one chosen person with the chosen greeting', a
   assert.equal(sent.subject, 'Beer and wings');
   assert.match(sent.html, /Hey John, game at/);
 });
+
+test('emails: people ticked on the list get it; the greeting can still name the whole household', async () => {
+  const { call, mailer } = await setup();
+  const h = (await call('POST', '/households', { labelName: 'The Smith Family', greeting: 'Kim and Jim', members: [
+    { firstName: 'Jim', lastName: 'Smith', email: 'jim@example.com', primary: true }, { firstName: 'Kim', lastName: 'Smith', email: 'kim@example.com' }, { firstName: 'Baby', lastName: 'Smith' }] })).body.household;
+  const [jim, kim, baby] = h.members;
+  const o = (await call('POST', '/occasions', { name: 'Party', kind: 'email' })).body.occasion;
+  await call('PUT', `/occasions/${o.id}/design`, { html: '<p>Dear {{greeting}},</p>' });
+  let r = await call('PUT', `/occasions/${o.id}/tags`, { people: { [h.id]: [kim.id] } });
+  assert.deepEqual(r.body.tags.map((t) => t.to), [[kim.id]]);
+  assert.equal((await call('PUT', `/occasions/${o.id}/tags`, { people: { [h.id]: [baby.id] } })).status, 400); // no email
+  r = await call('POST', `/occasions/${o.id}/invites`, { householdIds: [h.id], greetings: { [h.id]: 'Kim and Jim' } });
+  assert.deepEqual(r.body.results[0].to, ['kim@example.com']);
+  assert.match(mailer.sent.at(-1).html, /Dear Kim and Jim,/);
+  r = await call('PUT', `/occasions/${o.id}/tags`, { people: { [h.id]: [jim.id, kim.id] } });
+  assert.deepEqual(r.body.tags[0].to, [jim.id, kim.id]);
+  r = await call('POST', `/occasions/${o.id}/invites`, { householdIds: [h.id] });
+  assert.deepEqual(r.body.results[0].to, ['jim@example.com', 'kim@example.com']);
+  r = await call('PUT', `/occasions/${o.id}/tags`, { people: { [h.id]: [] } });
+  assert.deepEqual(r.body.tags, []); // nobody ticked: off the list
+});

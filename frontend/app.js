@@ -1252,7 +1252,7 @@ function renderOccasion() {
     <button class="link" data-action="bulk-tag" data-add="">Remove all shown</button>` : ''}
   </div>
   <div class="panel tight"><table class="items rcpt kind-${kind}">
-    <thead><tr><th style="width:44px"><span class="sr">On the list</span></th><th>Household</th><th>Greeting</th><th>Address</th><th class="col-mailed">Mailed</th><th class="col-email">Email</th></tr></thead>
+    <thead><tr><th style="width:44px"><span class="sr">On the list</span></th><th>Household</th><th>Greeting</th><th>${kind === 'email' ? 'People' : 'Address'}</th><th class="col-mailed">Mailed</th><th class="col-email">Email</th></tr></thead>
     <tbody id="rcpt-rows"></tbody></table></div>`;
 }
 
@@ -1274,6 +1274,29 @@ function whoText(h) {
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0] ?? '';
 }
 
+// Emails: who in a household it goes to. The people ticked on the list, else the default contact.
+function tagPeople(h, t) {
+  if (!t) return [];
+  const withEmail = (h.members ?? []).filter((m) => m.email);
+  const ids = Array.isArray(t.to) ? t.to : [defaultPerson(h.members)?.id];
+  return withEmail.filter((m) => ids.includes(m.id));
+}
+// The greeting the occasion's Greeting setting gives a household on the list. "The person's first
+// name" uses the people it goes to; the others name the household however many people get it
+// (send to Kim alone, greet "Kim and Jim").
+function listGreeting(h, t) {
+  const style = state.occ?.occasion?.greetStyle ?? 'informal';
+  if (style !== 'person') return greetingFor(h, style);
+  return joinNames(tagPeople(h, t).map((m) => m.firstName || personName(m))) || greetingFor(h, 'informal');
+}
+// One checkbox per person with an email address.
+function peopleCell(h, t) {
+  const people = (h.members ?? []).filter((m) => m.email);
+  if (!people.length) return '<span class="muted">No email</span>';
+  const on = new Set(tagPeople(h, t).map((m) => m.id));
+  return `<div class="people-checks">${people.map((m) => `<label class="check" title="${esc(m.email)}"><input type="checkbox" data-action="tag-person" data-id="${esc(h.id)}" data-person="${esc(m.id)}" ${on.has(m.id) ? 'checked' : ''} ${canEdit() ? '' : 'disabled'}> ${esc(personName(m))}</label>`).join('')}</div>`;
+}
+
 function renderRecipientRows() {
   const el = document.getElementById('rcpt-rows');
   if (!el) return;
@@ -1283,14 +1306,16 @@ function renderRecipientRows() {
   el.innerHTML = list.map((h) => {
     const t = tags.get(h.id);
     const email = allEmails(h).length;
+    const emailKind = isEmailKind(state.occ?.occasion);
     const emailCell = !t ? '' : t.invitedAt ? `<span class="pill ok" title="${esc((t.invitedTo ?? []).join(', '))}">Sent ${fmtDate(t.invitedAt, { month: 'short', day: 'numeric' })}</span>`
       : t.inviteError ? `<span class="pill overdue" title="${esc(t.inviteError)}">Failed</span>`
         : email ? '<span class="muted small">Not sent</span>' : '<span class="muted small">No email</span>';
     return `<tr class="${t ? 'on' : ''}">
-      <td><input type="checkbox" data-action="tag" data-id="${esc(h.id)}" ${t ? 'checked' : ''} ${canEdit() ? '' : 'disabled'} aria-label="${esc(h.labelName)} on the list"></td>
+      <td><input type="checkbox" data-action="tag" data-id="${esc(h.id)}" ${t ? 'checked' : ''} ${canEdit() && (!emailKind || email) ? '' : 'disabled'} aria-label="${esc(h.labelName)} on the list"></td>
       <td><button class="link-btn" data-action="edit-household" data-id="${esc(h.id)}">${esc(h.labelName)}</button>${h.pendingUpdate ? ' <span class="pill due-soon">New address</span>' : ''}</td>
-      <td class="col-greeting small">${esc(whoText(h))}</td>
-      <td class="small">${isMailable(h.address) ? esc(addressLines('', h.address).join(', ')) : '<span class="pill unknown">No address</span>'}</td>
+      <td class="col-greeting small">${esc(emailKind && t ? listGreeting(h, t) : whoText(h))}</td>
+      <td class="small">${emailKind ? peopleCell(h, t)
+    : isMailable(h.address) ? esc(addressLines('', h.address).join(', ')) : '<span class="pill unknown">No address</span>'}</td>
       <td class="col-mailed">${t ? `<input type="checkbox" data-action="mailed" data-id="${esc(h.id)}" ${t.mailedAt ? 'checked' : ''} ${canEdit() ? '' : 'disabled'} aria-label="Mailed">` : ''}</td>
       <td class="col-email">${emailCell}</td>
     </tr>`;
@@ -2103,7 +2128,7 @@ function wireDesign(editor) {
     const o = state.occ.occasion;
     previewAt = Math.min(Math.max(0, previewAt), Math.max(0, list.length - 1));
     const h = list[previewAt];
-    const greeting = !h ? 'Friend' : kindOf(o) === 'email' ? greetingFor(h, defaultGreeting(h, 'default')) : greetingFor(h, 'informal');
+    const greeting = !h ? 'Friend' : kindOf(o) === 'email' ? listGreeting(h, tagMap().get(h.id) ?? {}) : greetingFor(h, 'informal');
     const design = currentDesign();
     loadFont(design);
     pane.querySelector('[data-preview-pos]').innerHTML = h
@@ -2223,12 +2248,12 @@ function invitesModal() {
   loadFont(design);
   openModal('Send emails', `
     <div class="invite-preview"><div class="small muted">Subject</div><div><b>${esc(o.invite?.subject || `You're invited: ${o.name}`)}</b></div></div>
-    <div class="email-preview">${renderDesign(design, fieldValues({ occasion: o, greeting: sample ? greetingFor(sample, defaultGreeting(sample, 'default')) : 'Friend', fromName: fromName() }), { padding: '20px' })}</div>
+    <div class="email-preview">${renderDesign(design, fieldValues({ occasion: o, greeting: sample ? listGreeting(sample, tags.get(sample.id)) : 'Friend', fromName: fromName() }), { padding: '20px' })}</div>
     <div class="row-gap">
       <label class="check"><input type="radio" name="who" value="new" checked data-who> Not sent yet (${notSent.length})</label>
       <label class="check"><input type="radio" name="who" value="all" data-who> Everyone with email (${withEmail.length})</label>
     </div>
-    ${withEmail.length ? `<div class="send-table-wrap"><table class="items send-table"><thead><tr><th>Household</th><th>Send to</th><th>Greeting</th></tr></thead><tbody>
+    ${withEmail.length ? `<div class="send-table-wrap"><table class="items send-table"><thead><tr><th>Household</th><th>To</th><th>Greeting</th></tr></thead><tbody>
       ${withEmail.map(({ h, t }) => sendRow(h, t)).join('')}</tbody></table></div>` : ''}
     <div data-progress hidden class="notice"></div>`, {
     form: 'invites', wide: true,
@@ -2240,12 +2265,6 @@ function invitesModal() {
 
 const personName = (m) => [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
 
-// Who an email goes to: 'default' (the default contact), a person's id, or 'all'.
-function recipientsFor(h, to) {
-  const people = (h.members ?? []).filter((m) => m.email);
-  if (to === 'all') return people;
-  return [people.find((m) => m.id === to) ?? defaultPerson(h.members)].filter(Boolean);
-}
 const joinNames = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0] ?? '');
 /**
  * The greeting text for a style: 'informal' (default), 'formal', 'household', or 'p:<person id>' for one
@@ -2261,23 +2280,12 @@ function greetingFor(h, style) {
   return h.greeting || h.labelName;
 }
 
-// The occasion's Greeting setting for a row: 'person' greets whoever it's sent to by first name.
-function defaultGreeting(h, to) {
-  const style = state.occ?.occasion?.greetStyle ?? 'informal';
-  if (style !== 'person') return style;
-  const who = recipientsFor(h, to);
-  return who.length === 1 ? `p:${who[0].id}` : 'informal';
-}
-
+// The people it goes to are the ones ticked on the occasion's list; the greeting can still be changed here.
 function sendRow(h, t) {
-  const people = (h.members ?? []).filter((m) => m.email);
-  const d = defaultPerson(h.members);
   const id = esc(h.id);
   return `<tr data-send-row="${id}" data-sent="${t.invitedAt ? '1' : ''}">
     <td>${esc(h.labelName)}${t.invitedAt ? ` <span class="pill ok">Sent ${fmtDate(t.invitedAt, { month: 'short', day: 'numeric' })}</span>` : ''}</td>
-    <td><select data-sendto="${id}" aria-label="Send ${esc(h.labelName)}'s email to">
-      ${people.map((m) => `<option value="${m === d ? 'default' : esc(m.id)}" ${m === d ? 'selected' : ''}>${esc(personName(m))}</option>`).join('')}
-      ${people.length > 1 ? `<option value="all">${people.length === 2 ? 'Both' : 'Everyone'}</option>` : ''}</select></td>
+    <td class="small">${esc(tagPeople(h, t).map(personName).join(', '))}</td>
     <td><select data-greeting="${id}" aria-label="Greeting for ${esc(h.labelName)}"></select></td>
   </tr>`;
 }
@@ -2285,25 +2293,25 @@ function sendRow(h, t) {
 // Fills each row's Greeting choices with the actual words: Informal, Formal, Household, or any one
 // person in the household by first name. It starts on the occasion's Greeting setting and follows
 // Send to when a person's name is chosen (send to Mary, greet Mary).
-function syncSendRows(changed) {
+function syncSendRows() {
   const byId = hhById();
+  const tags = tagMap();
   const showAll = modal.querySelector('[data-who][value=all]')?.checked;
   modal.querySelectorAll('[data-send-row]').forEach((row) => {
     row.hidden = !showAll && row.dataset.sent === '1';
+    if (row.dataset.filled) return;
+    row.dataset.filled = '1';
     const h = byId.get(row.dataset.sendRow);
-    const to = row.querySelector('[data-sendto]').value;
+    const to = tagPeople(h, tags.get(h.id));
     const sel = row.querySelector('[data-greeting]');
-    let style = sel.value || defaultGreeting(h, to);
-    // Until a greeting is picked by hand, a greeting by name follows Send to.
-    if (changed === row && !row.dataset.greetPicked && (style.startsWith('p:') || state.occ?.occasion?.greetStyle === 'person')) {
-      const who = recipientsFor(h, to);
-      style = who.length === 1 ? `p:${who[0].id}` : 'informal';
-    }
     const people = (h.members ?? []).filter((m) => m.firstName || m.lastName);
     const opts = [['informal', 'Informal'], ['formal', 'Formal'], ['household', 'Household']]
       .map(([k, l]) => [k, `${greetingFor(h, k)} (${l})`])
+      .concat(to.length > 1 ? [['to', joinNames(to.map((m) => m.firstName || personName(m)))]] : [])
       .concat(people.map((m) => [`p:${m.id}`, greetingFor(h, `p:${m.id}`)]));
-    sel.innerHTML = opts.map(([k, text]) => `<option value="${esc(k)}" ${k === style ? 'selected' : ''}>${esc(text)}</option>`).join('');
+    const style = state.occ?.occasion?.greetStyle ?? 'informal';
+    const chosen = style !== 'person' ? style : to.length === 1 ? `p:${to[0].id}` : to.length > 1 ? 'to' : 'informal';
+    sel.innerHTML = opts.map(([k, text]) => `<option value="${esc(k)}" data-text="${esc(k === 'to' ? text : '')}" ${k === chosen ? 'selected' : ''}>${esc(text)}</option>`).join('');
   });
 }
 
@@ -2314,8 +2322,8 @@ async function sendInvites(form) {
   if (!await askConfirm({ title: 'Send emails?', text: `Email ${plural(rows.length, 'household')} now.`, ok: 'Send' })) return undefined;
   const pick = (row) => {
     const h = byId.get(row.dataset.sendRow);
-    const to = row.querySelector('[data-sendto]').value;
-    return [h.id, to, greetingFor(h, row.querySelector('[data-greeting]').value)];
+    const sel = row.querySelector('[data-greeting]');
+    return [h.id, sel.value === 'to' ? sel.selectedOptions[0].dataset.text : greetingFor(h, sel.value)];
   };
   const chosen = rows.map(pick);
   const prog = modal.querySelector('[data-progress]');
@@ -2329,8 +2337,7 @@ async function sendInvites(form) {
         method: 'POST',
         body: {
           householdIds: batch.map(([id]) => id),
-          recipients: Object.fromEntries(batch.map(([id, to]) => [id, to])),
-          greetings: Object.fromEntries(batch.map(([id, , g]) => [id, g])),
+          greetings: Object.fromEntries(batch.map(([id, g]) => [id, g])),
         },
       });
       results.push(...res.results);
@@ -2864,6 +2871,19 @@ document.addEventListener('click', async (e) => {
       render();
       break;
     }
+    case 'tag-person': {
+      const h = hhById().get(id);
+      const t = tagMap().get(id);
+      const now = new Set(tagPeople(h, t).map((m) => m.id));
+      if (el.checked) now.add(el.dataset.person); else now.delete(el.dataset.person);
+      el.disabled = true;
+      try {
+        const res = await api(`/occasions/${state.occasionId}/tags`, { method: 'PUT', body: { people: { [id]: [...now] } } });
+        state.occ.tags = res.tags;
+      } catch (err) { el.checked = !el.checked; toast(err.message, true); }
+      render();
+      break;
+    }
     case 'mailed': {
       const on = el.checked;
       el.disabled = true;
@@ -2875,7 +2895,9 @@ document.addEventListener('click', async (e) => {
     case 'bulk-tag': {
       const tags = tagMap();
       const add = Boolean(el.dataset.add);
-      const ids = shownRecipients().map((h) => h.id).filter((x) => (add ? !tags.has(x) : tags.has(x)));
+      // Emails: only households someone can be emailed at.
+      const shown = shownRecipients().filter((h) => !add || !isEmailKind(state.occ?.occasion) || allEmails(h).length);
+      const ids = shown.map((h) => h.id).filter((x) => (add ? !tags.has(x) : tags.has(x)));
       if (!ids.length) return toast(add ? 'Everyone shown is already on the list' : 'Nobody shown is on the list');
       if (!add && !await askConfirm({ title: `Remove ${plural(ids.length, 'household')} from this occasion?`, text: 'They stay in your address book.', ok: 'Remove', danger: true })) return;
       await withBusy(el, async () => {
@@ -2947,8 +2969,6 @@ document.addEventListener('input', (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
-  if (t.matches?.('[data-sendto]')) syncSendRows(t.closest('[data-send-row]'));
-  if (t.matches?.('[data-greeting]')) t.closest('[data-send-row]').dataset.greetPicked = '1';
   if (t.matches?.('[data-who]')) syncSendRows();
   if (t.matches?.('[data-occ-kind]')) {
     modal.querySelectorAll('[data-kinds]').forEach((el) => { el.hidden = !el.dataset.kinds.split(' ').includes(t.value); });

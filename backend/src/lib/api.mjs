@@ -754,6 +754,27 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     }
     const del = remove.filter((h) => have.has(h)).map((h) => ({ PK: bk(user), SK: `TAG#${params.id}#${h}` }));
     if (del.length) await repo.batchDel(del);
+    // Emails: who in each household it goes to, e.g. { <household id>: [<person id>, …] }. Choosing
+    // nobody takes the household off the list.
+    if (body.people && typeof body.people === 'object') {
+      const entries = Object.entries(body.people).slice(0, 1000);
+      const now = await repo.query(bk(user), `TAG#${params.id}#`);
+      const tags = new Map(now.map((t) => [t.householdId, t]));
+      const puts = [];
+      const dels = [];
+      for (const [hid, list] of entries) {
+        const [checked] = ids([hid], 'Household');
+        const h = await repo.get(bk(user), `HH#${checked}`);
+        if (!h) throw new HttpError(404, 'Household not found');
+        const people = Array.isArray(list) ? [...new Set(list.map(String))].slice(0, 20) : [];
+        const withEmail = new Set((h.members ?? []).filter((m) => m.email).map((m) => m.id));
+        if (people.some((pid) => !withEmail.has(pid))) throw new HttpError(400, 'That person has no email address in this household');
+        if (!people.length) { if (tags.has(checked)) dels.push({ PK: bk(user), SK: `TAG#${params.id}#${checked}` }); continue; }
+        puts.push({ ...(tags.get(checked) ?? tagItem(user, params.id, checked)), to: people });
+      }
+      if (puts.length) await repo.batchPut(puts);
+      if (dels.length) await repo.batchDel(dels);
+    }
     return { tags: (await repo.query(bk(user), `TAG#${params.id}#`)).map(strip) };
   }, { write: true });
 
@@ -819,8 +840,13 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
       const tag = await repo.get(bk(user), `TAG#${params.id}#${hid}`);
       const h = await repo.get(bk(user), `HH#${hid}`);
       if (!tag || !h) { results.push({ householdId: hid, status: 'skipped', reason: 'Not on this occasion\'s list' }); continue; }
+      // Who it goes to: chosen in the send window, else the people ticked on the occasion's list,
+      // else the default contact.
       const choice = typeof choices[hid] === 'string' ? choices[hid].slice(0, 40) : 'default';
-      const to = inviteRecipients(h, choice);
+      const ticked = !choices[hid] && Array.isArray(tag.to)
+        ? (h.members ?? []).filter((m) => m.email && tag.to.includes(m.id)).map((m) => m.email.toLowerCase())
+        : [];
+      const to = ticked.length ? [...new Set(ticked)] : inviteRecipients(h, choice);
       if (!to.length) { results.push({ householdId: hid, status: 'skipped', reason: 'No email address' }); continue; }
       try {
         if (i) await pause(120); // stay under SES's per-second send rate
