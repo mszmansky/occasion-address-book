@@ -1309,13 +1309,9 @@ async function setMailed(ids, mailed) {
 }
 
 // The two name choices, with an example from the list (a household that has a formal name) when there is one.
-function nameStyleOptions(current, householdIds = []) {
-  const byId = hhById();
-  const pool = [...householdIds.map((id) => byId.get(id)).filter(Boolean), ...state.households];
-  const ex = pool.find((h) => effectiveFormalName(h) && effectiveFormalName(h) !== h.labelName);
-  const [everyday, formal] = ex ? [ex.labelName, effectiveFormalName(ex)] : ['The Smith Family', 'Mr. and Mrs. John Smith'];
-  return `<option value="label" ${current !== 'formal' ? 'selected' : ''}>Household Greeting, e.g. "${esc(everyday)}"</option>
-      <option value="formal" ${current === 'formal' ? 'selected' : ''}>Formal Greeting, e.g. "${esc(formal)}"</option>`;
+function nameStyleOptions(current) {
+  return `<option value="label" ${current !== 'formal' ? 'selected' : ''}>Household Greeting</option>
+      <option value="formal" ${current === 'formal' ? 'selected' : ''}>Formal Greeting</option>`;
 }
 
 function occasionModal(o) {
@@ -1332,7 +1328,7 @@ function occasionModal(o) {
     </div>
     <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
     <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Name printed on labels and envelopes<select name="nameStyle">
-      ${nameStyleOptions(o.nameStyle, isNew ? [] : (state.occ?.tags ?? []).map((t) => t.householdId))}</select></label>
+      ${nameStyleOptions(o.nameStyle)}</select></label>
     <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design invitation…</button></div>
     <div data-kinds="email" ${kind === 'email' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design email…</button></div>
     <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Greeting<select name="greetStyle">
@@ -1418,7 +1414,7 @@ function printModal() {
       <label>Order<select name="order"><option value="name">By last name</option><option value="zip">By ZIP code</option></select></label>
     </div>
     <label data-for="name">Name printed on the first line<select name="nameStyle">
-      ${nameStyleOptions(o.nameStyle, [...tags.keys()])}</select></label>
+      ${nameStyleOptions(o.nameStyle)}</select></label>
     <div class="grid-2" data-for="inv">
       <label>Paper size<select name="paper">${Object.entries(INVITE_PAPER).map(([k, p]) => `<option value="${k}" ${k === '5x7' ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></label>
       <label>Greeting<select name="greetStyle"><option value="informal">Informal</option><option value="formal">Formal</option><option value="household">Household</option></select></label>
