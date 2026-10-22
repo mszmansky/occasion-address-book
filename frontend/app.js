@@ -220,10 +220,10 @@ function renderLanding() {
       </div>
       <div class="ld-envelope" aria-hidden="true">
         <div class="env">
-          <div class="env-return">The Bennett Family<br>14 Cherry Lane<br>Troy, MI 48083</div>
+          <div class="env-return">The Bennett Family<br>14 Cherry Lane<br>Evergreen Falls, MI 49001</div>
           <div class="env-stamp"><span>★</span></div>
-          <svg class="env-postmark" viewBox="0 0 160 70"><circle cx="35" cy="35" r="27" fill="none" stroke="currentColor" stroke-width="2"/><text x="35" y="31" text-anchor="middle" font-size="9" fill="currentColor" font-family="IBM Plex Sans, sans-serif" font-weight="600">TROY MI</text><text x="35" y="44" text-anchor="middle" font-size="8" fill="currentColor" font-family="IBM Plex Sans, sans-serif">DEC 12</text><path d="M70 22c10-6 20 6 30 0s20 6 30 0 20 6 28 0M70 35c10-6 20 6 30 0s20 6 30 0 20 6 28 0M70 48c10-6 20 6 30 0s20 6 30 0 20 6 28 0" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-          <div class="env-to">Mr. and Mrs. John Smith<br>123 Maple Street<br>Royal Oak, MI 48067-1234</div>
+          <svg class="env-postmark" viewBox="0 0 160 70"><circle cx="35" cy="35" r="27" fill="none" stroke="currentColor" stroke-width="2"/><text x="35" y="27" text-anchor="middle" font-size="6.4" fill="currentColor" font-family="IBM Plex Sans, sans-serif" font-weight="600">EVERGREEN</text><text x="35" y="36" text-anchor="middle" font-size="6.4" fill="currentColor" font-family="IBM Plex Sans, sans-serif" font-weight="600">FALLS MI</text><text x="35" y="47" text-anchor="middle" font-size="7" fill="currentColor" font-family="IBM Plex Sans, sans-serif">DEC 12</text><path d="M70 22c10-6 20 6 30 0s20 6 30 0 20 6 28 0M70 35c10-6 20 6 30 0s20 6 30 0 20 6 28 0M70 48c10-6 20 6 30 0s20 6 30 0 20 6 28 0" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          <div class="env-to">Mr. and Mrs. John Smith<br>123 Maple Street<br>Willow Bend, MI 49002-1234</div>
         </div>
       </div>
     </section>
@@ -233,14 +233,22 @@ function renderLanding() {
         <div class="ld-text"><h2>One address book for the whole family</h2>
           <p>Each household is one envelope: its greetings, mailing address, the people in it with their email and phone, groups like Family or Neighbors, and notes. Bring in your old list from a spreadsheet, and search or filter it by group, city, state or ZIP.</p></div>
         <div class="ld-visual ld-hh">
-          <div class="mini-card"><b>The Smith Family</b><span>Mr. and Mrs. John Smith</span><span>123 Maple Street<br>Royal Oak, MI 48067</span><span class="mini-chips"><i>Family</i><i>Christmas</i></span></div>
-          <div class="mini-card faded"><b>The Jones Family</b><span>Bob and Carol</span><span>9 Elm Court<br>Troy, MI 48084</span><span class="mini-chips"><i>Neighbors</i></span></div>
+          <div class="mini-card"><b>The Smith Family</b><span>Mr. and Mrs. John Smith</span><span>123 Maple Street<br>Willow Bend, MI 49002</span><span class="mini-chips"><i>Family</i><i>Christmas</i></span></div>
+          <div class="mini-card"><b>The Jones Family</b><span>Bob and Carol</span><span>9 Elm Court<br>Cedar Hollow, MI 49003</span><span class="mini-chips"><i>Neighbors</i></span></div>
         </div>
+      </article>
+      <article class="ld-feature">
+        <div class="ld-text"><h2>Pick who each occasion is for</h2>
+          <p>Create an occasion, like Christmas cards 2026 or a graduation party, and tick the households it's for: one at a time, or everyone in a group or a town at once. Start next year's list from this year's, and see at a glance who has been mailed or emailed.</p></div>
+        <div class="ld-visual"><div class="mini-occ">
+          <div class="mo-head"><b>Christmas cards 2026</b><span>3 on the list · 1 mailed</span></div>
+          ${[['The Smith Family', true, 'Mailed'], ['The Jones Family', true, ''], ['Grandma Rose', true, ''], ['The Lee Family', false, '']].map(([n, on, st]) => `<div class="mo-row${on ? ' on' : ''}"><span class="mo-box">${on ? '✓' : ''}</span><span>${n}</span>${st ? `<span class="mo-pill">${st}</span>` : ''}</div>`).join('')}
+        </div></div>
       </article>
       <article class="ld-feature">
         <div class="ld-text"><h2>Labels and envelopes, ready to print</h2>
           <p>Tick who an occasion is for and print Avery 5160 / 8160 address labels or A7 envelopes with your return address, with each household's greeting on the first line. Start partway through a used label sheet, then mark everyone as mailed.</p></div>
-        <div class="ld-visual"><div class="label-sheet">${Array.from({ length: 15 }, (_, i) => `<span class="lbl${i < 5 ? ' used' : ''}">${i < 5 ? '' : ['The Smith Family<br>123 Maple Street<br>Royal Oak, MI 48067', 'The Jones Family<br>9 Elm Court<br>Troy, MI 48084', 'Grandma Rose<br>40 Lake Drive<br>Novi, MI 48375'][i % 3]}</span>`).join('')}</div></div>
+        <div class="ld-visual"><div class="label-sheet">${Array.from({ length: 15 }, (_, i) => `<span class="lbl${i < 5 ? ' used' : ''}">${i < 5 ? '' : ['The Smith Family<br>123 Maple Street<br>Willow Bend, MI 49002', 'The Jones Family<br>9 Elm Court<br>Cedar Hollow, MI 49003', 'Grandma Rose<br>40 Lake Drive<br>Juniper Ridge, MI 49004'][i % 3]}</span>`).join('')}</div></div>
       </article>
       <article class="ld-feature">
         <div class="ld-text"><h2>Invitations and emails you design yourself</h2>
@@ -250,7 +258,7 @@ function renderLanding() {
       <article class="ld-feature">
         <div class="ld-text"><h2>Addresses that stay up to date</h2>
           <p>Send a household a private link to confirm or correct their address. What they send back waits for you to accept, so nothing changes without you seeing it first.</p></div>
-        <div class="ld-visual"><div class="mini-check"><b>Is this the right address for the Smith Family?</b><span>123 Maple Street<br>Royal Oak, MI 48067</span><span class="mini-btns"><i class="yes">Yes, that's right</i><i>No, update it</i></span></div></div>
+        <div class="ld-visual"><div class="mini-check"><b>Is this the right address for the Smith Family?</b><span>123 Maple Street<br>Willow Bend, MI 49002</span><span class="mini-btns"><i class="yes">Yes, that's right</i><i>No, update it</i></span></div></div>
       </article>
     </section>
 
@@ -2870,12 +2878,12 @@ async function disableMfa(btn) {
 async function alignTest(what) {
   const s = readSettings(modal.querySelector('form'), 'printer');
   const JsPDF = await getJsPDF();
-  const sample = ['The Sample Family', '1234 Example Street', 'Apt 5', 'Troy, MI  48083'];
+  const sample = ['The Sample Family', '1234 Example Street', 'Apt 5', 'Evergreen Falls, MI  49001'];
   const ret = returnLines();
   const doc = what === 'labels'
     ? buildLabels(JsPDF, Array(30).fill(sample), { offsetX: s.print.labelOffsetX, offsetY: s.print.labelOffsetY, outline: true })
     : buildEnvelopes(JsPDF, [sample], {
-      returnLines: ret.length ? ret : ['Your Name', '1 Return Street', 'Troy, MI  48083'],
+      returnLines: ret.length ? ret : ['Your Name', '1 Return Street', 'Evergreen Falls, MI  49001'],
       offsetX: s.print.envelopeOffsetX, offsetY: s.print.envelopeOffsetY, outline: true,
     });
   window.open(doc.output('bloburl'), '_blank');
