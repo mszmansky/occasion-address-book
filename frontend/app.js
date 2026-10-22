@@ -1622,6 +1622,7 @@ function designModal() {
       <label class="tb-swatch"><span class="tb-label">Border</span><select data-design="border" aria-label="Border">${BORDERS.map((x) => `<option value="${x.key}" ${x.key === d.border ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select></label>
       ${colorInput('borderColor', d.borderColor, 'Border color', 'Border color', `data-border-color ${d.border === 'none' ? 'hidden' : ''}`)}
       <button type="button" class="tb" data-design-html aria-pressed="false" title="Edit or paste HTML">&lt;/&gt;</button>
+      <button type="button" class="tb tb-preview" data-design-preview aria-pressed="false" title="See it filled in for each household">${EYE_ICON} <span>Preview</span></button>
     </div>
     <div class="color-pop" data-color-pop hidden role="dialog" aria-label="Choose a color"></div>
     <div class="design-imgbar" data-design-imgbar hidden>
@@ -1638,6 +1639,14 @@ function designModal() {
         <div class="design-edit" contenteditable="true" spellcheck="true" data-design-edit aria-label="Design">${(html)}</div>
       </div>
       <textarea class="design-src" data-design-src hidden spellcheck="false" aria-label="HTML"></textarea>
+      <div class="design-preview" data-design-preview-pane hidden>
+        <div class="preview-nav">
+          <button type="button" class="btn ghost sm" data-preview-step="-1" aria-label="Previous household">‹</button>
+          <span data-preview-pos></span>
+          <button type="button" class="btn ghost sm" data-preview-step="1" aria-label="Next household">›</button>
+        </div>
+        <div data-preview-body></div>
+      </div>
     </div>`, {
     form: 'design', wide: 'xl',
     foot: `<div></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save design</button></div>`,
@@ -1651,6 +1660,7 @@ function designModal() {
 // Colors offered in the color window: classic invitation colors.
 const PALETTE = ['#000000', '#1d2125', '#4b5563', '#9ca3af', '#ffffff', '#fdf6e3', '#f5e6c8', '#c9a227', '#b8860b', '#7f1d1d',
   '#9f1239', '#dc2626', '#f472b6', '#ea580c', '#facc15', '#14532d', '#16a34a', '#0f766e', '#1e3a8a', '#2563eb', '#7c3aed', '#78350f'];
+const EYE_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
 const UNDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3M2.75 6.5h6.5a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const REDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="m10.5 3.5 3 3-3 3M13.25 6.5h-6.5a4 4 0 0 0 0 8H9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ALIGN = (w) => `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="${{ l: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8', c: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8', r: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' }[w]}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
@@ -1967,12 +1977,64 @@ function wireDesign(editor) {
       record();
     }
     htmlBtn.setAttribute('aria-pressed', String(toSource));
-    bar.querySelectorAll('select, button.tb:not([data-design-html]), input, .tb-pic').forEach((el) => {
-      if (el.matches('input[type=color], [data-color-for=background], [data-color-for=borderColor], [data-design=border]')) return;
-      if (el.matches('[data-history]')) { el.disabled = toSource || (el.dataset.history === 'undo' ? at === 0 : at === history.length - 1); return; }
-      el.classList.toggle('off', toSource);
-      if ('disabled' in el) el.disabled = toSource;
+    lockToolbar(toSource, htmlBtn);
+  });
+
+  // Formatting tools are off while the HTML or the preview is showing (page colors and border stay
+  // usable in the HTML view).
+  function lockToolbar(on, except) {
+    bar.querySelectorAll('select, button.tb, input, .tb-pic, .tb-color').forEach((el) => {
+      if (el === except) return;
+      if (except === htmlBtn && el.matches('input[type=color], [data-color-for=background], [data-color-for=borderColor], [data-design=border]')) return;
+      if (el.matches('[data-history]')) { el.disabled = on || (el.dataset.history === 'undo' ? at === 0 : at === history.length - 1); return; }
+      el.classList.toggle('off', on);
+      if ('disabled' in el) el.disabled = on;
     });
+  }
+
+  // Preview: the design filled in for each household on the list (‹ ›), with its real greeting
+  // and the occasion's date, time and location, exactly as it will print or arrive.
+  const previewBtn = modal.querySelector('[data-design-preview]');
+  const pane = modal.querySelector('[data-design-preview-pane]');
+  let previewAt = 0;
+  const previewPeople = () => {
+    const tags = tagMap();
+    const byId = hhById();
+    const onList = [...tags.keys()].map((id) => byId.get(id)).filter(Boolean).sort(byName);
+    return onList.length ? onList : [...state.households].sort(byName);
+  };
+  const currentDesign = () => ({
+    html: designHtml(editor), background: bgInput.value, color: canvas.dataset.color, font: canvas.dataset.font,
+    border: borderSel.value, borderColor: borderColor.value,
+  });
+  const showPreview = () => {
+    const list = previewPeople();
+    const o = state.occ.occasion;
+    previewAt = Math.min(Math.max(0, previewAt), Math.max(0, list.length - 1));
+    const h = list[previewAt];
+    const greeting = !h ? 'Friend' : kindOf(o) === 'email' ? greetingFor(h, defaultGreeting(h, 'default')) : greetingFor(h, 'informal');
+    const design = currentDesign();
+    loadFont(design);
+    pane.querySelector('[data-preview-pos]').innerHTML = h
+      ? `<b>${esc(h.labelName)}</b> <span class="muted">· ${previewAt + 1} of ${list.length}${tagMap().size ? '' : ' in the address book'}</span>`
+      : '<span class="muted">No households yet</span>';
+    pane.querySelector('[data-preview-step="-1"]').disabled = previewAt <= 0;
+    pane.querySelector('[data-preview-step="1"]').disabled = previewAt >= list.length - 1;
+    pane.querySelector('[data-preview-body]').innerHTML = `<div class="preview-page">${renderDesign(design, fieldValues({ occasion: o, greeting, fromName: fromName() }))}</div>`;
+  };
+  previewBtn.addEventListener('click', () => {
+    const on = pane.hidden;
+    if (on && !src.hidden) htmlBtn.click(); // leave the HTML view first
+    pane.hidden = !on;
+    canvas.hidden = on;
+    imgbar.hidden = true; pick(null); closePop();
+    previewBtn.setAttribute('aria-pressed', String(on));
+    lockToolbar(on, previewBtn);
+    if (on) showPreview(); else editor.focus();
+  });
+  pane.addEventListener('click', (e) => {
+    const step = Number(e.target.closest('[data-preview-step]')?.dataset.previewStep);
+    if (step) { previewAt += step; showPreview(); }
   });
 }
 
