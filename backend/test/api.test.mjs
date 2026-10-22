@@ -556,6 +556,8 @@ test('address checks: the hourly limit reaches the browser with when it opens up
 test('occasion types: cards, invitations, emails; old "other" reads as cards', async () => {
   const { call, repo } = await setup();
   for (const kind of ['card', 'invite', 'email']) assert.equal((await call('POST', '/occasions', { name: kind, kind })).body.occasion.kind, kind);
+  assert.equal((await call('POST', '/occasions', { name: 'g', kind: 'email', greetStyle: 'person' })).body.occasion.greetStyle, 'person');
+  assert.equal((await call('POST', '/occasions', { name: 'g', kind: 'email', greetStyle: 'nope' })).body.occasion.greetStyle, 'informal');
   assert.equal((await call('POST', '/occasions', { name: 'x', kind: 'other' })).body.occasion.kind, 'card');
   assert.equal((await call('POST', '/occasions', { name: 'x', kind: 'party' })).status, 400);
   await repo.put({ PK: 'USER#user-1', SK: 'OCC#old', id: 'old', name: 'Old', kind: 'other', createdAt: '2025-01-01T00:00:00Z' });

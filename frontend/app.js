@@ -1335,6 +1335,9 @@ function occasionModal(o) {
       ${nameStyleOptions(o.nameStyle, isNew ? [] : (state.occ?.tags ?? []).map((t) => t.householdId))}</select></label>
     <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design invitation…</button></div>
     <div data-kinds="email" ${kind === 'email' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design email…</button></div>
+    <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Greeting<select name="greetStyle">
+      ${[['informal', 'Informal Greeting'], ['formal', 'Formal Greeting'], ['household', 'Household Greeting'], ['person', "The person's first name"]]
+    .map(([k, l]) => `<option value="${k}" ${(o.greetStyle ?? 'informal') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email subject<input name="subject" maxlength="200" value="${val(o.invite?.subject)}" placeholder="You're invited: ${val(o.name) || 'our holiday open house'}"></label>
     ${isNew && copyable.length ? `<label>Start with the list from <span class="muted">(optional)</span><select name="copyFrom"><option value="">Nobody yet</option>
       ${copyable.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} (${x.counts.tagged})</option>`).join('')}</select></label>` : ''}
@@ -1351,7 +1354,7 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
   const f = form.elements;
   const body = {
     name: f.namedItem('name').value.trim(), kind: f.kind.value, date: f.date.value, time: f.time.value.trim(), location: f.location.value.trim(),
-    nameStyle: f.nameStyle.value, notes: f.notes.value.trim(),
+    nameStyle: f.nameStyle.value, greetStyle: f.greetStyle.value, notes: f.notes.value.trim(),
     // The plain message from earlier versions is kept; designs are saved from the design window.
     invite: { subject: f.subject.value.trim(), message: (form.dataset.form === 'occasion-new' ? '' : state.occ?.occasion?.invite?.message) || undefined },
     copyFrom: f.copyFrom?.value || undefined,
@@ -1485,7 +1488,7 @@ async function printInvitations(form) {
   const win = window.open('', '_blank'); // opened right away so the browser doesn't block it
   if (!win) return modalError('Your browser blocked the new tab. Allow pop-ups for this site and try again.');
   const link = fontLink(o.design);
-  const pages = households.map((h) => `<section class="print-page">${renderDesign(o.design, fieldValues({ occasion: o, greeting: greetingFor(h, f.greetStyle.value, 'default'), fromName: fromName() }), { padding: paper.pad })}</section>`).join('');
+  const pages = households.map((h) => `<section class="print-page">${renderDesign(o.design, fieldValues({ occasion: o, greeting: greetingFor(h, f.greetStyle.value), fromName: fromName() }), { padding: paper.pad })}</section>`).join('');
   win.document.open();
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(o.name)} - invitations</title>
     ${link ? `<link rel="stylesheet" href="${esc(link)}">` : ''}
@@ -1978,7 +1981,7 @@ function invitesModal() {
   loadFont(design);
   openModal('Send emails', `
     <div class="invite-preview"><div class="small muted">Subject</div><div><b>${esc(o.invite?.subject || `You're invited: ${o.name}`)}</b></div></div>
-    <div class="email-preview">${renderDesign(design, fieldValues({ occasion: o, greeting: sample ? greetingFor(sample, 'informal', 'default') : 'Friend', fromName: fromName() }), { padding: '20px' })}</div>
+    <div class="email-preview">${renderDesign(design, fieldValues({ occasion: o, greeting: sample ? greetingFor(sample, defaultGreeting(sample, 'default')) : 'Friend', fromName: fromName() }), { padding: '20px' })}</div>
     <div class="row-gap">
       <label class="check"><input type="radio" name="who" value="new" checked data-who> Not sent yet (${notSent.length})</label>
       <label class="check"><input type="radio" name="who" value="all" data-who> Everyone with email (${withEmail.length})</label>
@@ -1993,6 +1996,8 @@ function invitesModal() {
   syncSendRows();
 }
 
+const personName = (m) => [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
+
 // Who an email goes to: 'default' (the default contact), a person's id, or 'all'.
 function recipientsFor(h, to) {
   const people = (h.members ?? []).filter((m) => m.email);
@@ -2000,12 +2005,26 @@ function recipientsFor(h, to) {
   return [people.find((m) => m.id === to) ?? defaultPerson(h.members)].filter(Boolean);
 }
 const joinNames = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0] ?? '');
-/** The greeting text: informal (default), formal, household, or the first names of whoever it's sent to. */
-function greetingFor(h, style, to) {
+/**
+ * The greeting text for a style: 'informal' (default), 'formal', 'household', or 'p:<person id>' for one
+ * person's first name (e.g. just the dad, or an adult child).
+ */
+function greetingFor(h, style) {
   if (style === 'formal') return effectiveFormalName(h) || h.labelName;
   if (style === 'household') return h.labelName;
-  if (style === 'first') return joinNames(recipientsFor(h, to).map((m) => m.firstName).filter(Boolean)) || h.greeting || h.labelName;
+  if (String(style).startsWith('p:')) {
+    const m = (h.members ?? []).find((x) => x.id === style.slice(2));
+    if (m) return m.firstName || personName(m);
+  }
   return h.greeting || h.labelName;
+}
+
+// The occasion's Greeting setting for a row: 'person' greets whoever it's sent to by first name.
+function defaultGreeting(h, to) {
+  const style = state.occ?.occasion?.greetStyle ?? 'informal';
+  if (style !== 'person') return style;
+  const who = recipientsFor(h, to);
+  return who.length === 1 ? `p:${who[0].id}` : 'informal';
 }
 
 function sendRow(h, t) {
@@ -2021,7 +2040,9 @@ function sendRow(h, t) {
   </tr>`;
 }
 
-// Fills each row's Greeting choices with the actual words, which follow who it's sent to.
+// Fills each row's Greeting choices with the actual words: Informal, Formal, Household, or any one
+// person in the household by first name. It starts on the occasion's Greeting setting and follows
+// Send to when a person's name is chosen (send to Mary, greet Mary).
 function syncSendRows(changed) {
   const byId = hhById();
   const showAll = modal.querySelector('[data-who][value=all]')?.checked;
@@ -2030,16 +2051,19 @@ function syncSendRows(changed) {
     const h = byId.get(row.dataset.sendRow);
     const to = row.querySelector('[data-sendto]').value;
     const sel = row.querySelector('[data-greeting]');
-    let style = sel.value || 'informal';
-    // Picking one person (the football party): greet them by first name.
-    if (changed === row && to !== 'default' && to !== 'all' && style === 'informal') style = 'first';
-    const opts = [['informal', 'Informal'], ['formal', 'Formal'], ['household', 'Household'], ['first', 'First name']]
-      .map(([k, l]) => [k, l, greetingFor(h, k, to)]);
-    sel.innerHTML = opts.map(([k, l, text]) => `<option value="${k}" ${k === style ? 'selected' : ''}>${esc(text)} · ${l}</option>`).join('');
+    let style = sel.value || defaultGreeting(h, to);
+    // Until a greeting is picked by hand, a greeting by name follows Send to.
+    if (changed === row && !row.dataset.greetPicked && (style.startsWith('p:') || state.occ?.occasion?.greetStyle === 'person')) {
+      const who = recipientsFor(h, to);
+      style = who.length === 1 ? `p:${who[0].id}` : 'informal';
+    }
+    const people = (h.members ?? []).filter((m) => m.firstName || m.lastName);
+    const opts = [['informal', 'Informal'], ['formal', 'Formal'], ['household', 'Household']]
+      .map(([k, l]) => [k, `${greetingFor(h, k)} (${l})`])
+      .concat(people.map((m) => [`p:${m.id}`, greetingFor(h, `p:${m.id}`)]));
+    sel.innerHTML = opts.map(([k, text]) => `<option value="${esc(k)}" ${k === style ? 'selected' : ''}>${esc(text)}</option>`).join('');
   });
 }
-
-const personName = (m) => [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email;
 
 async function sendInvites(form) {
   const byId = hhById();
@@ -2049,7 +2073,7 @@ async function sendInvites(form) {
   const pick = (row) => {
     const h = byId.get(row.dataset.sendRow);
     const to = row.querySelector('[data-sendto]').value;
-    return [h.id, to, greetingFor(h, row.querySelector('[data-greeting]').value, to)];
+    return [h.id, to, greetingFor(h, row.querySelector('[data-greeting]').value)];
   };
   const chosen = rows.map(pick);
   const prog = modal.querySelector('[data-progress]');
@@ -2682,6 +2706,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const t = e.target;
   if (t.matches?.('[data-sendto]')) syncSendRows(t.closest('[data-send-row]'));
+  if (t.matches?.('[data-greeting]')) t.closest('[data-send-row]').dataset.greetPicked = '1';
   if (t.matches?.('[data-who]')) syncSendRows();
   if (t.matches?.('[data-occ-kind]')) {
     modal.querySelectorAll('[data-kinds]').forEach((el) => { el.hidden = !el.dataset.kinds.split(' ').includes(t.value); });

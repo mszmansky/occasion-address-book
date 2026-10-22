@@ -140,6 +140,7 @@ export function parseHousehold(b) {
 const KINDS = ['card', 'invite', 'email'];
 export const kindOf = (o) => (KINDS.includes(o?.kind) ? o.kind : 'card');
 const NAME_STYLES = ['label', 'formal'];
+const GREET_STYLES = ['informal', 'formal', 'household', 'person'];
 
 function parseOccasion(b) {
   const kind = b.kind === undefined || b.kind === 'other' ? 'card' : b.kind;
@@ -155,6 +156,7 @@ function parseOccasion(b) {
     time: str(b.time, 'Time', { max: 40 }),
     location: str(b.location, 'Location', { max: 300 }),
     nameStyle,
+    greetStyle: GREET_STYLES.includes(b.greetStyle) ? b.greetStyle : 'informal',
     notes: str(b.notes, 'Notes', { max: 2000 }),
     invite: {
       subject: str(inv.subject, 'Email subject', { max: 200 }),
