@@ -636,45 +636,45 @@ test('emails: people ticked on the list get it; the greeting can still name the 
 test('two people editing at once: the second save is refused with the other version, and can be forced', async () => {
   const { call, setClock } = await setup({ directory: undefined });
   const mike = { sub: 'user-1', email: 'mike@example.com' };
-  const teri = { sub: 'user-teri', email: 'teri@example.com' };
+  const jordan = { sub: 'user-jordan', email: 'jordan@example.com' };
   await call('PUT', '/me', { firstName: 'Mike', lastName: 'Szmansky' }, { claims: mike });
-  await call('POST', '/shares', { email: 'teri@example.com', role: 'edit' }, { claims: mike });
-  await call('PUT', '/me', { firstName: 'Teri', lastName: 'Szmansky' }, { claims: teri });
-  const asTeri = { claims: teri, book: 'user-1' };
+  await call('POST', '/shares', { email: 'jordan@example.com', role: 'edit' }, { claims: mike });
+  await call('PUT', '/me', { firstName: 'Jordan', lastName: 'Reyes' }, { claims: jordan });
+  const asJordan = { claims: jordan, book: 'user-1' };
   const h = (await call('POST', '/households', { labelName: 'The Smith Family' }, { claims: mike })).body.household;
 
-  // Both open it; Teri saves first.
+  // Both open it; Jordan saves first.
   setClock('2026-11-01T15:01:00Z');
-  let r = await call('PUT', `/households/${h.id}`, { labelName: 'The Smiths', baseUpdatedAt: h.updatedAt }, asTeri);
+  let r = await call('PUT', `/households/${h.id}`, { labelName: 'The Smiths', baseUpdatedAt: h.updatedAt }, asJordan);
   assert.equal(r.status, 200);
   setClock('2026-11-01T15:02:00Z');
   r = await call('PUT', `/households/${h.id}`, { labelName: 'Smith Family', baseUpdatedAt: h.updatedAt }, { claims: mike });
   assert.equal(r.status, 409);
   assert.equal(r.body.code, 'conflict');
-  assert.equal(r.body.changedBy, 'Teri Szmansky');
-  assert.equal(r.body.error, 'Teri Szmansky changed this while you were editing it');
+  assert.equal(r.body.changedBy, 'Jordan Reyes');
+  assert.equal(r.body.error, 'Jordan Reyes changed this while you were editing it');
   assert.equal(r.body.current.labelName, 'The Smiths');
   // "Save mine anyway": resend from their version.
   r = await call('PUT', `/households/${h.id}`, { labelName: 'Smith Family', baseUpdatedAt: r.body.current.updatedAt }, { claims: mike });
   assert.equal(r.status, 200);
   assert.equal(r.body.household.labelName, 'Smith Family');
   // Without a base (older app), saves go through as before.
-  assert.equal((await call('PUT', `/households/${h.id}`, { labelName: 'X' }, asTeri)).status, 200);
+  assert.equal((await call('PUT', `/households/${h.id}`, { labelName: 'X' }, asJordan)).status, 200);
 
   // Occasions and designs: separate stamps, so details and design don't clash.
   const o = (await call('POST', '/occasions', { name: 'Party', kind: 'invite' }, { claims: mike })).body.occasion;
   setClock('2026-11-01T15:03:00Z');
-  const d1 = (await call('PUT', `/occasions/${o.id}/design`, { html: '<p>v1</p>', baseUpdatedAt: null }, asTeri)).body.occasion;
+  const d1 = (await call('PUT', `/occasions/${o.id}/design`, { html: '<p>v1</p>', baseUpdatedAt: null }, asJordan)).body.occasion;
   r = await call('PUT', `/occasions/${o.id}`, { name: 'Party!', kind: 'invite', baseUpdatedAt: o.updatedAt }, { claims: mike });
   assert.equal(r.status, 200); // the design save didn't touch the details
   assert.equal(r.body.occasion.design.html, '<p>v1</p>');
   r = await call('PUT', `/occasions/${o.id}/design`, { html: '<p>mine</p>', baseUpdatedAt: null }, { claims: mike });
   assert.equal(r.status, 409);
-  assert.equal(r.body.changedBy, 'Teri Szmansky');
+  assert.equal(r.body.changedBy, 'Jordan Reyes');
   assert.equal(r.body.current.design.html, '<p>v1</p>');
   r = await call('PUT', `/occasions/${o.id}/design`, { html: '<p>mine</p>', baseUpdatedAt: d1.design.updatedAt }, { claims: mike });
   assert.equal(r.status, 200);
-  r = await call('PUT', `/occasions/${o.id}`, { name: 'Party?', kind: 'invite', baseUpdatedAt: o.updatedAt }, asTeri);
+  r = await call('PUT', `/occasions/${o.id}`, { name: 'Party?', kind: 'invite', baseUpdatedAt: o.updatedAt }, asJordan);
   assert.equal(r.status, 409);
   assert.equal(r.body.changedBy, 'Mike Szmansky');
 });
