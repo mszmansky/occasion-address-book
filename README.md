@@ -55,18 +55,63 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
 
 ## Architecture
 
+Serverless on AWS, defined as infrastructure as code in one AWS SAM template (`template.yaml`) and deployed by `scripts/deploy.sh`, which runs the tests first.
+
+```mermaid
+flowchart TB
+    user(["Signed-in user<br/>single-page app"])
+    guest(["Household<br/>emailed link"])
+
+    subgraph edge["Delivery"]
+        direction LR
+        cf["CloudFront<br/>HTTPS + security headers"]
+        web[("S3 web bucket<br/>frontend/")]
+        media[("S3 media bucket<br/>pictures in emails")]
+    end
+
+    subgraph identity["Identity"]
+        direction LR
+        cognito["Cognito user pool<br/>invitation-only, MFA"]
+        triggers["Lambda triggers<br/>custom message, post-confirmation"]
+    end
+
+    subgraph backend["API"]
+        direction LR
+        apigw["API Gateway<br/>HTTP API, throttled"]
+        apiFn["Lambda api<br/>Node.js 22, arm64"]
+    end
+
+    subgraph data["Data and services"]
+        direction LR
+        ddb[("DynamoDB<br/>single table, TTL")]
+        files[("S3 files bucket<br/>private profile photos")]
+        ssm["SSM Parameter Store<br/>USPS credentials"]
+        logs["CloudWatch Logs<br/>30-day retention"]
+    end
+
+    ses["SES<br/>email"]
+    usps["USPS Addresses API"]
+
+    user --> cf
+    guest --> cf
+    cf --> web
+    cf -- "/media/*" --> media
+    user -- "sign in" --> cognito
+    cognito --> triggers
+    user -- "ID token (JWT)" --> apigw
+    guest -- "/public/address/{token}" --> apigw
+    apigw --> apiFn
+    apiFn --> ddb
+    apiFn -- "signed links" --> files
+    apiFn --> ssm
+    apiFn -.-> logs
+    apiFn -- "signed uploads" --> media
+    apiFn --> usps
+    apiFn --> ses
+    triggers --> ses
 ```
-Browser ── Cognito user pool (sign-in from the browser, no SDK: frontend/auth.js)
-   │            └─ "custom message" Lambda: invitation / reset emails in the app's style, sent through SES
-   │
-   ├── CloudFront ── S3 (static site: frontend/)
-   │
-   ├── S3 (private: profile photos, through short-lived signed links)
-   │
-   └── API Gateway HTTP API ── Lambda "api" ── DynamoDB (single table, TTL on link tokens)
-                                   │  verifies Cognito ID tokens against the user pool's JWKS
-                                   └─ SES (invitations, address checks, "they replied" notices)
-```
+
+The API Lambda verifies each Cognito ID token against the user pool's JWKS before it touches data; every item is keyed by the signed-in user's ID (or the shared book they were granted), so one account can never read another's records.
 
 `/public/address/{token}` is the only route that needs no sign-in. It backs `update.html`, the page a household opens from its emailed link. The token travels in the URL fragment (`#t=…`), so it never shows up in server logs.
 
@@ -150,7 +195,7 @@ Everyone has their own private address book (with its own occasions). You can sh
 - Shares are tied to each person's account (their permanent Cognito id), not their email, so either person can change their sign-in email without re-sharing.
 - **Settings > Sharing** always manages *your own* book, and also lists the books shared with you.
 
-**Two people at once.** Each household, occasion and design carries the time it was last saved and who saved it. The app sends the version it started from; if the other person saved in between, the save is refused (409) and the app asks *"Teri changed this household while you were editing it"*: **Load their version** or **Save mine anyway**. Only those buttons answer, so a stray click can't lose either version. Lists also refresh by themselves when the window comes back into view and once a minute, redrawing only when something changed and never while you're typing in a box or have a menu or the Filter panel open.
+**Two people at once.** Each household, occasion and design carries the time it was last saved and who saved it. The app sends the version it started from; if the other person saved in between, the save is refused (409) and the app asks *"Jordan changed this household while you were editing it"*: **Load their version** or **Save mine anyway**. Only those buttons answer, so a stray click can't lose either version. Lists also refresh by themselves when the window comes back into view and once a minute, redrawing only when something changed and never while you're typing in a box or have a menu or the Filter panel open.
 
 Stored as `USER#<owner> / SHARE#<member id>` (the owner's list) and `MEMBER#<member id> / BOOK#<owner id>` (the books shared with someone). The app names the open book in an `x-book` request header; the API checks it against these. Shares saved by earlier versions (`SHARED#<email>`, `MEMBER#<id> / BOOK`) move over automatically the next time that person signs in.
 
@@ -181,3 +226,7 @@ To run the site against a deployed API, copy `frontend/config.example.js` to `fr
 ## Costs
 
 Everything is pay-per-use: DynamoDB on-demand, Lambda, HTTP API, CloudFront, and SES at $0.10 per 1,000 emails. Personal use is typically well under $1 a month. The table is retained if the stack is deleted.
+
+## License
+
+© 2026 Michael Szmansky. All rights reserved. This code is shared for viewing as a portfolio sample; no license is granted to copy, modify, or redistribute it.
