@@ -701,6 +701,7 @@ function requestBadge(h) {
 function householdCard(h) {
   const lines = addressLines('', h.address);
   const badges = [
+    h.addressVerifiedAt && isMailable(h.address) && `<span class="pill ok" title="Address check ${esc(fmtDate(h.addressVerifiedAt))}">Address verified</span>`,
     h.pendingUpdate ? '<span class="pill due-soon">New address to review</span>' : requestBadge(h),
     !isMailable(h.address) && `<span class="pill unknown">${esc(addressProblem(h.address))}</span>`,
   ].filter(Boolean).join('');

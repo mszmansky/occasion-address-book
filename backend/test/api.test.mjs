@@ -696,3 +696,37 @@ test('password changed: the notice goes to the account email, in its time zone, 
   setClock('2026-10-22T16:52:00Z');
   assert.deepEqual((await call('POST', '/me/password-changed', {})).body, { sent: true });
 });
+
+test('address verified: saving with the address a check confirmed marks it; changing the address clears it', async () => {
+  const confirmed = { line1: '12 Oak St', line2: '', city: 'Troy', state: 'MI', zip: '48083-2101' };
+  const addressChecker = {
+    async status() { return { enabled: true, limit: 1000, used: 0, remaining: 1000, availableAt: null }; },
+    async check(a) {
+      const status = /nowhere/i.test(a.line1) ? 'not-found' : 'confirmed';
+      return { result: { status, suggested: status === 'confirmed' ? confirmed : { ...a, zip: '00000' } }, checks: await this.status() };
+    },
+  };
+  const { call } = await setup({ addressChecker });
+  // Typed address that was never checked: not verified.
+  let h = (await call('POST', '/households', { labelName: 'The Oaks', address: { line1: '12 oak street', city: 'troy', state: 'mi' } })).body.household;
+  assert.equal(h.addressVerifiedAt, undefined);
+  // Check, then save with the suggested address (any spacing or case): verified.
+  await call('POST', '/address-check', { address: { line1: '12 oak street', city: 'troy', state: 'mi' } });
+  h = (await call('PUT', `/households/${h.id}`, { labelName: 'The Oaks', address: { ...confirmed, line1: '12  OAK st' }, baseUpdatedAt: h.updatedAt })).body.household;
+  assert.ok(h.addressVerifiedAt);
+  // The app can't claim it on its own.
+  const other = (await call('POST', '/households', { labelName: 'X', address: { line1: '1 Elm', city: 'Troy', state: 'MI', zip: '48083' }, addressVerifiedAt: '2026-01-01T00:00:00Z' })).body.household;
+  assert.equal(other.addressVerifiedAt, undefined);
+  // Editing something else keeps it; changing the address drops it.
+  h = (await call('PUT', `/households/${h.id}`, { labelName: 'The Oak Family', address: confirmed, baseUpdatedAt: h.updatedAt })).body.household;
+  assert.ok(h.addressVerifiedAt);
+  h = (await call('PUT', `/households/${h.id}`, { labelName: 'The Oak Family', address: { ...confirmed, line2: 'Apt 2' }, baseUpdatedAt: h.updatedAt })).body.household;
+  assert.equal(h.addressVerifiedAt, undefined);
+  // A check that wasn't confirmed never verifies.
+  await call('POST', '/address-check', { address: { line1: '9 Nowhere Ln', city: 'Troy', state: 'MI' } });
+  h = (await call('PUT', `/households/${h.id}`, { labelName: 'The Oak Family', address: { line1: '9 Nowhere Ln', city: 'Troy', state: 'MI', zip: '00000' }, baseUpdatedAt: h.updatedAt })).body.household;
+  assert.equal(h.addressVerifiedAt, undefined);
+  // Back to the confirmed address within the week: verified again.
+  h = (await call('PUT', `/households/${h.id}`, { labelName: 'The Oak Family', address: confirmed, baseUpdatedAt: h.updatedAt })).body.household;
+  assert.ok(h.addressVerifiedAt);
+});

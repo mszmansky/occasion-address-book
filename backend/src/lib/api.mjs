@@ -17,6 +17,11 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const newId = () => randomBytes(8).toString('hex');
 const tokenHash = (t) => createHash('sha256').update(t).digest('hex');
+const US_COUNTRY = /^(us|usa|u\.s\.a?\.?|united states( of america)?)$/i;
+// An address in one comparable form: same letters, any case or spacing.
+const addressKey = (a = {}) => (a.country && !US_COUNTRY.test(a.country.trim()) ? null
+  : tokenHash(['line1', 'line2', 'city', 'state', 'zip'].map((k) => String(a[k] ?? '').trim().replace(/\s+/g, ' ').toLowerCase()).join('|')));
+const VERIFIED_DAYS = 7; // a confirmed check counts if the household is saved with that address within this time
 const tokenPk = (t) => `TOKEN#${tokenHash(t)}`;
 
 // ---------- validation helpers ----------
@@ -539,9 +544,21 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     households: (await repo.query(bk(user), 'HH#')).map(publicHousehold),
   }));
 
+  // Address verified: set when the household is saved with exactly the address an address check
+  // confirmed (the suggested one, or the typed one when they matched); kept while the address stays
+  // the same; dropped when it changes to anything else.
+  async function withVerification(user, current, item) {
+    const { addressVerifiedAt, ...rest } = item;
+    const key = addressKey(item.address);
+    if (!key || !item.address?.line1) return rest;
+    if (current?.addressVerifiedAt && addressKey(current.address) === key) return { ...rest, addressVerifiedAt: current.addressVerifiedAt };
+    const check = await repo.get(bk(user), `VERIFIED#${key}`);
+    return check && Date.parse(check.expiresAt) > now().getTime() ? { ...rest, addressVerifiedAt: check.checkedAt } : rest;
+  }
+
   route('POST', '/households', async ({ user, body }) => {
     const id = newId();
-    const item = { PK: bk(user), SK: `HH#${id}`, id, ...parseHousehold(body), createdAt: nowIso(), updatedAt: nowIso() };
+    const item = await withVerification(user, null, { PK: bk(user), SK: `HH#${id}`, id, ...parseHousehold(body), createdAt: nowIso(), updatedAt: nowIso() });
     await repo.put(item);
     return { household: publicHousehold(item) };
   }, { write: true });
@@ -565,7 +582,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
 
   route('PUT', '/households/:id', async ({ user, params, body }) => {
     const current = await mustGet(user, `HH#${params.id}`, 'Household');
-    const item = { ...current, ...parseHousehold(body), updatedAt: nowIso() };
+    const item = await withVerification(user, current, { ...current, ...parseHousehold(body), updatedAt: nowIso() });
     return { household: publicHousehold(await saveChecked(user, current, item, baseOf(body), publicHousehold)) };
   }, { write: true });
 
@@ -585,7 +602,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     const { pendingUpdate, ...rest } = h;
     // Accepting changes the address, so it counts as an edit; discarding leaves the household as it was.
     const item = params.action === 'accept'
-      ? { ...rest, address: pendingUpdate.address, addressConfirmedAt: pendingUpdate.receivedAt, updatedAt: nowIso(), ...await stampOf(user) }
+      ? await withVerification(user, h, { ...rest, address: pendingUpdate.address, addressConfirmedAt: pendingUpdate.receivedAt, updatedAt: nowIso(), ...await stampOf(user) })
       : rest;
     await repo.put(item);
     return { household: publicHousehold(item) };
@@ -597,7 +614,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
   route('GET', '/address-check', async () => ({ checks: addressChecker ? await addressChecker.status() : { enabled: false } }));
 
   // Checks the address as typed (it doesn't have to be saved yet); nothing changes until it's saved.
-  route('POST', '/address-check', async ({ body }) => {
+  route('POST', '/address-check', async ({ user, body }) => {
     if (!addressChecker) throw new HttpError(503, "Address checking isn't set up yet");
     const a = body.address ?? {};
     const address = {
@@ -611,7 +628,14 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     if (!address.line1 || !address.state || !(address.city || address.zip)) {
       throw new HttpError(400, 'Enter the street, state, and the city or ZIP first');
     }
-    return addressChecker.check(address);
+    const res = await addressChecker.check(address);
+    // Remember a confirmed address for a while, so saving the household with it marks it verified.
+    const confirmed = res.result?.status === 'confirmed' && res.result.suggested && addressKey(res.result.suggested);
+    if (confirmed) {
+      const expires = new Date(now().getTime() + VERIFIED_DAYS * 86_400_000);
+      await repo.put({ PK: bk(user), SK: `VERIFIED#${confirmed}`, checkedAt: nowIso(), expiresAt: expires.toISOString(), ttl: Math.floor(expires.getTime() / 1000) });
+    }
+    return res;
   }, { write: true });
 
   // Emails the household a private link to confirm or correct their mailing address.
