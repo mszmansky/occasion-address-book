@@ -684,10 +684,24 @@ function renderHouseholdList() {
   el.innerHTML = list.map(householdCard).join('') || '<p class="muted">No households match.</p>';
 }
 
+// Where an emailed address check stands: sent and waiting, no reply before the link expired, or
+// confirmed in reply. Nothing once a newer edit or review has taken over.
+function requestBadge(h) {
+  const r = h.addressRequest;
+  if (!r?.sentAt) return '';
+  const day = (iso) => fmtDate(iso, { month: 'short', day: 'numeric' });
+  const title = r.sentTo?.length ? ` title="Sent to ${esc(r.sentTo.join(', '))}"` : '';
+  const confirmed = h.addressConfirmedAt && h.addressConfirmedAt >= r.sentAt;
+  if (confirmed) return `<span class="pill ok"${title}>Address confirmed ${day(h.addressConfirmedAt)}</span>`;
+  if (r.repliedAt) return '';
+  if (Date.parse(r.expiresAt) < Date.now()) return `<span class="pill unknown"${title}>No reply to address check sent ${day(r.sentAt)}</span>`;
+  return `<span class="pill info"${title}>Address check sent ${day(r.sentAt)}</span>`;
+}
+
 function householdCard(h) {
   const lines = addressLines('', h.address);
   const badges = [
-    h.pendingUpdate && '<span class="pill due-soon">New address to review</span>',
+    h.pendingUpdate ? '<span class="pill due-soon">New address to review</span>' : requestBadge(h),
     !isMailable(h.address) && `<span class="pill unknown">${esc(addressProblem(h.address))}</span>`,
   ].filter(Boolean).join('');
   const note = h.notes?.trim();

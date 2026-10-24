@@ -948,7 +948,8 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     if (!unchanged && (!address.line1 || !address.city)) throw new HttpError(400, 'Enter at least the street address and city');
     const update = { address, unchanged, note: str(body.note, 'Note', { max: 500 }), receivedAt: nowIso() };
 
-    const { pendingUpdate, ...rest } = h;
+    const { pendingUpdate, ...base } = h;
+    const rest = base.addressRequest ? { ...base, addressRequest: { ...base.addressRequest, repliedAt: update.receivedAt } } : base;
     const item = unchanged
       ? { ...rest, addressConfirmedAt: update.receivedAt }
       : { ...rest, pendingUpdate: update }; // not an edit: what they sent waits for review

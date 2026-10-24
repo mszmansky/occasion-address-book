@@ -215,6 +215,7 @@ test('address-update link: request, public view, reply, review, expiry', async (
   let hh = (await call('GET', '/households')).body.households.find((x) => x.id === h.id);
   assert.equal(hh.address.line1, '123 Maple St', 'nothing changes until accepted');
   assert.equal(hh.pendingUpdate.address.line1, '9 Oak Ct');
+  assert.equal(hh.addressRequest.repliedAt, hh.pendingUpdate.receivedAt, 'the reply is noted on the request');
 
   hh = (await call('POST', `/households/${h.id}/pending/accept`)).body.household;
   assert.equal(hh.address.line1, '9 Oak Ct');
