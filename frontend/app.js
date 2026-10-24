@@ -1490,7 +1490,7 @@ function renderOccasions() {
     <button class="occ-card" data-action="open-occasion" data-id="${esc(o.id)}">
       <span class="occ-kind pill ${KIND_PILL[kindOf(o)]}">${KIND_LABEL[kindOf(o)]}</span>
       <span class="hh-name">${esc(o.name)}</span>
-      <span class="small muted">${o.date ? fmtDate(o.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'No date'}</span>
+      ${kindOf(o) === 'card' ? '' : `<span class="small muted">${o.date ? fmtDate(o.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'No date'}</span>`}
       <span class="small">${plural(o.counts.tagged, 'household')} on the list${isEmailKind(o) ? ` · ${o.counts.invited} emailed` : ` · ${o.counts.mailed} mailed`}</span>
     </button>`).join('')}</div>` : `<div class="panel empty">
       <h2>Plan an occasion</h2>
@@ -1519,13 +1519,13 @@ function renderOccasion() {
   const invited = [...tags.values()].filter((t) => t.invitedAt).length;
   const noAddr = onList.filter((h) => !isMailable(h.address)).length;
   const withEmail = onList.filter((h) => allEmails(h).length).length;
-  const when = [o.date && fmtDate(o.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }), o.time].filter(Boolean).join(' at ');
   const kind = kindOf(o);
+  const when = kind === 'card' ? '' : [o.date && fmtDate(o.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }), o.time].filter(Boolean).join(' at ');
   return `
   <button class="link back" data-action="view" data-view="occasions">← Occasions</button>
   <div class="page-head">
     <div><h1>${esc(o.name)}</h1>
-      <p class="muted" style="margin:2px 0 0">${[KIND_LABEL[kind], when, o.location].filter(Boolean).map(esc).join(' · ')}</p></div>
+      <p class="muted" style="margin:2px 0 0">${[KIND_LABEL[kind], when, kind === 'card' ? '' : o.location].filter(Boolean).map(esc).join(' · ')}</p></div>
     <div class="actions">
       ${canEdit() ? `<button class="btn" data-action="edit-occasion">${PENCIL} Edit</button>
       ${kind === 'email' ? `<button class="btn primary" data-action="invites" ${withEmail ? '' : 'disabled'}>${MAIL} Send emails…</button>` : ''}` : ''}
@@ -1650,10 +1650,10 @@ function occasionModal(o) {
     <label>Name<input name="name" required maxlength="120" value="${val(o.name)}" placeholder="Christmas cards ${new Date().getFullYear()}"></label>
     <div class="grid-3">
       <label>Type<select name="kind" data-occ-kind>${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      <label>Date <span class="muted">(optional)</span><input type="date" name="date" value="${val(o.date)}"></label>
-      <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
+      <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}>Date <span class="muted">(optional)</span><input type="date" name="date" value="${val(o.date)}"></label>
+      <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
     </div>
-    <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
+    <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
     <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Greeting Style<select name="nameStyle">
       ${nameStyleOptions(o.nameStyle)}</select></label>
     <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design invitation…</button></div>
@@ -1676,8 +1676,10 @@ function occasionModal(o) {
 // thenDesign: the Design button on this screen saves the occasion first, then opens the design window.
 async function saveOccasion(form, { thenDesign = false } = {}) {
   const f = form.elements;
+  const dated = f.kind.value !== 'card'; // cards and labels have no date, time or place
   const body = {
-    name: f.namedItem('name').value.trim(), kind: f.kind.value, date: f.date.value, time: f.time.value.trim(), location: f.location.value.trim(),
+    name: f.namedItem('name').value.trim(), kind: f.kind.value,
+    date: dated ? f.date.value : '', time: dated ? f.time.value.trim() : '', location: dated ? f.location.value.trim() : '',
     nameStyle: f.nameStyle.value, greetStyle: f.greetStyle.value, notes: f.notes.value.trim(),
     // The plain message from earlier versions is kept; designs are saved from the design window.
     invite: { subject: f.subject.value.trim(), message: (form.dataset.form === 'occasion-new' ? '' : state.occ?.occasion?.invite?.message) || undefined },

@@ -699,6 +699,7 @@ fieldset > * + * { margin-top: 10px; }
 legend { font-weight: 600; font-size: 13px; color: var(--ink-2); padding: 0 6px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
 .grid-3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px 12px; }
+.grid-3:has(> [data-kinds][hidden]) { grid-template-columns: 1fr; } /* Type alone when Date and Time are hidden */
 .grid-2 > *, .grid-3 > * { margin-top: 0 !important; min-width: 0; }
 
 .member-head, .member-row { display: grid; grid-template-columns: 1fr 1fr 1.5fr 1fr 58px 34px; gap: 6px; align-items: center; }
