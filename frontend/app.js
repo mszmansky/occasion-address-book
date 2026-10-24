@@ -1634,10 +1634,11 @@ async function setMailed(ids, mailed) {
   }
 }
 
-// The two name choices, with an example from the list (a household that has a formal name) when there is one.
+// Which greeting goes on the first line of labels and envelopes.
 function nameStyleOptions(current) {
-  return `<option value="label" ${current !== 'formal' ? 'selected' : ''}>Household Greeting</option>
-      <option value="formal" ${current === 'formal' ? 'selected' : ''}>Formal Greeting</option>`;
+  const style = ['formal', 'informal'].includes(current) ? current : 'label';
+  return [['label', 'Household Greeting'], ['formal', 'Formal Greeting'], ['informal', 'Informal Greeting']]
+    .map(([v, l]) => `<option value="${v}" ${style === v ? 'selected' : ''}>${l}</option>`).join('');
 }
 
 function occasionModal(o) {
@@ -1653,7 +1654,7 @@ function occasionModal(o) {
       <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
     </div>
     <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
-    <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Name printed on labels and envelopes<select name="nameStyle">
+    <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Greeting Style<select name="nameStyle">
       ${nameStyleOptions(o.nameStyle)}</select></label>
     <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design invitation…</button></div>
     <div data-kinds="email" ${kind === 'email' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design email…</button></div>

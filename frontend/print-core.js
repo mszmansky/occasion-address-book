@@ -33,8 +33,9 @@ export function addressLines(name, a = {}) {
     .map((l) => String(l ?? '').trim()).filter(Boolean);
 }
 
-/** Which name goes on the envelope: the formal one when chosen and present, else the label name. */
-export const envelopeName = (h, style) => (style === 'formal' && h.formalName ? h.formalName : h.labelName);
+/** Which name goes on the envelope: the formal or informal greeting when chosen and present, else the Household Greeting. */
+export const envelopeName = (h, style) => (style === 'formal' && h.formalName ? h.formalName
+  : style === 'informal' && String(h.greeting ?? '').trim() ? h.greeting : h.labelName);
 
 /** True when a household has enough address to mail to. */
 export const isMailable = (a = {}) => Boolean(a.line1 && a.city && (a.zip || (a.country && !US.test(a.country.trim()))));

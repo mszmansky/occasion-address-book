@@ -144,14 +144,14 @@ export function parseHousehold(b) {
 // "other" from earlier versions is treated as cards.
 const KINDS = ['card', 'invite', 'email'];
 export const kindOf = (o) => (KINDS.includes(o?.kind) ? o.kind : 'card');
-const NAME_STYLES = ['label', 'formal'];
+const NAME_STYLES = ['label', 'formal', 'informal'];
 const GREET_STYLES = ['informal', 'formal', 'household', 'person'];
 
 function parseOccasion(b) {
   const kind = b.kind === undefined || b.kind === 'other' ? 'card' : b.kind;
   if (!KINDS.includes(kind)) throw new HttpError(400, 'Type must be card, invite or email');
   const nameStyle = b.nameStyle ?? 'label';
-  if (!NAME_STYLES.includes(nameStyle)) throw new HttpError(400, 'Name style must be label or formal');
+  if (!NAME_STYLES.includes(nameStyle)) throw new HttpError(400, 'Greeting style must be label, formal or informal');
   const inv = b.invite ?? {};
   if (typeof inv !== 'object') throw new HttpError(400, 'Invitation is invalid');
   return {

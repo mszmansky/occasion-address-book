@@ -28,6 +28,8 @@ test('address lines', () => {
   assert.ok(!isMailable({ line1: '1 A', city: 'Troy' }));
   assert.equal(envelopeName({ labelName: 'The Smiths', formalName: 'Mr. and Mrs. J. Smith' }, 'formal'), 'Mr. and Mrs. J. Smith');
   assert.equal(envelopeName({ labelName: 'The Smiths' }, 'formal'), 'The Smiths');
+  assert.equal(envelopeName({ labelName: 'The Smiths', greeting: 'John and Mary' }, 'informal'), 'John and Mary');
+  assert.equal(envelopeName({ labelName: 'The Smiths', greeting: ' ' }, 'informal'), 'The Smiths');
   assert.equal(sortKey({ labelName: 'The Smith Family' }), 'smith');
   assert.equal(sortKey({ labelName: 'Bob & Sue', members: [{ firstName: 'Bob', lastName: 'Jones' }] }), 'jones');
 });
