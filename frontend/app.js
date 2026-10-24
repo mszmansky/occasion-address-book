@@ -975,9 +975,9 @@ function showHouseholdTab(id, { focus = true } = {}) {
   if (focus) modal.querySelector(`[data-hh-panel="${id}"]`)?.querySelector('input:not([type=checkbox]):not([disabled]), textarea:not([disabled])')?.focus();
 }
 
-// ---------- address checks (USPS) ----------
-// USPS allows 60 checks an hour for the whole app; the API counts them and says how many are left.
-// The button is hidden until address checks are set up, and disabled (no message) while the hour's checks
+// ---------- address checks (Google Address Validation) ----------
+// The app allows a number of checks a month for everyone; the API counts them and says how many are left.
+// The button is hidden until address checks are set up, and disabled (no message) while the month's checks
 // are used up; it turns itself back on when they're available again.
 let addressChecks = null; // { enabled, remaining, availableAt, at }
 let addressChecksTimer = null;
@@ -999,20 +999,20 @@ function showAddressChecks() {
   if (!c.enabled) return;
   const out = c.remaining <= 0;
   box.querySelector('[data-action=check-address]').disabled = out;
-  // Turn the button back on when the hour rolls over.
+  // Turn the button back on when the month turns (timers can't wait longer than about 24 days).
   clearTimeout(addressChecksTimer);
   if (out && c.availableAt) {
-    addressChecksTimer = setTimeout(() => { addressChecks = null; if (modal.open) loadAddressChecks(); }, Math.max(5_000, Date.parse(c.availableAt) - Date.now() + 2_000));
+    addressChecksTimer = setTimeout(() => { addressChecks = null; if (modal.open) loadAddressChecks(); }, Math.min(2 ** 31 - 1, Math.max(5_000, Date.parse(c.availableAt) - Date.now() + 2_000)));
   }
 }
 
 const ADDRESS_KEYS = ['line1', 'line2', 'city', 'state', 'zip'];
 const sameAddress = (a, b) => ADDRESS_KEYS.every((k) => String(a[k] ?? '').trim().replace(/\s+/g, ' ').toLowerCase() === String(b[k] ?? '').trim().replace(/\s+/g, ' ').toLowerCase());
 const CHECK_VERDICTS = {
-  confirmed: ['ok', 'USPS confirms this address.'],
-  'needs-unit': ['warn', 'USPS says this address needs an apartment or unit number.'],
-  'unit-unconfirmed': ['warn', "USPS found the building but not that apartment or unit."],
-  'not-found': ['bad', "USPS couldn't find this address."],
+  confirmed: ['ok', 'Confirmed: mail is delivered here.'],
+  'needs-unit': ['warn', 'This address needs an apartment or unit number.'],
+  'unit-unconfirmed': ['warn', 'The building is confirmed, but not that apartment or unit.'],
+  'not-found': ['bad', "This address couldn't be confirmed."],
 };
 
 async function checkAddress(btn) {
@@ -1034,17 +1034,17 @@ async function checkAddress(btn) {
     const [tone, text] = CHECK_VERDICTS[status] ?? CHECK_VERDICTS['not-found'];
     const differs = suggested && !sameAddress(typed, suggested);
     out.innerHTML = `<div class="check-result ${tone}">
-      <div>${tone === 'ok' ? CHECK_ICON : ''} <b>${esc(text)}</b>${vacant ? ' <span class="muted">USPS lists it as vacant.</span>' : ''}</div>
+      <div>${tone === 'ok' ? CHECK_ICON : ''} <b>${esc(text)}</b>${vacant ? ' <span class="muted">It\'s listed as vacant.</span>' : ''}</div>
       ${differs ? `<div class="compare">
           <div><span class="small muted">You entered</span><div>${addressLines('', typed).map(esc).join('<br>') || '—'}</div></div>
-          <div><span class="small muted">USPS</span><div>${addressLines('', suggested).map(esc).join('<br>')}</div></div>
+          <div><span class="small muted">Suggested</span><div>${addressLines('', suggested).map(esc).join('<br>')}</div></div>
         </div>
-        <div class="row-gap"><button type="button" class="btn sm primary" data-action="use-usps-address">Use USPS address</button>
+        <div class="row-gap"><button type="button" class="btn sm primary" data-action="use-suggested-address">Use suggested address</button>
           <button type="button" class="btn sm" data-action="keep-typed-address">Keep mine</button></div>` : ''}
     </div>`;
-    out.querySelector('[data-action=use-usps-address]')?.addEventListener('click', () => {
+    out.querySelector('[data-action=use-suggested-address]')?.addEventListener('click', () => {
       for (const k of ADDRESS_KEYS) form.elements[k].value = suggested[k] ?? '';
-      out.innerHTML = `<div class="check-result ok"><div>${CHECK_ICON} <b>Updated to the USPS address.</b> <span class="muted">Save to keep it.</span></div></div>`;
+      out.innerHTML = `<div class="check-result ok"><div>${CHECK_ICON} <b>Updated to the suggested address.</b> <span class="muted">Save to keep it.</span></div></div>`;
     }, { once: true });
     out.querySelector('[data-action=keep-typed-address]')?.addEventListener('click', () => { out.innerHTML = ''; }, { once: true });
   });
@@ -3264,7 +3264,7 @@ document.addEventListener('focusout', (e) => {
 });
 
 document.addEventListener('input', (e) => {
-  // Changing the address makes an earlier USPS check out of date.
+  // Changing the address makes an earlier check out of date.
   if (e.target.closest?.('[data-hh-panel=address]') && e.target.name && ['line1', 'line2', 'city', 'state', 'zip', 'country'].includes(e.target.name)) {
     const out = modal.querySelector('[data-addr-result]');
     if (out) out.innerHTML = '';

@@ -535,19 +535,19 @@ test('address checks: off until set up, then validated and passed to the checker
   let r = await call('POST', '/address-check', { address: { line1: '1 Elm', city: 'Troy' } });
   assert.deepEqual([r.status, r.body.error], [400, 'Enter the street, state, and the city or ZIP first']);
   r = await call('POST', '/address-check', { address: { line1: '1 Elm', city: 'Toronto', state: 'ON', country: 'Canada' } });
-  assert.deepEqual([r.status, r.body.error], [400, 'USPS can only check US addresses']);
+  assert.deepEqual([r.status, r.body.error], [400, 'Address checks only work for US addresses']);
   r = await call('POST', '/address-check', { address: { line1: ' 1 Elm ', state: 'MI', zip: '48083', country: 'USA' } });
   assert.equal(r.status, 200);
   assert.equal(r.body.result.status, 'confirmed');
   assert.deepEqual(seen, [{ line1: '1 Elm', line2: undefined, city: undefined, state: 'MI', zip: '48083', country: 'USA' }]);
 });
 
-test('address checks: the hourly limit reaches the browser with when it opens up again', async () => {
+test('address checks: the monthly limit reaches the browser with when it opens up again', async () => {
   const checks = { enabled: true, limit: 55, used: 55, remaining: 0, availableAt: '2026-11-01T15:20:00.000Z' };
   const { HttpError } = await import('../src/lib/auth.mjs');
   const addressChecker = {
     async status() { return checks; },
-    async check() { const e = new HttpError(429, 'The address checks for this hour are used up.'); e.extra = { checks }; throw e; },
+    async check() { const e = new HttpError(429, 'The address checks for this month are used up.'); e.extra = { checks }; throw e; },
   };
   const { call } = await setup({ addressChecker });
   const r = await call('POST', '/address-check', { address: { line1: '1 Elm', city: 'Troy', state: 'MI' } });

@@ -9,8 +9,8 @@
 //   PK = TOKEN#<sha256 of link token>, SK = TOKEN
 //        address-update link sent to a household; expires through the table's TTL ("ttl")
 //
-//   PK = USPS#QUOTA, SK = MIN#<yyyy-mm-ddThh:mm> | BLOCK
-//        USPS address checks made in each minute (for the 60-an-hour limit), removed by TTL
+//   PK = ADDRCHECK#QUOTA, SK = MONTH#<yyyy-mm>
+//        address checks made in each month (Pacific time, for the monthly limit), removed by TTL
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {

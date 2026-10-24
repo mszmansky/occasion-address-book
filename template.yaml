@@ -3,10 +3,10 @@ Transform: AWS::Serverless-2016-10-31
 Description: Occasions address book - households, occasions, labels and envelopes, SES invitations, Cognito sign-in.
 
 Parameters:
-  UspsParameter:
+  AddressCheckParameter:
     Type: String
-    Default: /occasion-address-book/usps
-    Description: SSM SecureString parameter holding the USPS API credentials as {"clientId":"...","clientSecret":"..."}. Address checks stay off until it exists.
+    Default: /occasion-address-book/google-address-validation
+    Description: SSM SecureString parameter holding the Google API key for the Address Validation API. Address checks stay off until it exists.
     AllowedPattern: ^/[A-Za-z0-9_./-]+$
   AllowedEmails:
     Type: String
@@ -71,7 +71,7 @@ Globals:
         ALLOWED_EMAILS: !Ref AllowedEmails
         SENDER_EMAIL: !Ref SenderEmail
         SES_CONFIGURATION_SET: !Ref SesConfigurationSet
-        USPS_PARAMETER: !Ref UspsParameter
+        ADDRESS_CHECK_PARAMETER: !Ref AddressCheckParameter
         APP_URL: !If [HasAppDomain, !Sub 'https://${AppDomain}', !Sub 'https://${Distribution.DomainName}']
 
 Resources:
@@ -335,9 +335,9 @@ Resources:
         - S3CrudPolicy: { BucketName: !Ref FilesBucket }
         - S3WritePolicy: { BucketName: !Ref MediaBucket }
         - Statement:
-            - Effect: Allow   # USPS credentials for address checks
+            - Effect: Allow   # Google API key for address checks
               Action: ssm:GetParameter
-              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${UspsParameter}
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${AddressCheckParameter}
         - Statement:
             - Effect: Allow   # sharing: check whether someone has an account, and invite them if not
               Action: [cognito-idp:AdminCreateUser, cognito-idp:AdminGetUser]

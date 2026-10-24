@@ -23,11 +23,11 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
 
   You can search, and narrow the list with **Filter** (the funnel button): several groups (in *any* or *all* of them), cities, states, ZIP prefix, has/no email, has/missing mailing address, and address updates to review. Each active filter shows as a chip you can remove; **Clear all** resets. The same Filter is on each occasion's list, so e.g. *everyone in Michigan in the Christmas group* can be added with **Add all shown to the list**.
 - **Share a household.** The share icon at the top right of a household's edit screen sends it as a **vCard** (one contact per person, with the household's address; notes and groups stay in the app) or a one-row **CSV**, through the system share sheet (AirDrop, Mail, Messages…) or as a download. What's on screen is shared, including edits not yet saved.
-- **Address checks (USPS).** **Check address** on a household's Address tab asks USPS whether the Post Office delivers there and shows its corrected version (street, city, ZIP+4) side by side with yours, to use or keep. It also says when an apartment or unit number is missing. USPS allows 60 checks an hour for the whole app, so the API counts them (per minute, in the table) and stops at 55; the button turns off when they're used up and back on when checks are available again. Set up once: create an app at [developers.usps.com](https://developers.usps.com) and store its consumer key and secret in SSM:
+- **Address checks (Google Address Validation).** **Check address** on a household's Address tab asks Google, which uses the Post Office's own address data for US addresses, whether mail is delivered there, and shows the corrected version (street, city, ZIP+4) side by side with yours, to use or keep. It also says when an apartment or unit number is missing. Each check is a ValidateAddress call, billed as Google's "Address Validation Pro" (5,000 free a month); the API counts checks per month (Pacific time, like Google's billing) and stops at 1,000 (`MONTHLY_LIMIT` in `address-check.mjs`), so it stays well inside the free amount. The button turns off when the month's checks are used up and back on when the month turns. Set up once: in Google Cloud, turn on the Address Validation API, create an API key restricted to that API, and store the key in SSM:
 
   ```bash
-  aws ssm put-parameter --region us-east-2 --name /occasion-address-book/usps --type SecureString \
-    --value '{"clientId":"YOUR_CONSUMER_KEY","clientSecret":"YOUR_CONSUMER_SECRET"}'
+  aws ssm put-parameter --region us-east-2 --name /occasion-address-book/google-address-validation --type SecureString \
+    --value 'YOUR_API_KEY'
   ```
 
   The button stays hidden until that parameter exists.
@@ -85,12 +85,12 @@ flowchart TB
         direction LR
         ddb[("DynamoDB<br/>single table, TTL")]
         files[("S3 files bucket<br/>private profile photos")]
-        ssm["SSM Parameter Store<br/>USPS credentials"]
+        ssm["SSM Parameter Store<br/>Google API key"]
         logs["CloudWatch Logs<br/>30-day retention"]
     end
 
     ses["SES<br/>email"]
-    usps["USPS Addresses API"]
+    gav["Google Address Validation API"]
 
     user --> cf
     guest --> cf
@@ -106,7 +106,7 @@ flowchart TB
     apiFn --> ssm
     apiFn -.-> logs
     apiFn -- "signed uploads" --> media
-    apiFn --> usps
+    apiFn --> gav
     apiFn --> ses
     triggers --> ses
 ```
@@ -127,7 +127,7 @@ The API Lambda verifies each Cognito ID token against the user pool's JWKS befor
 | `backend/src/lib/files.mjs` | Profile photos in a private S3 bucket: signed upload/view links (shared with Vehicle Maintenance) |
 | `frontend/print-core.js` | Label and envelope layout (unit tested) |
 | `frontend/filter-core.js` | Household filters (groups, city, state, ZIP, email, address, review) (unit tested) |
-| `backend/src/lib/usps.mjs` | USPS address checks and the hourly limit |
+| `backend/src/lib/address-check.mjs` | Address checks (Google Address Validation) and the monthly limit |
 | `frontend/design-core.js` | Design fonts, fill-in fields and rendering; `backend/src/lib/design-core.mjs` is an exact copy (a test checks) |
 | `backend/src/lib/sanitize.mjs` | Cleans designed HTML on save |
 | `frontend/vcard-core.js` | vCard for sharing a household (unit tested) |
@@ -146,7 +146,7 @@ PK = USER#<Cognito user id (sub)>
   SK = TAG#<occasionId>#<hhId>   household on an occasion's list (mailedAt, invitedAt)
   SK = TRASH#<household|occasion>#<id>  a deleted item and its occasion-list rows, removed by TTL after 30 days
 PK = TOKEN#<sha256(token)>, SK = TOKEN    address-check link, removed by TTL after 30 days
-PK = USPS#QUOTA, SK = MIN#<minute> | BLOCK USPS checks per minute (the 60-an-hour limit), removed by TTL
+PK = ADDRCHECK#QUOTA, SK = MONTH#<yyyy-mm>  address checks this month (Pacific time), removed by TTL
 ```
 
 ## Prerequisites

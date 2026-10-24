@@ -591,9 +591,9 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     return { household: publicHousehold(item) };
   }, { write: true });
 
-  // ---------- address checks (USPS) ----------
-  // How many checks are left this hour (USPS allows 60 an hour for the whole app). enabled: false
-  // until USPS credentials are set up.
+  // ---------- address checks (Google Address Validation) ----------
+  // How many checks are left this month (the app stays well inside Google's free amount). enabled: false
+  // until the API key is set up.
   route('GET', '/address-check', async () => ({ checks: addressChecker ? await addressChecker.status() : { enabled: false } }));
 
   // Checks the address as typed (it doesn't have to be saved yet); nothing changes until it's saved.
@@ -606,7 +606,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
       country: str(a.country, 'Country', { max: 60 }),
     };
     if (address.country && !/^(us|usa|u\.s\.a?\.?|united states( of america)?)$/i.test(address.country)) {
-      throw new HttpError(400, 'USPS can only check US addresses');
+      throw new HttpError(400, 'Address checks only work for US addresses');
     }
     if (!address.line1 || !address.state || !(address.city || address.zip)) {
       throw new HttpError(400, 'Enter the street, state, and the city or ZIP first');
