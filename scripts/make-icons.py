@@ -15,11 +15,14 @@ def blob(cx, cy, r):
         pts.append((cx + rr * math.cos(t), cy + rr * math.sin(t)))
     return 'M' + ' L'.join(f'{x:.2f} {y:.2f}' for x, y in pts) + ' Z'
 
+ENVELOPE_SCALE = 1.17  # how much of the red tile the envelope fills (1 = 122 x 84 of 192)
+
 def svg(square=False):
     bg = '<rect width="192" height="192" fill="#9f1239"/>' if square else '<rect width="192" height="192" rx="42" fill="#9f1239"/>'
     cx, cy = 96, 104
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
   {bg}
+  <g transform="translate(96 100) scale({ENVELOPE_SCALE}) translate(-96 -100)">
   <rect x="35" y="58" width="122" height="84" rx="12" fill="#ffffff"/>
   <path d="M43 67 L96 103 L149 67" fill="none" stroke="#9f1239" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="{blob(cx + 0.6, cy + 1.8, 20)}" fill="#7c2d12" opacity="0.16"/>
@@ -28,6 +31,7 @@ def svg(square=False):
   <circle cx="{cx}" cy="{cy}" r="12.5" fill="none" stroke="#d97706" stroke-width="1.6"/>
   <path d="M{cx - 9.2} {cy + 8.3} A12.4 12.4 0 0 0 {cx + 11.6} {cy + 4.4}" fill="none" stroke="#fde68a" stroke-width="1.8" stroke-linecap="round" opacity="0.9"/>
   <path d="M{cx - 13} {cy - 10.5} A17.5 17.5 0 0 1 {cx + 3} {cy - 17.2}" fill="none" stroke="#fef3c7" stroke-width="2.2" stroke-linecap="round" opacity="0.75"/>
+  </g>
 </svg>'''
 
 def png(svg_text, size):
