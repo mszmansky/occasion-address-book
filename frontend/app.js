@@ -701,13 +701,18 @@ function requestBadge(h) {
 function householdCard(h) {
   const lines = addressLines('', h.address);
   const badges = [
-    h.addressVerifiedAt && isMailable(h.address) && `<span class="pill ok" title="Address check ${esc(fmtDate(h.addressVerifiedAt))}">Address verified</span>`,
     h.pendingUpdate ? '<span class="pill due-soon">New address to review</span>' : requestBadge(h),
     !isMailable(h.address) && `<span class="pill unknown">${esc(addressProblem(h.address))}</span>`,
   ].filter(Boolean).join('');
   const note = h.notes?.trim();
-  return `<button class="hh-card${note ? ' has-note' : ''}" data-action="edit-household" data-id="${esc(h.id)}">
-    ${note ? `<span class="hh-note" data-action="show-note" data-note="${esc(note)}" title="Show note"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="6.3" r="1.1" fill="currentColor"/><path d="M10 9v5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="sr">Note: ${esc(note)}</span></span>` : ''}
+  const verified = h.addressVerifiedAt && isMailable(h.address);
+  // Top-right corner, stacked: the note (click to read it), then the green check for a verified address.
+  const corner = [
+    note && `<span class="hh-note" data-action="show-note" data-note="${esc(note)}" title="Show note"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="6.3" r="1.1" fill="currentColor"/><path d="M10 9v5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="sr">Note: ${esc(note)}</span></span>`,
+    verified && `<span class="hh-verified" title="Address verified ${esc(fmtDate(h.addressVerifiedAt))}"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.2 10.3l2.5 2.5 5.1-5.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr">Address verified</span></span>`,
+  ].filter(Boolean).join('');
+  return `<button class="hh-card${note ? ' has-note' : ''}${corner ? ' has-corner' : ''}" data-action="edit-household" data-id="${esc(h.id)}">
+    ${corner ? `<span class="hh-corner">${corner}</span>` : ''}
     <span class="hh-name">${esc(h.labelName)}</span>
     ${effectiveFormalName(h) ? `<span class="small muted">${esc(effectiveFormalName(h))}</span>` : ''}
     <span class="hh-addr">${lines.map(esc).join('<br>') || '<span class="muted">—</span>'}</span>
