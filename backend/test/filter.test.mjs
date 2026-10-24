@@ -4,7 +4,7 @@ import { activeCount, emptyFilter, filterChips, filterOptions, matchesFilter } f
 
 const H = [
   { id: 'a', labelName: 'The Lees', groups: ['Family', 'Christmas'], address: { line1: '1 Oak', city: 'Troy', state: 'MI', zip: '48083' }, members: [{ firstName: 'Bob', email: 'bob@x.com' }] },
-  { id: 'b', labelName: 'The Abbotts', groups: ['Work'], address: { line1: '2 Elm', city: 'troy ', state: 'mi', zip: '48084' } },
+  { id: 'b', labelName: 'The Abbotts', groups: ['Work'], address: { line1: '2 Elm', city: 'troy ', state: 'mi', zip: '48084' }, addressVerifiedAt: '2026-10-24T20:00:00Z' },
   { id: 'c', labelName: 'Grandma Rose', groups: ['Family'], address: { line1: '3 Pine', city: 'Columbus', state: 'OH', zip: '43004' }, emails: ['rose@x.com'] },
   { id: 'd', labelName: 'The Wus', groups: [], address: { city: 'Rochester Hills', state: 'MI' }, pendingUpdate: { address: {} } },
 ];
@@ -37,6 +37,13 @@ test('email, mailing address and review', () => {
   assert.equal(ids({ address: 'complete' }), 'abc');
   assert.equal(ids({ address: 'missing' }), 'd');
   assert.equal(ids({ review: true }), 'd');
+});
+
+test('verified: only households whose address passed the Google check', () => {
+  assert.equal(ids({ verified: true }), 'b');
+  assert.equal(ids({ verified: true, groups: ['Family'] }), '');
+  assert.equal(activeCount({ verified: true }), 1);
+  assert.deepEqual(filterChips({ verified: true }), [{ label: 'Address verified', remove: { verified: false } }]);
 });
 
 test('options list each group, city and state once, with counts', () => {

@@ -2,13 +2,13 @@
 //
 // A filter is:
 //   { groups: [], groupMode: 'any' | 'all', cities: [], states: [], zip: '',
-//     email: '' | 'yes' | 'no', address: '' | 'complete' | 'missing', review: false }
+//     email: '' | 'yes' | 'no', address: '' | 'complete' | 'missing', verified: false, review: false }
 // Empty or missing parts don't filter. Within a part, choices are alternatives (Troy OR Rochester);
 // across parts they all apply (in Michigan AND in the Family group).
 
 import { isMailable } from './print-core.js';
 
-export const emptyFilter = () => ({ groups: [], groupMode: 'any', cities: [], states: [], zip: '', email: '', address: '', review: false });
+export const emptyFilter = () => ({ groups: [], groupMode: 'any', cities: [], states: [], zip: '', email: '', address: '', verified: false, review: false });
 
 const norm = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 const householdEmails = (h) => [...(h.emails ?? []), ...(h.members ?? []).map((m) => m.email)].filter(Boolean);
@@ -16,7 +16,7 @@ const householdEmails = (h) => [...(h.emails ?? []), ...(h.members ?? []).map((m
 /** How many separate filters are on (for the badge on the Filter button). */
 export function activeCount(f = {}) {
   return (f.groups?.length ? 1 : 0) + (f.cities?.length ? 1 : 0) + (f.states?.length ? 1 : 0) + (f.zip?.trim() ? 1 : 0)
-    + (f.email ? 1 : 0) + (f.address ? 1 : 0) + (f.review ? 1 : 0);
+    + (f.email ? 1 : 0) + (f.address ? 1 : 0) + (f.verified ? 1 : 0) + (f.review ? 1 : 0);
 }
 
 export function matchesFilter(h, f = {}) {
@@ -33,6 +33,7 @@ export function matchesFilter(h, f = {}) {
   if (f.email === 'no' && householdEmails(h).length) return false;
   if (f.address === 'complete' && !isMailable(a)) return false;
   if (f.address === 'missing' && isMailable(a)) return false;
+  if (f.verified && !(h.addressVerifiedAt && isMailable(a))) return false; // checked with Google (green check on the card)
   if (f.review && !h.pendingUpdate) return false;
   return true;
 }
@@ -73,6 +74,7 @@ export function filterChips(f = {}) {
   if (f.zip?.trim()) chips.push({ label: `ZIP starts with ${f.zip.trim()}`, remove: { zip: '' } });
   if (f.email) chips.push({ label: f.email === 'yes' ? 'Has email' : 'No email', remove: { email: '' } });
   if (f.address) chips.push({ label: f.address === 'complete' ? 'Has mailing address' : 'Missing mailing address', remove: { address: '' } });
+  if (f.verified) chips.push({ label: 'Address verified', remove: { verified: false } });
   if (f.review) chips.push({ label: 'Address update to review', remove: { review: false } });
   return chips;
 }

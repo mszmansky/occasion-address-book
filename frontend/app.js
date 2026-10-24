@@ -616,7 +616,8 @@ function toggleFilterPanel(scope) {
       <section><h3>State</h3>${checklist('states', o.states, f.states, { search: true })}</section>
       <section><h3>ZIP starts with</h3><input type="text" class="fp-zip" data-f="zip" value="${val(f.zip)}" inputmode="numeric" maxlength="10" placeholder="e.g. 480"></section>
       <section><h3>Email</h3>${radios('email', f.email, [['', 'Any'], ['yes', 'Has email'], ['no', 'No email']])}</section>
-      <section><h3>Mailing address</h3>${radios('address', f.address, [['', 'Any'], ['complete', 'Has one'], ['missing', 'Missing']])}</section>
+      <section><h3>Mailing address</h3>${radios('address', f.address, [['', 'Any'], ['complete', 'Has one'], ['missing', 'Missing']])}
+        <label class="check fp-under"><input type="checkbox" data-f="verified" ${f.verified ? 'checked' : ''}> Verified</label></section>
       <section><label class="check"><input type="checkbox" data-f="review" ${f.review ? 'checked' : ''}> Sent back an address to review</label></section>
     </div>
     <div class="fp-foot"><span class="small muted" data-match-count>${matchSummary(scope)}</span>
@@ -635,6 +636,7 @@ function syncFilterPanel(panel, scope) {
   }
   for (const name of ['groupMode', 'email', 'address']) panel.querySelectorAll(`[data-f="${name}"]`).forEach((r) => { r.checked = r.value === (f[name] ?? ''); });
   const rv = panel.querySelector('[data-f=review]'); if (rv) rv.checked = Boolean(f.review);
+  const vf = panel.querySelector('[data-f=verified]'); if (vf) vf.checked = Boolean(f.verified);
   const zip = panel.querySelector('[data-f=zip]'); if (zip && document.activeElement !== zip) zip.value = f.zip ?? '';
 }
 
@@ -644,6 +646,7 @@ function readFilterPanel(panel) {
   return {
     groups: vals('groups'), groupMode: radio('groupMode') || 'any', cities: vals('cities'), states: vals('states'),
     zip: panel.querySelector('[data-f=zip]').value.trim(), email: radio('email'), address: radio('address'),
+    verified: panel.querySelector('[data-f=verified]').checked,
     review: panel.querySelector('[data-f=review]').checked,
   };
 }

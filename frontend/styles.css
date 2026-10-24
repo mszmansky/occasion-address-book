@@ -1180,3 +1180,4 @@ label > span.hint { display: block; }
 .dz-sub { font-size: 13.5px; color: var(--ink-2); }
 .drop-zone.has-file { padding: 14px 16px; border-style: solid; }
 .drop-zone.has-file .dz-icon { display: none; }
+.fp-under { margin-top: 10px; }
