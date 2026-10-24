@@ -726,6 +726,12 @@ test('address verified: saving with the address a check confirmed marks it; chan
   await call('POST', '/address-check', { address: { line1: '9 Nowhere Ln', city: 'Troy', state: 'MI' } });
   h = (await call('PUT', `/households/${h.id}`, { labelName: 'The Oak Family', address: { line1: '9 Nowhere Ln', city: 'Troy', state: 'MI', zip: '00000' }, baseUpdatedAt: h.updatedAt })).body.household;
   assert.equal(h.addressVerifiedAt, undefined);
+  // The building confirmed but not the apartment: still verified.
+  const apt = { line1: '1 Riverfront Ctr W', line2: 'Apt 804', city: 'Flint', state: 'MI', zip: '48502-1320' };
+  addressChecker.check = async () => ({ result: { status: 'unit-unconfirmed', suggested: apt }, checks: await addressChecker.status() });
+  await call('POST', '/address-check', { address: { ...apt, line1: '1 Riverfront Center W', zip: '48502' } });
+  h = (await call('PUT', `/households/${h.id}`, { labelName: 'The Oak Family', address: apt, baseUpdatedAt: h.updatedAt })).body.household;
+  assert.ok(h.addressVerifiedAt);
   // Back to the confirmed address within the week: verified again.
   h = (await call('PUT', `/households/${h.id}`, { labelName: 'The Oak Family', address: confirmed, baseUpdatedAt: h.updatedAt })).body.household;
   assert.ok(h.addressVerifiedAt);

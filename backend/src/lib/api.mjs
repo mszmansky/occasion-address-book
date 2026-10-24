@@ -629,8 +629,9 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
       throw new HttpError(400, 'Enter the street, state, and the city or ZIP first');
     }
     const res = await addressChecker.check(address);
-    // Remember a confirmed address for a while, so saving the household with it marks it verified.
-    const confirmed = res.result?.status === 'confirmed' && res.result.suggested && addressKey(res.result.suggested);
+    // Remember a confirmed address for a while, so saving the household with it marks it verified. An
+    // apartment the Post Office can't confirm (it knows the building, not its apartments) counts too.
+    const confirmed = ['confirmed', 'unit-unconfirmed'].includes(res.result?.status) && res.result.suggested && addressKey(res.result.suggested);
     if (confirmed) {
       const expires = new Date(now().getTime() + VERIFIED_DAYS * 86_400_000);
       await repo.put({ PK: bk(user), SK: `VERIFIED#${confirmed}`, checkedAt: nowIso(), expiresAt: expires.toISOString(), ttl: Math.floor(expires.getTime() / 1000) });

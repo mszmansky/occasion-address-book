@@ -1020,7 +1020,7 @@ const sameAddress = (a, b) => ADDRESS_KEYS.every((k) => String(a[k] ?? '').trim(
 const CHECK_VERDICTS = {
   confirmed: ['ok', 'Confirmed: mail is delivered here.'],
   'needs-unit': ['warn', 'This address needs an apartment or unit number.'],
-  'unit-unconfirmed': ['warn', 'The building is confirmed, but not that apartment or unit.'],
+  'unit-unconfirmed': ['ok', "Confirmed: mail is delivered to this building. The Post Office doesn't list its apartments."],
   'not-found': ['bad', "This address couldn't be confirmed."],
 };
 
