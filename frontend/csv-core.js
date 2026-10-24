@@ -228,3 +228,78 @@ export function formatPhone(value) {
   if (d.length !== 10) return raw;
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}${m?.[2] ? ` x${m[2]}` : ''}`;
 }
+
+// ---------- merging an import into a household already in the address book ----------
+const normKey = (x) => String(x ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const digits = (p) => String(p ?? '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+
+/**
+ * The same household: the same Household Greeting, or the same street address and ZIP; failing
+ * that, a household with one of the same people (first and last name, email or phone).
+ */
+export function findExistingHousehold(list, h) {
+  const name = normKey(h.labelName);
+  const addr = h.address?.line1 ? `${normKey(h.address.line1)}|${normKey(h.address.zip)}` : null;
+  const direct = list.find((x) => (name && normKey(x.labelName) === name)
+    || (addr && x.address?.line1 && `${normKey(x.address.line1)}|${normKey(x.address.zip)}` === addr));
+  if (direct) return direct;
+  const theirs = splitMembers(h.members ?? []);
+  const fullNames = new Set(theirs.filter((m) => m.firstName && m.lastName).map((m) => normKey(`${m.firstName} ${m.lastName}`)));
+  const emails = new Set(theirs.map((m) => m.email?.toLowerCase()).filter(Boolean));
+  const phones = new Set(theirs.map((m) => digits(m.phone)).filter((d) => d.length >= 7));
+  return list.find((x) => peopleWithHouseholdContact(x).some((m) => (m.firstName && m.lastName && fullNames.has(normKey(`${m.firstName} ${m.lastName}`)))
+    || (m.email && emails.has(m.email.toLowerCase())) || phones.has(digits(m.phone)))) ?? null;
+}
+
+/**
+ * Adds what an imported household has that ours doesn't; what we already have always wins.
+ * - People are matched by name (then email, then phone); a missing email, phone or last name is
+ *   filled in, and someone we don't have yet is added.
+ * - An empty address takes the imported one. The same street fills in blank parts (apartment,
+ *   city, state, ZIP); a different street is left alone.
+ * - A blank Informal or Formal Greeting, groups or notes are filled in.
+ * Returns the merged household and a list of what was added (empty when nothing changed).
+ */
+export function mergeHousehold(ours, theirs) {
+  const added = [];
+  const people = peopleWithHouseholdContact(ours);
+  const nameOf = (m) => normKey(`${m.firstName ?? ''} ${m.lastName ?? ''}`);
+  for (const t of splitMembers(theirs.members ?? [])) {
+    if (!t.firstName && !t.lastName && !t.email && !t.phone) continue;
+    const m = (nameOf(t) && people.find((p) => nameOf(p) === nameOf(t)))
+      || (t.firstName && (!t.lastName || people.every((p) => !p.lastName)) && people.find((p) => normKey(p.firstName) === normKey(t.firstName) && (!t.lastName || !p.lastName)))
+      || (t.email && people.find((p) => p.email?.toLowerCase() === t.email.toLowerCase()))
+      || (digits(t.phone).length >= 7 && people.find((p) => digits(p.phone) === digits(t.phone)));
+    const who = [t.firstName, t.lastName].filter(Boolean).join(' ') || t.email || 'someone';
+    if (!m) {
+      if (!t.firstName && !t.lastName) continue; // an email or phone with no one to put it on
+      if (people.length >= 20) continue;
+      people.push({ firstName: t.firstName, lastName: t.lastName, email: t.email, phone: t.phone });
+      added.push(`${who} added`);
+      continue;
+    }
+    if (!m.email && t.email && !people.some((p) => p.email?.toLowerCase() === t.email.toLowerCase())) { m.email = t.email; added.push(`email for ${who}`); }
+    if (!m.phone && t.phone) { m.phone = t.phone; added.push(`phone for ${who}`); }
+    if (!m.lastName && t.lastName && normKey(m.firstName) === normKey(t.firstName)) m.lastName = t.lastName;
+  }
+
+  const a = { ...(ours.address ?? {}) };
+  const ta = theirs.address ?? {};
+  const has = (x, k) => String(x[k] ?? '').trim();
+  if (!has(a, 'line1') && !has(a, 'city') && (has(ta, 'line1') || has(ta, 'city'))) {
+    for (const k of ['line1', 'line2', 'city', 'state', 'zip', 'country']) if (has(ta, k)) a[k] = ta[k];
+    added.push('address');
+  } else if (has(a, 'line1') && normKey(a.line1) === normKey(ta.line1)) {
+    const filled = ['line2', 'city', 'state', 'zip'].filter((k) => !has(a, k) && has(ta, k));
+    for (const k of filled) a[k] = ta[k];
+    if (filled.length) added.push(filled.map((k) => ({ line2: 'apartment', city: 'city', state: 'state', zip: 'ZIP' })[k]).join(', '));
+  }
+
+  const out = { ...ours, address: a, members: people };
+  delete out.emails; delete out.phone; // moved onto the people above
+  if (!String(ours.greeting ?? '').trim() && theirs.greeting) { out.greeting = theirs.greeting; added.push('informal greeting'); }
+  if (!String(ours.formalName ?? '').trim() && theirs.formalName) { out.formalName = theirs.formalName; added.push('formal greeting'); }
+  if (!(ours.groups ?? []).length && (theirs.groups ?? []).length) { out.groups = [...theirs.groups]; added.push('groups'); }
+  if (!String(ours.notes ?? '').trim() && String(theirs.notes ?? '').trim()) { out.notes = theirs.notes; added.push('note'); }
+  return { household: out, added };
+}

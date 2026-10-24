@@ -5,7 +5,7 @@ import {
 import { activeCount, emptyFilter, filterChips, filterOptions, matchesFilter } from './filter-core.js';
 import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
-  defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact, formatPhone,
+  defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact, formatPhone, findExistingHousehold, mergeHousehold,
 } from './csv-core.js';
 import { householdToVcard, fileBaseName, parseVcards, contactsToHouseholds } from './vcard-core.js';
 import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
@@ -1287,13 +1287,12 @@ function readVcardFile(text) {
     ...h, members: h.members.map((m) => ({ ...m, email: m.email && EMAIL_OK.test(m.email) ? m.email : undefined })),
   }));
   if (!households.length) return modalError('No contacts found in that file.');
-  const norm = (x) => String(x ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const have = new Set(state.households.flatMap((h) => [`n:${norm(h.labelName)}`, h.address?.line1 ? `a:${norm(h.address.line1)}|${norm(h.address.zip)}` : '']).filter(Boolean));
   households.forEach((h, i) => {
     h.idx = i;
-    h.exists = have.has(`n:${norm(h.labelName)}`) || Boolean(h.address?.line1 && have.has(`a:${norm(h.address.line1)}|${norm(h.address.zip)}`));
+    h.existingId = findExistingHousehold(state.households, h)?.id;
   });
-  vcardImport = { households, picked: new Set(households.filter((h) => !h.exists).map((h) => h.idx)) };
+  // Ticked: a contact already here is merged into it, adding only what's missing.
+  vcardImport = { households, picked: new Set(households.map((h) => h.idx)) };
   modal.querySelector('[data-import-step]').innerHTML = `
     <div class="vc-tools">
       <input type="search" data-vc-search placeholder="Find…" aria-label="Find" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
@@ -1302,7 +1301,7 @@ function readVcardFile(text) {
     <div class="imp-scroll tall"><div class="vc-list">${households.map((h) => `
       <label class="vc-row" data-vc-row="${h.idx}" data-text="${esc([h.labelName, ...h.members.map((m) => `${m.firstName} ${m.lastName} ${m.email ?? ''}`), h.address?.city].join(' ').toLowerCase())}">
         <input type="checkbox" data-vc="${h.idx}" ${vcardImport.picked.has(h.idx) ? 'checked' : ''}>
-        <span class="vc-main"><span class="vc-name"><b>${esc(h.labelName)}</b>${h.exists ? '<span class="pill unknown">Already in your address book</span>' : ''}</span>
+        <span class="vc-main"><span class="vc-name"><b>${esc(h.labelName)}</b>${h.existingId ? '<span class="pill info">Merges with existing</span>' : ''}</span>
           <span class="small muted">${esc([h.members.map((m) => m.firstName || m.email).filter(Boolean).join(', '), addressLines('', h.address).join(', '), addressProblem(h.address)].filter(Boolean).join(' · '))}</span></span>
       </label>`).join('')}</div></div>`;
   updateVcardSummary();
@@ -1312,7 +1311,7 @@ function updateVcardSummary() {
   const n = vcardImport.picked.size;
   const go = modal.querySelector('[data-import-go]');
   go.disabled = !n;
-  go.textContent = n ? `Import ${plural(n, 'household')}` : 'Import';
+  go.textContent = n ? `Import ${plural(n, 'contact')}` : 'Import';
 }
 // The Import drop zone: drag a file onto it (or click to choose one).
 modal.addEventListener('dragover', (e) => {
@@ -1406,8 +1405,11 @@ function currentMapping() {
 function updateImportSummary() {
   if (!importRows) return;
   const { households, skipped } = buildHouseholds(importRows.data, currentMapping());
+  const merging = households.filter((h) => findExistingHousehold(state.households, h)).length;
+  const fresh = households.length - merging;
   const noAddr = households.filter((h) => !isMailable(h.address)).length;
-  modal.querySelector('[data-import-summary]').innerHTML = `Ready to import <b>${plural(households.length, 'household')}</b>${
+  const mergeText = merging ? `merge <b>${merging}</b> into ${merging === 1 ? 'a household' : 'households'} already here` : '';
+  modal.querySelector('[data-import-summary]').innerHTML = `Ready to ${[fresh && `import <b>${plural(fresh, 'new household')}</b>`, mergeText].filter(Boolean).join(' and ') || 'import nothing'}${
     skipped.length ? `; ${plural(skipped.length, 'row')} without a name will be skipped` : ''}${
     noAddr ? `; ${noAddr} ${noAddr === 1 ? 'has' : 'have'} no complete mailing address yet` : ''}.`;
   const go = modal.querySelector('[data-import-go]');
@@ -1422,17 +1424,41 @@ function exportModal() {
     </div>`, { form: 'export', foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button></div>' });
 }
 
+// New households are added; ones already in the address book get only what they're missing
+// (mergeHousehold: what's here always wins).
 async function runImport(btn) {
-  const households = vcardImport
-    ? vcardImport.households.filter((h) => vcardImport.picked.has(h.idx)).map(({ idx, exists, ...h }) => h)
+  const incoming = vcardImport
+    ? vcardImport.households.filter((h) => vcardImport.picked.has(h.idx)).map(({ idx, existingId, ...h }) => h)
     : buildHouseholds(importRows.data, currentMapping()).households;
   await withBusy(btn, async () => {
-    for (let i = 0; i < households.length; i += 500) {
-      await api('/households/import', { method: 'POST', body: { households: households.slice(i, i + 500) } });
+    await refreshHouseholds(); // merge into the latest version
+    const fresh = [];
+    const merged = new Map(); // household id -> merged household
+    let updated = 0;
+    for (const h of incoming) {
+      const found = findExistingHousehold(state.households, h);
+      if (!found) { fresh.push(h); continue; }
+      const { household, added } = mergeHousehold(merged.get(found.id) ?? found, h);
+      if (added.length) merged.set(found.id, household);
+      else if (!merged.has(found.id)) merged.set(found.id, null); // already had everything
+    }
+    for (let i = 0; i < fresh.length; i += 500) {
+      await api('/households/import', { method: 'POST', body: { households: fresh.slice(i, i + 500) } });
+    }
+    for (const [id, h] of merged) {
+      if (!h) continue;
+      const { id: _id, PK, SK, createdAt, updatedAt, updatedBy, updatedByName, pendingUpdate, addressRequest, addressConfirmedAt, addressVerifiedAt, ...body } = h;
+      await api(`/households/${id}`, { method: 'PUT', body: { ...body, baseUpdatedAt: updatedAt ?? null } });
+      updated++;
     }
     await refreshHouseholds();
     closeModal();
-    toast(`Imported ${plural(households.length, 'household')}`);
+    const same = [...merged.values()].filter((x) => !x).length;
+    toast([
+      fresh.length && `Imported ${plural(fresh.length, 'new household')}`,
+      updated && `added missing details to ${plural(updated, 'household')}`,
+      same && `${plural(same, 'household')} already had everything`,
+    ].filter(Boolean).join('; ').replace(/^./, (c) => c.toUpperCase()) || 'Nothing to import');
     render();
   });
 }
