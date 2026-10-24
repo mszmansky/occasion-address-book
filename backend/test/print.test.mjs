@@ -105,3 +105,32 @@ test('incomplete addresses say what is missing', async () => {
   assert.equal(addressProblem(undefined), 'No mailing address');
   assert.equal(addressProblem({ line1: '1 Main', city: 'Flint', zip: '48502' }), '');
 });
+
+test('invitation pages: four to an Avery 8387 sheet, backs mirrored for long-edge two-sided printing', async () => {
+  const { INVITE_MEDIA, invitePages } = await import('../../frontend/print-core.js');
+  const avery = INVITE_MEDIA.avery8387;
+  assert.equal(avery.sheet[0], avery.card[0] * avery.cols); // the cards fill the Letter sheet
+  assert.equal(avery.sheet[1], avery.card[1] * avery.rows);
+  assert.deepEqual(invitePages(5, avery), [
+    { side: 'front', cells: [0, 1, 2, 3] }, { side: 'front', cells: [4, null, null, null] },
+  ]);
+  assert.deepEqual(invitePages(5, avery, { backs: true }), [
+    { side: 'front', cells: [0, 1, 2, 3] }, { side: 'back', cells: [1, 0, 3, 2] },
+    { side: 'front', cells: [4, null, null, null] }, { side: 'back', cells: [null, 4, null, null] },
+  ]);
+  assert.deepEqual(invitePages(2, INVITE_MEDIA.postcard4x6, { backs: true }).map((p) => [p.side, p.cells]),
+    [['front', [0]], ['back', [0]], ['front', [1]], ['back', [1]]]);
+  assert.deepEqual(invitePages(0, avery), []);
+});
+
+test('A2 envelopes for 4¼ × 5½ cards', async () => {
+  const { ENVELOPES } = await import('../../frontend/print-core.js');
+  const { Spy, calls } = spyPdf();
+  const doc = buildEnvelopes(Spy, [['The Smiths', '12 Oak St', 'Troy, MI  48083']], { envelope: 'a2', returnLines: ['Mike', '1 Elm', 'Troy, MI  48083'] });
+  assert.deepEqual(doc.internal.pageSize.getWidth().toFixed(2), '5.75');
+  const a2 = ENVELOPES.a2;
+  for (const c of calls) {
+    assert.ok(c.x >= 0.25 && c.x < a2.page[0] - 0.25, `x ${c.x}`);
+    assert.ok(c.y > 0.25 && c.y < a2.page[1] - 0.625, `y ${c.y} clears the barcode strip`);
+  }
+});

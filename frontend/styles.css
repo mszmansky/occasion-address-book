@@ -1182,3 +1182,7 @@ label > span.hint { display: block; }
 .drop-zone.has-file { padding: 14px 16px; border-style: solid; }
 .drop-zone.has-file .dz-icon { display: none; }
 .fp-under { margin-top: 10px; }
+.fp-seg input:disabled + span { opacity: .45; cursor: not-allowed; }
+.print-what { display: grid; gap: 6px; justify-items: start; }
+.print-what .fp-seg span { padding: 7px 14px; font-size: 13.5px; }
+.field-label { font-weight: 500; font-size: 13px; color: var(--ink-2); }

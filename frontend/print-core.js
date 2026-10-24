@@ -15,8 +15,14 @@ export const LABEL_SHEETS = {
 };
 
 export const ENVELOPES = {
+  a2: {
+    name: 'A2 envelopes (5¾ × 4⅜ in)', // fits 4¼ × 5½ cards, like Avery 8387
+    page: [5.75, 4.375],
+    returnAt: [0.3, 0.3], returnMaxWidth: 2.4, returnPt: 8,
+    toLeft: 2.05, toCenterY: 2.45, toMaxWidth: 3.4, toMaxPt: 11.5, toMinPt: 7.5,
+  },
   a7: {
-    name: 'A7 envelope (5¼ × 7¼ in)',
+    name: 'A7 envelopes (7¼ × 5¼ in)', // fits 5 × 7 cards
     page: [7.25, 5.25],          // landscape: width × height
     returnAt: [0.35, 0.38], returnMaxWidth: 3.0, returnPt: 9,
     // Recipient block: left edge and the vertical centre line it is centred on.
@@ -169,4 +175,36 @@ export function buildEnvelopes(JsPDF, items, { envelope = 'a7', returnLines = []
 export function sortKey(h) {
   const last = h.members?.find((m) => m.lastName)?.lastName;
   return (last || String(h.labelName ?? '').replace(/^the\s+/i, '').replace(/\s+(family|household)$/i, '')).toLowerCase();
+}
+
+// ---------- invitations ----------
+// What invitations print on. Sizes in inches. A sheet holds cols × rows cards; postcards can have the
+// address printed on the back.
+export const INVITE_MEDIA = {
+  avery8387: { name: 'Avery 8387 postcards (4¼ × 5½ in, 4 per sheet)', sheet: [8.5, 11], card: [4.25, 5.5], cols: 2, rows: 2, pad: 0.35, postcard: true },
+  postcard4x6: { name: '4 × 6 in postcards', sheet: [4, 6], card: [4, 6], cols: 1, rows: 1, pad: 0.3, postcard: true },
+  card5x7: { name: '5 × 7 in cards', sheet: [5, 7], card: [5, 7], cols: 1, rows: 1, pad: 0.4 },
+  half: { name: '5½ × 8½ in (half Letter)', sheet: [5.5, 8.5], card: [5.5, 8.5], cols: 1, rows: 1, pad: 0.45 },
+  letter: { name: '8½ × 11 in Letter', sheet: [8.5, 11], card: [8.5, 11], cols: 1, rows: 1, pad: 0.75 },
+};
+
+/**
+ * The printed pages for n invitations: each page lists, cell by cell (left to right, top to bottom),
+ * which invitation goes there (null for an unused cell). With backs, every front page is followed by
+ * its back page, laid out for two-sided printing flipped on the long edge: turning the sheet over
+ * swaps left and right, so each row is reversed and every address lands behind its own invitation.
+ */
+export function invitePages(n, media, { backs = false } = {}) {
+  const per = media.cols * media.rows;
+  const pages = [];
+  for (let first = 0; first < n; first += per) {
+    const cells = Array.from({ length: per }, (_, i) => (first + i < n ? first + i : null));
+    pages.push({ side: 'front', cells });
+    if (backs) {
+      const back = [];
+      for (let r = 0; r < media.rows; r++) back.push(...cells.slice(r * media.cols, (r + 1) * media.cols).reverse());
+      pages.push({ side: 'back', cells: back });
+    }
+  }
+  return pages;
 }

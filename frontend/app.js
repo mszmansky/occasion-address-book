@@ -1,6 +1,6 @@
 import { createAuth } from './auth.js';
 import {
-  addressLines, addressProblem, buildEnvelopes, buildLabels, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES,
+  addressLines, addressProblem, buildEnvelopes, buildLabels, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES, INVITE_MEDIA, invitePages,
 } from './print-core.js';
 import { activeCount, emptyFilter, filterChips, filterOptions, matchesFilter } from './filter-core.js';
 import {
@@ -1731,19 +1731,39 @@ function returnLines() {
 
 let lastPrinted = [];
 
+// ---------- printing ----------
+// First what to print (invitations, addresses or return addresses), then what to print it on; only
+// the stock that suits that choice is offered. Invitations print in a new tab through the browser's
+// print dialog; addresses and return addresses are made as a PDF. Tips live on the help page.
+const PRINT_MEDIA = {
+  invitations: Object.entries(INVITE_MEDIA).map(([k, m]) => [k, m.name]),
+  addresses: [['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name]],
+  return: [['avery5160', LABEL_SHEETS.avery5160.name]],
+};
+const GREETING_STYLES = [['household', 'Household Greeting'], ['formal', 'Formal Greeting'], ['informal', 'Informal Greeting']];
+const isEnvelope = (media) => Boolean(ENVELOPES[media]);
+
+// The last stock chosen for each kind of printing (this browser only).
+function printPrefs() { try { return JSON.parse(localStorage.getItem('oab.print') || '{}'); } catch { return {}; } }
+function savePrintPref(what, media) { try { localStorage.setItem('oab.print', JSON.stringify({ ...printPrefs(), [what]: media })); } catch { /* not saved */ } }
+
 function printModal() {
   const o = state.occ.occasion;
   const tags = tagMap();
   const unmailed = [...tags.values()].filter((t) => !t.mailedAt).length;
   const hasReturn = returnLines().length > 0;
   const invite = kindOf(o) === 'invite';
+  const designed = Boolean(o.design?.html);
+  const whatChoice = (value, label, { checked = false, disabled = false } = {}) => `<label><input type="radio" name="what" value="${value}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span>${label}</span></label>`;
   openModal('Print', `
-    <fieldset><legend>What to print</legend>
-      ${invite ? `<label class="check"><input type="radio" name="what" value="invitations" checked ${o.design?.html ? '' : 'disabled'}> Invitations (your design)</label>` : ''}
-      <label class="check"><input type="radio" name="what" value="labels" ${invite && o.design?.html ? '' : 'checked'}> ${esc(LABEL_SHEETS.avery5160.name)}</label>
-      <label class="check"><input type="radio" name="what" value="envelopes"> ${esc(ENVELOPES.a7.name)}, printed directly</label>
-      <label class="check"><input type="radio" name="what" value="return"> Return-address labels on Avery 5160 / 8160 ${hasReturn ? '' : '<span class="muted">(set your return address in Settings)</span>'}</label>
-    </fieldset>
+    <div class="print-what"><span class="field-label">Print</span><div class="seg fp-seg" role="radiogroup" aria-label="Print">
+      ${invite ? whatChoice('invitations', 'Invitations', { checked: designed, disabled: !designed }) : ''}
+      ${whatChoice('addresses', 'Addresses', { checked: !(invite && designed) })}
+      ${whatChoice('return', 'Return addresses', { disabled: !hasReturn })}
+    </div></div>
+    ${invite && !designed ? '<p class="small muted" style="margin:0">Design the invitation (Edit › Design invitation…) to print it.</p>' : ''}
+    ${!hasReturn ? '<p class="small muted" style="margin:0">Return addresses: set yours in Settings first.</p>' : ''}
+    <label>Print on<select name="media"></select></label>
     <div class="grid-2" data-for="who">
       <label>Who<select name="who">
         <option value="unmailed">Not mailed yet (${unmailed})</option>
@@ -1751,51 +1771,42 @@ function printModal() {
         <option value="shown">On the list and shown below (${shownRecipients().filter((h) => tags.has(h.id)).length})</option></select></label>
       <label>Order<select name="order"><option value="name">By last name</option><option value="zip">By ZIP code</option></select></label>
     </div>
-    <label data-for="name">Name printed on the first line<select name="nameStyle">
-      ${nameStyleOptions(o.nameStyle)}</select></label>
-    <div class="grid-2" data-for="inv">
-      <label>Paper size<select name="paper">${Object.entries(INVITE_PAPER).map(([k, p]) => `<option value="${k}" ${k === '5x7' ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></label>
-      <label>Greeting<select name="greetStyle"><option value="informal">Informal</option><option value="formal">Formal</option><option value="household">Household</option></select></label>
-    </div>
-    <label data-for="start">Start on label number <span class="muted">(1–30, to use up a partly used sheet)</span><input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
-    <label class="check" data-for="ret"><input type="checkbox" name="withReturn" ${hasReturn ? 'checked' : 'disabled'}> Print my return address in the corner</label>
-    <label class="check" data-for="outline"><input type="checkbox" name="outline"> Draw outlines (for a test print on plain paper)</label>
-    <p class="hint" data-hint></p>
+    <label data-for="greet">Greeting Style<select name="greet">${GREETING_STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+    <label data-for="start">Start on label number<input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
+    <label class="check" data-for="back"><input type="checkbox" name="withBack" checked> Print the address on the back</label>
+    <label class="check" data-for="ret"><input type="checkbox" name="withReturn" ${hasReturn ? 'checked' : 'disabled'}> Return address in the corner</label>
+    <label class="check" data-for="outline"><input type="checkbox" name="outline"> Draw outlines (test print on plain paper)</label>
     <div data-after hidden class="notice"></div>`, {
     form: 'print',
     foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button><button class="btn primary">Make PDF</button></div>',
   });
-  syncPrintForm();
+  syncPrintForm({ whatChanged: true });
 }
 
-function syncPrintForm() {
-  const f = modal.querySelector('form').elements;
-  const what = f.what.value;
-  const show = (k, on) => { modal.querySelector(`[data-for=${k}]`).hidden = !on; };
-  const inv = what === 'invitations';
+// Shows what applies to the current choices. whatChanged: refill "Print on" and the greeting default.
+function syncPrintForm({ whatChanged = false } = {}) {
+  const form = modal.querySelector('form');
+  const f = form.elements;
+  const what = f.what.value || 'addresses';
+  if (whatChanged) {
+    const options = PRINT_MEDIA[what];
+    const keep = options.some(([k]) => k === f.media.value) ? f.media.value : printPrefs()[what];
+    f.media.innerHTML = options.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('');
+    f.media.value = options.some(([k]) => k === keep) ? keep : options[0][0];
+    const o = state.occ.occasion;
+    f.greet.value = what === 'invitations' ? 'informal' : ({ label: 'household', formal: 'formal', informal: 'informal' }[o.nameStyle] ?? 'household');
+  }
+  const media = f.media.value;
+  const postcard = what === 'invitations' && INVITE_MEDIA[media]?.postcard;
+  const show = (k, on) => { form.querySelector(`[data-for=${k}]`).hidden = !on; };
   show('who', what !== 'return');
-  show('name', what !== 'return' && !inv);
-  show('start', what !== 'envelopes' && !inv);
-  show('ret', what === 'envelopes');
-  show('inv', inv);
-  modal.querySelector('.modal-foot .btn.primary').textContent = inv ? 'Print invitations' : 'Make PDF';
-  modal.querySelector('[data-for=outline]').hidden = inv;
-  modal.querySelector('[data-hint]').innerHTML = inv ? ''
-    : what === 'envelopes'
-    ? 'In the print dialog choose the <b>A7 envelope</b> paper size (5.25 × 7.25 in), <b>Actual size / 100%</b> scale, and feed envelopes as your printer shows. Fine-tune the position in Settings if it lands off-center.'
-    : what === 'return'
-      ? 'Prints a full sheet of 30 return-address labels. Print at <b>Actual size / 100%</b> on Letter paper.'
-      : 'Print at <b>Actual size / 100%</b> (not "Fit to page") on Letter paper. Try one sheet on plain paper with outlines first, holding it over a label sheet to check alignment.';
+  show('greet', what !== 'return');
+  show('start', media === 'avery5160');
+  show('back', Boolean(postcard));
+  show('ret', (what === 'addresses' && isEnvelope(media)) || Boolean(postcard && f.withBack.checked));
+  show('outline', media === 'avery5160' || isEnvelope(media) || media === 'avery8387');
+  form.querySelector('.modal-foot .btn.primary').textContent = what === 'invitations' ? 'Print invitations' : 'Make PDF';
 }
-
-// Printed invitations: one page per household, the design filled in with their greeting. They open in a
-// new tab with the print dialog, where "Save as PDF" makes a PDF.
-const INVITE_PAPER = {
-  '4x6': { label: '4 × 6 in postcard', w: '4in', h: '6in', pad: '0.3in' },
-  '5x7': { label: '5 × 7 in card', w: '5in', h: '7in', pad: '0.4in' },
-  half: { label: '5.5 × 8.5 in (half Letter)', w: '5.5in', h: '8.5in', pad: '0.45in' },
-  letter: { label: '8.5 × 11 in Letter', w: '8.5in', h: '11in', pad: '0.75in' },
-};
 
 function chosenHouseholds(f, { needAddress }) {
   const tags = tagMap();
@@ -1812,37 +1823,70 @@ function chosenHouseholds(f, { needAddress }) {
   return { households, skipped };
 }
 
+// The first line of an address: which greeting, falling back to the Household Greeting.
+const addressName = (h, greet) => envelopeName({ ...h, formalName: effectiveFormalName(h) }, greet === 'household' ? 'label' : greet);
+
+function skippedToast(skipped) {
+  if (skipped.length) toast(`Skipped ${plural(skipped.length, 'household')} with no complete address: ${skipped.slice(0, 3).map((h) => h.labelName).join(', ')}${skipped.length > 3 ? '…' : ''}`, true);
+}
+
+function showAfterPrint(message) {
+  const after = modal.querySelector('[data-after]');
+  after.hidden = false;
+  after.innerHTML = `<span>${message}${lastPrinted.length && canEdit() ? ` Once they're in the mail, mark ${plural(lastPrinted.length, 'household')} as mailed.` : ''}</span>
+    ${lastPrinted.length && canEdit() ? '<button type="button" class="btn sm primary" data-action="mark-printed">Mark mailed</button>' : ''}`;
+}
+
+// Printed invitations: the design filled in for each household, one card per cell of the chosen
+// stock. On postcards the back can carry the address, each sheet's back following its front and
+// laid out so every address lands behind its own invitation (two-sided, flip on long edge).
 async function printInvitations(form) {
   const f = form.elements;
   const o = state.occ.occasion;
-  const { households } = chosenHouseholds(f, { needAddress: false });
-  if (!households.length) return modalError('Nobody to print for.');
+  const media = INVITE_MEDIA[f.media.value] ?? INVITE_MEDIA.avery8387;
+  const backs = Boolean(media.postcard && f.withBack.checked);
+  const { households, skipped } = chosenHouseholds(f, { needAddress: backs });
+  if (!households.length) return modalError(skipped.length ? 'Nobody chosen has a complete mailing address for the back.' : 'Nobody to print for.');
   if (!o.design?.html) return modalError('Design the invitation first.');
-  const paper = INVITE_PAPER[f.paper.value] ?? INVITE_PAPER['5x7'];
   const win = window.open('', '_blank'); // opened right away so the browser doesn't block it
   if (!win) return modalError('Your browser blocked the new tab. Allow pop-ups for this site and try again.');
+  skippedToast(skipped);
+  const [cw, ch] = media.card;
+  const ret = backs && f.withReturn.checked ? returnLines() : [];
+  const front = (h) => renderDesign(o.design, fieldValues({ occasion: o, greeting: greetingFor(h, f.greet.value), fromName: fromName() }), { padding: `${media.pad}in` });
+  const back = (h) => `<div class="back" style="width:${ch}in;height:${cw}in;transform:translate(${cw}in,0) rotate(90deg)">
+      ${ret.length ? `<div class="ret">${ret.map(esc).join('<br>')}</div>` : ''}
+      <div class="to">${addressLines(addressName(h, f.greet.value === 'informal' ? 'household' : f.greet.value), h.address).map(esc).join('<br>')}</div>
+    </div>`;
+  const pages = invitePages(households.length, media, { backs }).map((pg) => `<section class="sheet">${pg.cells.map((i, c) => {
+    const x = (c % media.cols) * cw;
+    const y = Math.floor(c / media.cols) * ch;
+    const body = i === null ? '' : pg.side === 'front' ? front(households[i]) : back(households[i]);
+    return `<div class="cell${f.outline.checked ? ' outlined' : ''}" style="left:${x}in;top:${y}in">${body}</div>`;
+  }).join('')}</section>`).join('');
   const link = fontLink(o.design);
-  const pages = households.map((h) => `<section class="print-page">${renderDesign(o.design, fieldValues({ occasion: o, greeting: greetingFor(h, f.greetStyle.value), fromName: fromName() }), { padding: paper.pad })}</section>`).join('');
   win.document.open();
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(o.name)} - invitations</title>
     ${link ? `<link rel="stylesheet" href="${esc(link)}">` : ''}
     <style>
-      @page { size: ${paper.w} ${paper.h}; margin: 0; }
+      @page { size: ${media.sheet[0]}in ${media.sheet[1]}in; margin: 0; }
       html, body { margin: 0; }
-      .print-page { width: ${paper.w}; height: ${paper.h}; overflow: hidden; break-after: page; page-break-after: always; }
-      .print-page:last-child { break-after: auto; page-break-after: auto; }
-      .print-page .design { height: 100%; box-sizing: border-box; }
+      .sheet { position: relative; width: ${media.sheet[0]}in; height: ${media.sheet[1]}in; overflow: hidden; break-after: page; page-break-after: always; background: #fff; }
+      .sheet:last-child { break-after: auto; page-break-after: auto; }
+      .cell { position: absolute; width: ${cw}in; height: ${ch}in; overflow: hidden; box-sizing: border-box; }
+      .cell.outlined { outline: 1px dashed #9a9a9a; outline-offset: -1px; }
+      .cell .design { height: 100%; box-sizing: border-box; }
       .design p { margin: 0 0 12px; }
       .design img { max-width: 100%; height: auto; }
-      @media screen { body { background: #8a8a8a; padding: 16px 0; } .print-page { margin: 0 auto 16px; box-shadow: 0 2px 10px rgba(0,0,0,.35); } }
+      .back { position: absolute; left: 0; top: 0; transform-origin: 0 0; font-family: Helvetica, Arial, sans-serif; color: #000; }
+      .back .ret { position: absolute; left: 0.3in; top: 0.3in; max-width: 45%; font-size: 8pt; line-height: 1.25; }
+      .back .to { position: absolute; left: 46%; top: 47%; transform: translateY(-50%); max-width: 50%; font-size: 12pt; line-height: 1.3; overflow-wrap: anywhere; }
+      @media screen { body { background: #8a8a8a; padding: 16px 0; } .sheet { margin: 0 auto 16px; box-shadow: 0 2px 10px rgba(0,0,0,.35); } }
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     </style></head><body>${pages}</body></html>`);
   win.document.close();
   lastPrinted = households.map((h) => h.id);
-  const after = modal.querySelector('[data-after]');
-  after.hidden = false;
-  after.innerHTML = `<span>${plural(households.length, 'invitation')} opened in a new tab.${canEdit() ? ` Once they're in the mail, mark ${plural(households.length, 'household')} as mailed.` : ''}</span>
-    ${canEdit() ? '<button type="button" class="btn sm primary" data-action="mark-printed">Mark mailed</button>' : ''}`;
+  showAfterPrint(`${plural(households.length, 'invitation')} opened in a new tab.`);
   // Print once the fonts and pictures have loaded.
   await win.document.fonts?.ready.catch(() => {});
   await Promise.all([...win.document.images].map((img) => (img.complete ? null : new Promise((r) => { img.onload = r; img.onerror = r; }))));
@@ -1854,10 +1898,12 @@ async function printInvitations(form) {
 async function makePdf(form) {
   const f = form.elements;
   const what = f.what.value;
+  const media = f.media.value;
+  savePrintPref(what, media);
   if (what === 'invitations') return printInvitations(form);
   const print = state.me?.profile?.print ?? {};
   const outline = f.outline.checked;
-  await withBusy(form.querySelector('.btn.primary'), async () => {
+  await withBusy(form.querySelector('.modal-foot .btn.primary'), async () => {
     const JsPDF = await getJsPDF();
     let doc;
     let households = [];
@@ -1868,36 +1914,23 @@ async function makePdf(form) {
         start: Number(f.start.value) || 1, offsetX: print.labelOffsetX, offsetY: print.labelOffsetY, outline,
       });
     } else {
-      const tags = tagMap();
-      const byId = hhById();
-      const shownIds = new Set(shownRecipients().map((h) => h.id));
-      households = [...tags.values()]
-        .filter((t) => f.who.value === 'all' || (f.who.value === 'unmailed' ? !t.mailedAt : shownIds.has(t.householdId)))
-        .map((t) => byId.get(t.householdId)).filter(Boolean);
-      const skipped = households.filter((h) => !isMailable(h.address));
-      households = households.filter((h) => isMailable(h.address));
-      households.sort(f.order.value === 'zip'
-        ? (a, b) => String(a.address.zip ?? '').localeCompare(String(b.address.zip ?? '')) || byName(a, b)
-        : byName);
-      if (!households.length) throw new Error(skipped.length ? 'Nobody chosen has a complete mailing address.' : 'Nobody to print for.');
-      // Formal: the saved formal name, else the same "Mr. and Mrs. <Last>" suggestion the edit screen shows.
-      const items = households.map((h) => addressLines(envelopeName({ ...h, formalName: effectiveFormalName(h) }, f.nameStyle.value), h.address));
-      doc = what === 'labels'
-        ? buildLabels(JsPDF, items, { start: Number(f.start.value) || 1, offsetX: print.labelOffsetX, offsetY: print.labelOffsetY, outline })
-        : buildEnvelopes(JsPDF, items, {
-          returnLines: f.withReturn.checked ? returnLines() : [], offsetX: print.envelopeOffsetX, offsetY: print.envelopeOffsetY, outline,
-        });
-      if (skipped.length) toast(`Skipped ${plural(skipped.length, 'household')} with no complete address: ${skipped.slice(0, 3).map((h) => h.labelName).join(', ')}${skipped.length > 3 ? '…' : ''}`, true);
+      const chosen = chosenHouseholds(f, { needAddress: true });
+      households = chosen.households;
+      if (!households.length) throw new Error(chosen.skipped.length ? 'Nobody chosen has a complete mailing address.' : 'Nobody to print for.');
+      const items = households.map((h) => addressLines(addressName(h, f.greet.value), h.address));
+      doc = isEnvelope(media)
+        ? buildEnvelopes(JsPDF, items, {
+          envelope: media, returnLines: f.withReturn.checked ? returnLines() : [], offsetX: print.envelopeOffsetX, offsetY: print.envelopeOffsetY, outline,
+        })
+        : buildLabels(JsPDF, items, { start: Number(f.start.value) || 1, offsetX: print.labelOffsetX, offsetY: print.labelOffsetY, outline });
+      skippedToast(chosen.skipped);
     }
     const url = doc.output('bloburl');
     const win = window.open(url, '_blank');
     lastPrinted = households.map((h) => h.id);
-    const after = modal.querySelector('[data-after]');
-    after.hidden = false;
-    after.innerHTML = `<span>${win ? 'The PDF opened in a new tab.' : `<a href="${url}" target="_blank" rel="noopener">Open the PDF</a> (your browser blocked the new tab).`}
-      ${lastPrinted.length && canEdit() ? `Once they're in the mail, mark ${plural(lastPrinted.length, 'household')} as mailed.` : ''}</span>
-      ${lastPrinted.length && canEdit() ? '<button type="button" class="btn sm primary" data-action="mark-printed">Mark mailed</button>' : ''}`;
+    showAfterPrint(win ? 'The PDF opened in a new tab.' : `<a href="${url}" target="_blank" rel="noopener">Open the PDF</a> (your browser blocked the new tab).`);
   });
+  return undefined;
 }
 
 // ---------- design window (Invitations and Emails) ----------
@@ -3363,7 +3396,7 @@ document.addEventListener('change', (e) => {
   }
   if (k === 'csv-file' && t.files?.[0]) readImportFile(t.files[0]).catch((err) => modalError(err.message));
   if (t.dataset?.map !== undefined) updateImportSummary();
-  if (t.name === 'what' && t.form?.dataset.form === 'print') syncPrintForm();
+  if (t.form?.dataset.form === 'print' && ['what', 'media', 'withBack'].includes(t.name)) syncPrintForm({ whatChanged: t.name === 'what' });
 });
 
 document.addEventListener('submit', async (e) => {
