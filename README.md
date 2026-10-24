@@ -135,6 +135,7 @@ The API Lambda verifies each Cognito ID token against the user pool's JWKS befor
 | `frontend/app.js` | The single-page app (vanilla JS, no build step) |
 | `frontend/update.html` | Public "confirm your address" page |
 | `scripts/deploy.sh` | Test, build, deploy, publish site |
+| `scripts/make-icons.py` | Draws the app icon (`frontend/icon.svg`) and writes the favicon, 192px and Apple touch icons (`pip install cairosvg pillow`) |
 
 ### Data model (single table)
 
