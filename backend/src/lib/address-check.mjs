@@ -39,7 +39,7 @@ export function splitUnit(line) {
 
 // ---------- the Google API ----------
 // getApiKey: async () => the API key, or null when checks aren't set up.
-export function createGoogleClient({ getApiKey, fetchFn = fetch }) {
+export function createGoogleClient({ getApiKey, fetchFn = fetch, timeoutMs = 10_000 }) {
   return {
     async enabled() { return !!(await getApiKey()); },
 
@@ -57,9 +57,19 @@ export function createGoogleClient({ getApiKey, fetchFn = fetch }) {
         },
         enableUspsCass: true, // Post Office standardizing for US addresses; same price
       };
-      const res = await fetchFn(`${API}?key=${encodeURIComponent(key)}`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
-      });
+      let res;
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), timeoutMs); // well inside the API Gateway's 30 seconds
+      try {
+        res = await fetchFn(`${API}?key=${encodeURIComponent(key)}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal,
+        });
+      } catch {
+        if (ctl.signal.aborted) throw new HttpError(504, "Google didn't answer in time. Try the check again.");
+        throw new HttpError(502, "Couldn't reach Google for the address check. Try again in a minute.");
+      } finally {
+        clearTimeout(timer);
+      }
       const json = await res.json().catch(() => ({}));
       if (res.status === 429) throw new HttpError(429, 'Google says too many address checks right now. Try again later.');
       if (res.status === 400) throw new HttpError(400, "Google couldn't read that address");

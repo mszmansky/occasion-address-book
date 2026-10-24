@@ -160,15 +160,21 @@ async function api(path, { method = 'GET', body } = {}) {
   const session = await auth.getSession();
   if (!session) throw new Error('Please sign in again');
   const token = session.idToken; // the API checks Cognito ID tokens (they carry the email)
-  const res = await fetch(`${cfg.apiUrl.replace(/\/$/, '')}${path}`, {
-    method,
-    headers: {
-      authorization: `Bearer ${token}`,
-      ...(state.bookId && state.bookId !== session.user?.sub ? { 'x-book': state.bookId } : {}),
-      ...(body ? { 'content-type': 'application/json' } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`${cfg.apiUrl.replace(/\/$/, '')}${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(state.bookId && state.bookId !== session.user?.sub ? { 'x-book': state.bookId } : {}),
+        ...(body ? { 'content-type': 'application/json' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // The browser's own wording ("Load failed", "Failed to fetch") means no answer came back at all.
+    throw new Error(navigator.onLine === false ? "You're offline. Check your connection and try again." : "Couldn't reach the server. Try again in a moment.");
+  }
   const json = res.status === 204 ? null : await res.json().catch(() => ({}));
   if (res.status === 401) {
     await auth.signOut();

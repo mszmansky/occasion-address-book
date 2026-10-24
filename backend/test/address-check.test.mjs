@@ -83,6 +83,13 @@ test('errors are explained', async () => {
   status = 500; await assert.rejects(client.lookup({ line1: 'x', state: 'MI' }), { status: 502 });
 });
 
+test('a slow or unreachable Google gives a clear message', async () => {
+  const hang = async (url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+  await assert.rejects(createGoogleClient({ getApiKey: key, fetchFn: hang, timeoutMs: 50 }).lookup({ line1: 'x', state: 'MI' }), (e) => e.status === 504 && /in time/.test(e.message));
+  const down = async () => { throw new TypeError('fetch failed'); };
+  await assert.rejects(createGoogleClient({ getApiKey: key, fetchFn: down }).lookup({ line1: 'x', state: 'MI' }), (e) => e.status === 502 && /reach Google/.test(e.message));
+});
+
 test('no API key: checks are off', async () => {
   const checker = createAddressChecker({ repo: createMemoryRepo(), client: createGoogleClient({ getApiKey: async () => null, fetchFn: fakeFetch() }) });
   assert.deepEqual(await checker.status(), { enabled: false });
