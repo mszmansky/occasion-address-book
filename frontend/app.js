@@ -1,6 +1,6 @@
 import { createAuth } from './auth.js';
 import {
-  addressLines, addressProblem, buildEnvelopes, buildLabels, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES, INVITE_MEDIA, invitePages,
+  addressLines, addressProblem, buildEnvelopes, buildLabels, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES, INVITE_MEDIA, invitePages, inviteLayout,
 } from './print-core.js';
 import { activeCount, emptyFilter, filterChips, filterOptions, matchesFilter } from './filter-core.js';
 import {
@@ -1658,9 +1658,9 @@ function occasionModal(o) {
       ${nameStyleOptions(o.nameStyle)}</select></label>
     <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design invitation…</button></div>
     <div data-kinds="email" ${kind === 'email' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design email…</button></div>
-    <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Greeting<select name="greetStyle">
+    <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><span data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}>Invitation Greeting</span><span data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email Greeting</span><select name="greetStyle">
       ${[['informal', 'Informal Greeting'], ['formal', 'Formal Greeting'], ['household', 'Household Greeting'], ['person', "The person's first name"]]
-    .map(([k, l]) => `<option value="${k}" ${(o.greetStyle ?? 'informal') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    .map(([k, l]) => `<option value="${k}" ${k === 'person' ? `data-kinds="email" ${kind === 'email' ? '' : 'hidden disabled'}` : ''} ${(o.greetStyle ?? 'informal') === k && !(k === 'person' && kind !== 'email') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email subject<input name="subject" maxlength="200" value="${val(o.invite?.subject)}" placeholder="You're invited: ${val(o.name) || 'our holiday open house'}"></label>
     ${isNew && copyable.length ? `<label>Start with the list from <span class="muted">(optional)</span><select name="copyFrom"><option value="">Nobody yet</option>
       ${copyable.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} (${x.counts.tagged})</option>`).join('')}</select></label>` : ''}
@@ -1740,12 +1740,14 @@ const PRINT_MEDIA = {
   addresses: [['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name]],
   return: [['avery5160', LABEL_SHEETS.avery5160.name]],
 };
-const GREETING_STYLES = [['household', 'Household Greeting'], ['formal', 'Formal Greeting'], ['informal', 'Informal Greeting']];
+// Printing follows the occasion: its Greeting Style for the first line of addresses, and its
+// Invitation Greeting for the greeting inside each invitation.
+const inviteGreetStyle = (o) => (['formal', 'household'].includes(o?.greetStyle) ? o.greetStyle : 'informal');
 const isEnvelope = (media) => Boolean(ENVELOPES[media]);
 
 // The last stock chosen for each kind of printing (this browser only).
 function printPrefs() { try { return JSON.parse(localStorage.getItem('oab.print') || '{}'); } catch { return {}; } }
-function savePrintPref(what, media) { try { localStorage.setItem('oab.print', JSON.stringify({ ...printPrefs(), [what]: media })); } catch { /* not saved */ } }
+function savePrintPref(prefs) { try { localStorage.setItem('oab.print', JSON.stringify({ ...printPrefs(), ...prefs })); } catch { /* not saved */ } }
 
 function printModal() {
   const o = state.occ.occasion;
@@ -1771,7 +1773,10 @@ function printModal() {
         <option value="shown">On the list and shown below (${shownRecipients().filter((h) => tags.has(h.id)).length})</option></select></label>
       <label>Order<select name="order"><option value="name">By last name</option><option value="zip">By ZIP code</option></select></label>
     </div>
-    <label data-for="greet">Greeting Style<select name="greet">${GREETING_STYLES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+    <div class="print-what" data-for="orient"><span class="field-label">Orientation</span><div class="seg fp-seg" role="radiogroup" aria-label="Orientation">
+      <label><input type="radio" name="orient" value="portrait" ${printPrefs().orient === 'landscape' ? '' : 'checked'}><span>Portrait</span></label>
+      <label><input type="radio" name="orient" value="landscape" ${printPrefs().orient === 'landscape' ? 'checked' : ''}><span>Landscape</span></label>
+    </div></div>
     <label data-for="start">Start on label number<input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
     <label class="check" data-for="back"><input type="checkbox" name="withBack" checked> Print the address on the back</label>
     <label class="check" data-for="ret"><input type="checkbox" name="withReturn" ${hasReturn ? 'checked' : 'disabled'}> Return address in the corner</label>
@@ -1793,14 +1798,12 @@ function syncPrintForm({ whatChanged = false } = {}) {
     const keep = options.some(([k]) => k === f.media.value) ? f.media.value : printPrefs()[what];
     f.media.innerHTML = options.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('');
     f.media.value = options.some(([k]) => k === keep) ? keep : options[0][0];
-    const o = state.occ.occasion;
-    f.greet.value = what === 'invitations' ? 'informal' : ({ label: 'household', formal: 'formal', informal: 'informal' }[o.nameStyle] ?? 'household');
   }
   const media = f.media.value;
   const postcard = what === 'invitations' && INVITE_MEDIA[media]?.postcard;
   const show = (k, on) => { form.querySelector(`[data-for=${k}]`).hidden = !on; };
   show('who', what !== 'return');
-  show('greet', what !== 'return');
+  show('orient', what === 'invitations');
   show('start', media === 'avery5160');
   show('back', Boolean(postcard));
   show('ret', (what === 'addresses' && isEnvelope(media)) || Boolean(postcard && f.withBack.checked));
@@ -1823,8 +1826,8 @@ function chosenHouseholds(f, { needAddress }) {
   return { households, skipped };
 }
 
-// The first line of an address: which greeting, falling back to the Household Greeting.
-const addressName = (h, greet) => envelopeName({ ...h, formalName: effectiveFormalName(h) }, greet === 'household' ? 'label' : greet);
+// The first line of an address: the occasion's Greeting Style, falling back to the Household Greeting.
+const addressName = (h, o) => envelopeName({ ...h, formalName: effectiveFormalName(h) }, o.nameStyle);
 
 function skippedToast(skipped) {
   if (skipped.length) toast(`Skipped ${plural(skipped.length, 'household')} with no complete address: ${skipped.slice(0, 3).map((h) => h.labelName).join(', ')}${skipped.length > 3 ? '…' : ''}`, true);
@@ -1851,13 +1854,17 @@ async function printInvitations(form) {
   const win = window.open('', '_blank'); // opened right away so the browser doesn't block it
   if (!win) return modalError('Your browser blocked the new tab. Allow pop-ups for this site and try again.');
   skippedToast(skipped);
-  const [cw, ch] = media.card;
+  const layout = inviteLayout(media, f.orient.value);
+  const [cw, ch] = layout.card;
   const ret = backs && f.withReturn.checked ? returnLines() : [];
-  const front = (h) => renderDesign(o.design, fieldValues({ occasion: o, greeting: greetingFor(h, f.greet.value), fromName: fromName() }), { padding: `${media.pad}in` });
-  const back = (h) => `<div class="back" style="width:${ch}in;height:${cw}in;transform:translate(${cw}in,0) rotate(90deg)">
-      ${ret.length ? `<div class="ret">${ret.map(esc).join('<br>')}</div>` : ''}
-      <div class="to">${addressLines(addressName(h, f.greet.value === 'informal' ? 'household' : f.greet.value), h.address).map(esc).join('<br>')}</div>
-    </div>`;
+  // Content drawn the other way round from its place is turned a quarter to fit it.
+  const place = (html, turn, cls = '') => (turn
+    ? `<div class="turned ${cls}" style="width:${ch}in;height:${cw}in;transform:translate(${cw}in,0) rotate(90deg)">${html}</div>`
+    : `<div class="upright ${cls}">${html}</div>`);
+  const front = (h) => place(renderDesign(o.design, fieldValues({ occasion: o, greeting: greetingFor(h, inviteGreetStyle(o)), fromName: fromName() }), { padding: `${media.pad}in` }), layout.rotateFront);
+  // The address side always runs along the card's long side.
+  const back = (h) => place(`${ret.length ? `<div class="ret">${ret.map(esc).join('<br>')}</div>` : ''}
+      <div class="to">${addressLines(addressName(h, o), h.address).map(esc).join('<br>')}</div>`, cw < ch, 'back');
   const pages = invitePages(households.length, media, { backs }).map((pg) => `<section class="sheet">${pg.cells.map((i, c) => {
     const x = (c % media.cols) * cw;
     const y = Math.floor(c / media.cols) * ch;
@@ -1869,16 +1876,18 @@ async function printInvitations(form) {
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(o.name)} - invitations</title>
     ${link ? `<link rel="stylesheet" href="${esc(link)}">` : ''}
     <style>
-      @page { size: ${media.sheet[0]}in ${media.sheet[1]}in; margin: 0; }
+      @page { size: ${layout.sheet[0]}in ${layout.sheet[1]}in; margin: 0; }
       html, body { margin: 0; }
-      .sheet { position: relative; width: ${media.sheet[0]}in; height: ${media.sheet[1]}in; overflow: hidden; break-after: page; page-break-after: always; background: #fff; }
+      .sheet { position: relative; width: ${layout.sheet[0]}in; height: ${layout.sheet[1]}in; overflow: hidden; break-after: page; page-break-after: always; background: #fff; }
       .sheet:last-child { break-after: auto; page-break-after: auto; }
       .cell { position: absolute; width: ${cw}in; height: ${ch}in; overflow: hidden; box-sizing: border-box; }
       .cell.outlined { outline: 1px dashed #9a9a9a; outline-offset: -1px; }
-      .cell .design { height: 100%; box-sizing: border-box; }
+      .turned { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+      .upright { position: absolute; inset: 0; }
+      .turned > .design, .upright > .design { height: 100%; box-sizing: border-box; }
       .design p { margin: 0 0 12px; }
       .design img { max-width: 100%; height: auto; }
-      .back { position: absolute; left: 0; top: 0; transform-origin: 0 0; font-family: Helvetica, Arial, sans-serif; color: #000; }
+      .back { font-family: Helvetica, Arial, sans-serif; color: #000; }
       .back .ret { position: absolute; left: 0.3in; top: 0.3in; max-width: 45%; font-size: 8pt; line-height: 1.25; }
       .back .to { position: absolute; left: 46%; top: 47%; transform: translateY(-50%); max-width: 50%; font-size: 12pt; line-height: 1.3; overflow-wrap: anywhere; }
       @media screen { body { background: #8a8a8a; padding: 16px 0; } .sheet { margin: 0 auto 16px; box-shadow: 0 2px 10px rgba(0,0,0,.35); } }
@@ -1899,7 +1908,7 @@ async function makePdf(form) {
   const f = form.elements;
   const what = f.what.value;
   const media = f.media.value;
-  savePrintPref(what, media);
+  savePrintPref({ [what]: media, ...(what === 'invitations' ? { orient: f.orient.value } : {}) });
   if (what === 'invitations') return printInvitations(form);
   const print = state.me?.profile?.print ?? {};
   const outline = f.outline.checked;
@@ -1917,7 +1926,7 @@ async function makePdf(form) {
       const chosen = chosenHouseholds(f, { needAddress: true });
       households = chosen.households;
       if (!households.length) throw new Error(chosen.skipped.length ? 'Nobody chosen has a complete mailing address.' : 'Nobody to print for.');
-      const items = households.map((h) => addressLines(addressName(h, f.greet.value), h.address));
+      const items = households.map((h) => addressLines(addressName(h, state.occ.occasion), h.address));
       doc = isEnvelope(media)
         ? buildEnvelopes(JsPDF, items, {
           envelope: media, returnLines: f.withReturn.checked ? returnLines() : [], offsetX: print.envelopeOffsetX, offsetY: print.envelopeOffsetY, outline,
@@ -2498,7 +2507,7 @@ function wireDesign(editor) {
     const o = state.occ.occasion;
     previewAt = Math.min(Math.max(0, previewAt), Math.max(0, list.length - 1));
     const h = list[previewAt];
-    const greeting = !h ? 'Friend' : kindOf(o) === 'email' ? listGreeting(h, tagMap().get(h.id) ?? {}) : greetingFor(h, 'informal');
+    const greeting = !h ? 'Friend' : kindOf(o) === 'email' ? listGreeting(h, tagMap().get(h.id) ?? {}) : greetingFor(h, inviteGreetStyle(o));
     const design = currentDesign();
     loadFont(design);
     pane.querySelector('[data-preview-pos]').innerHTML = h
@@ -3365,7 +3374,10 @@ document.addEventListener('change', (e) => {
   const t = e.target;
   if (t.matches?.('[data-who]')) syncSendRows();
   if (t.matches?.('[data-occ-kind]')) {
-    modal.querySelectorAll('[data-kinds]').forEach((el) => { el.hidden = !el.dataset.kinds.split(' ').includes(t.value); });
+    modal.querySelectorAll('[data-kinds]').forEach((el) => {
+      el.hidden = !el.dataset.kinds.split(' ').includes(t.value);
+      if (el.tagName === 'OPTION') { el.disabled = el.hidden; if (el.hidden && el.selected) el.parentElement.value = 'informal'; }
+    });
   }
   if (t.dataset?.m === 'primary' && t.checked) {
     t.closest('[data-members]').querySelectorAll('[data-m=primary]').forEach((cb) => { if (cb !== t) cb.checked = false; });

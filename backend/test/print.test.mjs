@@ -134,3 +134,11 @@ test('A2 envelopes for 4¼ × 5½ cards', async () => {
     assert.ok(c.y > 0.25 && c.y < a2.page[1] - 0.625, `y ${c.y} clears the barcode strip`);
   }
 });
+
+test('invitation orientation: single cards turn the page; Avery 8387 turns each design in its place', async () => {
+  const { INVITE_MEDIA, inviteLayout } = await import('../../frontend/print-core.js');
+  assert.deepEqual(inviteLayout(INVITE_MEDIA.card5x7), { sheet: [5, 7], card: [5, 7], landscape: false, rotateFront: false });
+  assert.deepEqual(inviteLayout(INVITE_MEDIA.card5x7, 'landscape'), { sheet: [7, 5], card: [7, 5], landscape: true, rotateFront: false });
+  assert.deepEqual(inviteLayout(INVITE_MEDIA.avery8387, 'landscape'), { sheet: [8.5, 11], card: [4.25, 5.5], landscape: true, rotateFront: true });
+  assert.equal(inviteLayout(INVITE_MEDIA.avery8387, 'portrait').rotateFront, false);
+});

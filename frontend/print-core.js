@@ -208,3 +208,17 @@ export function invitePages(n, media, { backs = false } = {}) {
   }
   return pages;
 }
+
+/**
+ * How invitations sit on the stock for an orientation. A single card per page simply turns the page
+ * (landscape 7 × 5); a sheet of several cards (Avery 8387) stays as it is, so each card's design is
+ * turned a quarter within its place instead. sheet and card are as laid out on the printed page.
+ */
+export function inviteLayout(media, orientation = 'portrait') {
+  const landscape = orientation === 'landscape';
+  const single = media.cols * media.rows === 1;
+  const turnPage = landscape && single && media.card[0] < media.card[1];
+  const sheet = turnPage ? [media.sheet[1], media.sheet[0]] : media.sheet;
+  const card = turnPage ? [media.card[1], media.card[0]] : media.card;
+  return { sheet, card, landscape, rotateFront: landscape !== card[0] > card[1] };
+}
