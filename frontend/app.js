@@ -239,7 +239,7 @@ function renderLanding() {
         <div class="ld-text"><h2>One address book for the whole family</h2>
           <p>Each household is one envelope: its greetings, mailing address, the people in it with their email and phone, groups like Family or Neighbors, and notes. Bring in your old list from a spreadsheet, and search or filter it by group, city, state or ZIP.</p></div>
         <div class="ld-visual ld-hh">
-          <div class="mini-card"><b>The Smith Family</b><span>Mr. and Mrs. John Smith</span><span>123 Maple Street<br>Willow Bend, MI 49002</span><span class="mini-chips"><i>Family</i><i>Christmas</i></span></div>
+          <div class="mini-card"><span class="mini-verified" title="Address verified"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.2 10.3l2.5 2.5 5.1-5.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>The Smith Family</b><span>Mr. and Mrs. John Smith</span><span>123 Maple Street<br>Willow Bend, MI 49002</span><span class="mini-chips"><i>Family</i><i>Christmas</i></span></div>
           <div class="mini-card"><b>The Jones Family</b><span>Bob and Carol</span><span>9 Elm Court<br>Cedar Hollow, MI 49003</span><span class="mini-chips"><i>Neighbors</i></span></div>
         </div>
       </article>
@@ -253,13 +253,22 @@ function renderLanding() {
       </article>
       <article class="ld-feature">
         <div class="ld-text"><h2>Labels and envelopes, ready to print</h2>
-          <p>Tick who an occasion is for and print Avery 5160 / 8160 address labels or A7 envelopes with your return address, with each household's greeting on the first line. Start partway through a used label sheet, then mark everyone as mailed.</p></div>
+          <p>Tick who an occasion is for and print Avery 5160 / 8160 address labels, or A2 and A7 envelopes with your return address, with the greeting you choose on the first line. Start partway through a used label sheet, then mark everyone as mailed.</p></div>
         <div class="ld-visual"><div class="label-sheet">${Array.from({ length: 15 }, (_, i) => `<span class="lbl${i < 5 ? ' used' : ''}">${i < 5 ? '' : ['The Smith Family<br>123 Maple Street<br>Willow Bend, MI 49002', 'The Jones Family<br>9 Elm Court<br>Cedar Hollow, MI 49003', 'Grandma Rose<br>40 Lake Drive<br>Juniper Ridge, MI 49004'][i % 3]}</span>`).join('')}</div></div>
       </article>
       <article class="ld-feature">
         <div class="ld-text"><h2>Invitations and emails you design yourself</h2>
-          <p>Choose fonts and colors, add your own pictures, borders and flourishes, and drop in each guest's greeting and the date, time and place. Print the invitations, or email them to just the people you pick.</p></div>
+          <p>Choose fonts and colors, add your own pictures, borders and flourishes, and drop in each guest's greeting and the date, time and place. Print them on cards or on Avery 8387 postcards with each address on the back, or email them to just the people you pick.</p></div>
         <div class="ld-visual"><div class="mini-invite"><span class="mi-script">You're invited</span><span class="mi-flourish"></span><span>Dear John and Mary,</span><span>Holiday open house<br>Saturday, December 19 at 7:00 PM</span></div></div>
+      </article>
+      <article class="ld-feature">
+        <div class="ld-text"><h2>Every address checked with the Post Office</h2>
+          <p><b>Check address</b> looks an address up in the Post Office's own address data. It tidies the spelling, adds the ZIP+4, and catches a missing apartment number. Once an address is verified, its household gets a green check, and a filter shows you the ones still to check.</p></div>
+        <div class="ld-visual"><div class="mini-verify">
+          <div class="mv-head">${CHECK_ICON} <b>Confirmed: mail is delivered here.</b></div>
+          <div class="mv-compare"><div><span>You entered</span>123 maple st<br>willow bend mi</div><div><span>Suggested</span>123 Maple St<br>Willow Bend, MI <span class="nw">49002-1234</span></div></div>
+          <span class="mini-btns"><i class="yes">Use suggested address</i><i>Keep mine</i></span>
+        </div></div>
       </article>
       <article class="ld-feature">
         <div class="ld-text"><h2>Addresses that stay up to date</h2>
