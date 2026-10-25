@@ -8,7 +8,7 @@
 
 import { HttpError } from './auth.mjs';
 
-export const MONTHLY_LIMIT = 1000; // Google's free amount is 5,000 a month; this keeps far below it
+export const MONTHLY_LIMIT = 4000; // Google's free amount is 5,000 a month; this leaves 1,000 to spare
 const QUOTA_PK = 'ADDRCHECK#QUOTA';
 const API = 'https://addressvalidation.googleapis.com/v1:validateAddress';
 
