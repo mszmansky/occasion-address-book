@@ -1747,7 +1747,8 @@ let lastPrinted = [];
 const PRINT_MEDIA = {
   invitations: Object.entries(INVITE_MEDIA).map(([k, m]) => [k, m.name]),
   addresses: [['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name]],
-  return: [['avery5160', LABEL_SHEETS.avery5160.name]],
+  return: [['avery5195', LABEL_SHEETS.avery5195.name], ['avery5160', LABEL_SHEETS.avery5160.name],
+    ['a2', `${ENVELOPES.a2.name}, return address only`], ['a7', `${ENVELOPES.a7.name}, return address only`]],
 };
 // Printing follows the occasion: its Greeting Style for the first line of addresses, and its
 // Invitation Greeting for the greeting inside each invitation.
@@ -1787,6 +1788,7 @@ function printModal() {
       <label><input type="radio" name="orient" value="landscape" ${printPrefs().orient === 'landscape' ? 'checked' : ''}><span>Landscape</span></label>
     </div></div>
     <label data-for="start">Start on label number<input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
+    <label data-for="count">How many<input name="count" type="number" min="1" max="500" value="${Math.max(1, tags.size)}" style="max-width:110px"></label>
     <label class="check" data-for="back"><input type="checkbox" name="withBack" checked> Print the address on the back</label>
     <label class="check" data-for="ret"><input type="checkbox" name="withReturn" ${hasReturn ? 'checked' : 'disabled'}> Return address in the corner</label>
     <label class="check" data-for="outline"><input type="checkbox" name="outline"> Draw outlines (test print on plain paper)</label>
@@ -1804,7 +1806,7 @@ function syncPrintForm({ whatChanged = false } = {}) {
   const what = f.what.value || 'addresses';
   if (whatChanged) {
     const options = PRINT_MEDIA[what];
-    const keep = options.some(([k]) => k === f.media.value) ? f.media.value : printPrefs()[what];
+    const keep = printPrefs()[what]; // each kind of printing starts from its own last choice
     f.media.innerHTML = options.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('');
     f.media.value = options.some(([k]) => k === keep) ? keep : options[0][0];
   }
@@ -1813,10 +1815,13 @@ function syncPrintForm({ whatChanged = false } = {}) {
   const show = (k, on) => { form.querySelector(`[data-for=${k}]`).hidden = !on; };
   show('who', what !== 'return');
   show('orient', what === 'invitations');
-  show('start', media === 'avery5160');
+  const sheet = LABEL_SHEETS[media];
+  show('start', Boolean(sheet));
+  if (sheet) f.start.max = String(sheet.cols * sheet.rows);
+  show('count', what === 'return' && isEnvelope(media));
   show('back', Boolean(postcard));
   show('ret', (what === 'addresses' && isEnvelope(media)) || Boolean(postcard && f.withBack.checked));
-  show('outline', media === 'avery5160' || isEnvelope(media) || media === 'avery8387');
+  show('outline', Boolean(sheet) || isEnvelope(media) || media === 'avery8387');
   form.querySelector('.modal-foot .btn.primary').textContent = what === 'invitations' ? 'Print invitations' : 'Make PDF';
 }
 
@@ -1928,9 +1933,21 @@ async function makePdf(form) {
     if (what === 'return') {
       const lines = returnLines();
       if (!lines.length) throw new Error('Set your return address in Settings first.');
-      doc = buildLabels(JsPDF, Array(31 - Number(f.start.value || 1)).fill(lines), {
-        start: Number(f.start.value) || 1, offsetX: print.labelOffsetX, offsetY: print.labelOffsetY, outline,
-      });
+      if (isEnvelope(media)) {
+        // Return address only, for envelopes addressed by hand.
+        const count = Math.min(500, Math.max(1, Math.floor(Number(f.count.value)) || 1));
+        doc = buildEnvelopes(JsPDF, Array.from({ length: count }, () => []), {
+          envelope: media, returnLines: lines, offsetX: print.envelopeOffsetX, offsetY: print.envelopeOffsetY, outline,
+        });
+      } else {
+        // The rest of the sheet, from the starting label.
+        const sheet = LABEL_SHEETS[media] ?? LABEL_SHEETS.avery5195;
+        const per = sheet.cols * sheet.rows;
+        const start = Math.min(per, Math.max(1, Number(f.start.value) || 1));
+        doc = buildLabels(JsPDF, Array(per - start + 1).fill(lines), {
+          sheet: LABEL_SHEETS[media] ? media : 'avery5195', start, offsetX: print.labelOffsetX, offsetY: print.labelOffsetY, outline,
+        });
+      }
     } else {
       const chosen = chosenHouseholds(f, { needAddress: true });
       households = chosen.households;
@@ -1940,7 +1957,7 @@ async function makePdf(form) {
         ? buildEnvelopes(JsPDF, items, {
           envelope: media, returnLines: f.withReturn.checked ? returnLines() : [], offsetX: print.envelopeOffsetX, offsetY: print.envelopeOffsetY, outline,
         })
-        : buildLabels(JsPDF, items, { start: Number(f.start.value) || 1, offsetX: print.labelOffsetX, offsetY: print.labelOffsetY, outline });
+        : buildLabels(JsPDF, items, { sheet: media, start: Number(f.start.value) || 1, offsetX: print.labelOffsetX, offsetY: print.labelOffsetY, outline });
       skippedToast(chosen.skipped);
     }
     const url = doc.output('bloburl');

@@ -12,6 +12,17 @@ export const LABEL_SHEETS = {
     padX: 0.12, padY: 0.08,      // printable inset inside each label
     maxPt: 11, minPt: 6.5,
   },
+  // Return address labels; 5195, 8195 and 18294 (and others) share this template.
+  avery5195: {
+    name: 'Avery 5195 / 8195 / 18294 return address labels (60 per sheet)',
+    page: [8.5, 11],
+    cols: 4, rows: 15,
+    width: 1.75, height: 2 / 3,
+    left: 0.28, top: 0.5,
+    pitchX: 2.0625, pitchY: 2 / 3,
+    padX: 0.08, padY: 0.05,
+    maxPt: 8.5, minPt: 5.5, wrapPt: 6.5, // small labels: shrink further before wrapping
+  },
 };
 
 export const ENVELOPES = {
@@ -133,7 +144,7 @@ export function buildLabels(JsPDF, items, { sheet = 'avery5160', start = 1, offs
     if (slot < first || !item) continue;
     const maxWidth = s.width - 2 * s.padX;
     const maxHeight = s.height - 2 * s.padY;
-    const { pt, lines } = fitBlock(doc, item, { maxWidth, maxHeight, maxPt: s.maxPt, minPt: s.minPt, wrapPt: 8 });
+    const { pt, lines } = fitBlock(doc, item, { maxWidth, maxHeight, maxPt: s.maxPt, minPt: s.minPt, wrapPt: s.wrapPt ?? 8 });
     const blockH = (lines.length * pt * LINE) / 72;
     // Centre the block vertically within the label.
     drawBlock(doc, lines, x + s.padX, y + (s.height - blockH) / 2, pt, maxWidth);
@@ -163,6 +174,7 @@ export function buildEnvelopes(JsPDF, items, { envelope = 'a7', returnLines = []
       const rpt = fitFont(doc, returnLines, { maxWidth: e.returnMaxWidth, maxHeight: 1.2, maxPt: e.returnPt, minPt: 7 });
       drawBlock(doc, returnLines, e.returnAt[0] + offsetX, e.returnAt[1] + offsetY, rpt, e.returnMaxWidth);
     }
+    if (!lines?.length) return; // return address only, to address by hand
     const fit = fitBlock(doc, lines, { maxWidth: e.toMaxWidth, maxHeight: 1.7, maxPt: e.toMaxPt, minPt: e.toMinPt, wrapPt: 10.5 });
     const blockH = (fit.lines.length * fit.pt * LINE) / 72;
     drawBlock(doc, fit.lines, e.toLeft + offsetX, e.toCenterY - blockH / 2 + offsetY, fit.pt, e.toMaxWidth);

@@ -47,7 +47,7 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
 - **Printing.** The Print window asks what to print (Invitations, Addresses or Return addresses), then what to print it on, offering only stock that suits it. Addresses and return addresses are made as a PDF in the browser (jsPDF):
   - Avery 5160 / 8160 address labels, 30 per sheet, with "start at label N" for a partly used sheet;
   - A2 envelopes (5¾ × 4⅜ in, for 4¼ × 5½ cards) or A7 envelopes (7¼ × 5¼ in, for 5 × 7 cards), one per page, with your return address in the corner;
-  - a sheet of return-address labels.
+  - return addresses: a sheet of Avery 5195 / 8195 / 18294 return labels (60 per sheet) or 5160 / 8160 labels, or A2 / A7 envelopes with only the return address (how many you choose).
 
   The last stock chosen for each is remembered in the browser.
 

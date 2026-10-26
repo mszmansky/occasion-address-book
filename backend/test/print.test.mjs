@@ -142,3 +142,32 @@ test('invitation orientation: single cards turn the page; Avery 8387 turns each 
   assert.deepEqual(inviteLayout(INVITE_MEDIA.avery8387, 'landscape'), { sheet: [8.5, 11], card: [4.25, 5.5], landscape: true, rotateFront: true });
   assert.equal(inviteLayout(INVITE_MEDIA.avery8387, 'portrait').rotateFront, false);
 });
+
+test('Avery 5195 / 8195 / 18294 return labels: 60 per sheet, text inside each label', async () => {
+  const { LABEL_SHEETS } = await import('../../frontend/print-core.js');
+  const s = LABEL_SHEETS.avery5195;
+  assert.equal(s.cols * s.rows, 60);
+  const right = s.left + (s.cols - 1) * s.pitchX + s.width;
+  assert.ok(Math.abs((8.5 - right) - s.left) < 0.01, 'equal side margins');
+  assert.ok(Math.abs(s.top + s.rows * s.pitchY - 10.5) < 0.001, 'half-inch bottom margin');
+  const ret = ['The Fitzgerald-Montgomery Family', '1044 Ridgeview Circle Apt 12', 'Lake Orion, MI  48360'];
+  const { Spy, calls } = spyPdf();
+  const doc = buildLabels(Spy, Array(61).fill(ret), { sheet: 'avery5195', start: 3 });
+  assert.equal(doc.getNumberOfPages(), 2); // 58 on the first sheet, 3 on the second
+  const firstLine = calls.filter((c) => c.page === 1 && (Array.isArray(c.t) ? c.t[0] : c.t) === ret[0]);
+  assert.equal(firstLine.length, 58);
+  // Every line starts inside its label and the label's text fits its height.
+  for (const c of calls) {
+    const col = Math.round((c.x - s.padX - s.left) / s.pitchX);
+    assert.ok(col >= 0 && col < s.cols, `x ${c.x}`);
+    const row = Math.floor((c.y - s.top) / s.pitchY);
+    assert.ok(c.y > s.top + row * s.pitchY && c.y < s.top + (row + 1) * s.pitchY, `y ${c.y}`);
+  }
+});
+
+test('envelopes with only the return address, to address by hand', async () => {
+  const { Spy, calls } = spyPdf();
+  const doc = buildEnvelopes(Spy, [[], []], { envelope: 'a2', returnLines: ['Mike', '1 Elm', 'Troy, MI  48083'] });
+  assert.equal(doc.getNumberOfPages(), 2);
+  assert.ok(calls.every((c) => c.x < 1 && c.y < 1.2), 'only the top-left corner is printed');
+});
