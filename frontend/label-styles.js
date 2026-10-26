@@ -1,0 +1,218 @@
+// Designs for return-address labels: everyday and holiday styles, each drawn in HTML/CSS and inline
+// SVG so script fonts and artwork print sharply. Pure functions (unit tested in Node), plus fitLabel,
+// which runs in the browser to shrink any line that doesn't fit.
+//
+// Every design is sized in em of the label's height: a label is 2.625em × 1em, which is the shape of
+// both Avery 5195 / 8195 / 18294 (1¾ × ⅔ in) and 5160 / 8160 (2⅝ × 1 in). Set the font-size of the
+// element holding .rl to the label's height and the design fills it.
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+export const LABEL_FONT_LINK = 'https://fonts.googleapis.com/css2?family=Great+Vibes&family=Pinyon+Script'
+  + '&family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Cinzel:wght@400;600&family=Josefin+Sans:wght@400;600;700&display=swap';
+
+export const LABEL_CSS = `
+.rl { position: relative; width: 2.625em; height: 1em; overflow: hidden; box-sizing: border-box; border-radius: .07em;
+  background: #fff; color: #1f2328; font-family: 'Josefin Sans', Arial, sans-serif; line-height: 1.12; text-align: left; }
+.rl * { box-sizing: border-box; }
+.rl .txt { position: absolute; top: .08em; bottom: .08em; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.rl .txt.c { align-items: stretch; text-align: center; }
+.rl .fit { display: block; white-space: nowrap; overflow: hidden; }
+.rl .ad { font-family: 'Josefin Sans', Arial, sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.rl .scr { font-family: 'Great Vibes', 'Brush Script MT', cursive; line-height: 1.05; }
+.rl .pin { font-family: 'Pinyon Script', 'Great Vibes', cursive; line-height: 1.1; }
+.rl .pf { font-family: 'Playfair Display', Georgia, serif; }
+.rl .cz { font-family: Cinzel, Georgia, serif; }
+.rl svg { position: absolute; display: block; overflow: visible; }
+`;
+
+/** The big letter for a monogram: the last name's first letter, else the name's. */
+export function initialOf(last, name) {
+  const word = String(last || '').trim() || String(name || '').replace(/^the\s+/i, '').trim();
+  return (word.match(/[A-Za-zÀ-ÿ]/)?.[0] ?? '').toUpperCase();
+}
+
+// One line that shrinks to fit: size is the starting size in em of the label's height.
+const line = (text, size, cls = '', style = '') => `<span class="fit ${cls}" data-size="${size}" style="font-size:${size}em;${style}">${esc(text)}</span>`;
+const addressBlock = (lines, size, cls = 'ad', style = '') => lines.map((l) => line(l, size, cls, style)).join('');
+
+// ---------- artwork ----------
+const flourishBar = (y) => `<svg viewBox="0 0 220 12" style="left:.2em;width:2.225em;top:${y}em;height:.12em" aria-hidden="true">
+  <g fill="none" stroke="#222" stroke-width="1.1" stroke-linecap="round"><path d="M9 6H92M128 6H211"/>
+  <path d="M92 6c3-5 9-5 12 0M128 6c-3-5-9-5-12 0M92 6c3 5 9 5 12 0M128 6c-3 5-9 5-12 0"/></g>
+  <circle cx="4.5" cy="6" r="2" fill="#222"/><circle cx="215.5" cy="6" r="2" fill="#222"/><path d="M110 1.2 115 6 110 10.8 105 6Z" fill="#222"/></svg>`;
+
+function laurelBranch() {
+  // A gently curved stem with pairs of leaves along it.
+  const P = [[30, 97], [6, 72], [8, 28], [27, 3]];
+  const at = (t) => {
+    const u = 1 - t;
+    const x = u ** 3 * P[0][0] + 3 * u * u * t * P[1][0] + 3 * u * t * t * P[2][0] + t ** 3 * P[3][0];
+    const y = u ** 3 * P[0][1] + 3 * u * u * t * P[1][1] + 3 * u * t * t * P[2][1] + t ** 3 * P[3][1];
+    return [x, y];
+  };
+  let leaves = '';
+  for (let i = 1; i <= 7; i++) {
+    const t = i / 8.2;
+    const [x, y] = at(t);
+    const [x2, y2] = at(t + 0.01);
+    const ang = (Math.atan2(y2 - y, x2 - x) * 180) / Math.PI + 90;
+    const size = 1 - i * 0.05;
+    leaves += `<ellipse cx="0" cy="-8" rx="${(3.4 * size).toFixed(2)}" ry="${(8.5 * size).toFixed(2)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(ang - 55).toFixed(1)})"/>`
+      + `<ellipse cx="0" cy="-8" rx="${(3.4 * size).toFixed(2)}" ry="${(8.5 * size).toFixed(2)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(ang + 35).toFixed(1)})"/>`;
+  }
+  const [tx, ty] = at(1);
+  return `<path d="M${P[0]} C${P[1]} ${P[2]} ${P[3]}" fill="none" stroke="#3f6b47" stroke-width="1.6" stroke-linecap="round"/>
+    <g fill="#3f6b47">${leaves}<ellipse cx="${tx}" cy="${ty - 4}" rx="3" ry="7"/></g>`;
+}
+
+const snowflake = () => {
+  const arm = '<path d="M0 0V-44M0-17-11-28M0-17 11-28M0-31-8-39M0-31 8-39"/>';
+  return `<g fill="none" stroke="#fff" stroke-width="4.2" stroke-linecap="round">${[0, 60, 120, 180, 240, 300].map((a) => `<g transform="rotate(${a})">${arm}</g>`).join('')}</g><circle r="6" fill="#fff"/>`;
+};
+
+const pines = `<ellipse cx="38" cy="112" rx="70" ry="24" fill="#fff"/>
+  <g fill="#fff">
+    <path d="M30 18 44 44H38L50 66H42L54 90H6L18 66H10L22 44H16Z"/>
+    <path d="M66 42 76 60H72L80 76H74L83 94H49L58 76H52L60 60H56Z" opacity=".85"/>
+    <rect x="27" y="90" width="6" height="8"/>
+  </g>
+  <g fill="#fff">${[[8, 14], [58, 10], [74, 28], [14, 40], [84, 52], [50, 34]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.2"/>`).join('')}</g>`;
+
+const star = (x, y, r) => {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 ? r * 0.42 : r;
+    const a = (Math.PI / 5) * i - Math.PI / 2;
+    pts.push(`${(x + rr * Math.cos(a)).toFixed(1)},${(y + rr * Math.sin(a)).toFixed(1)}`);
+  }
+  return `<polygon points="${pts.join(' ')}"/>`;
+};
+const night = `<g fill="#f3d27a"><circle cx="36" cy="44" r="22"/></g><circle cx="47" cy="37" r="20" fill="#1e2a44"/>
+  <g fill="#f3d27a">${star(64, 18, 6)}${star(18, 80, 4.5)}${star(62, 76, 3.5)}${star(14, 16, 3)}${star(76, 52, 2.6)}</g>`;
+
+// ---------- the designs ----------
+// render({ name, address: [lines], initial, last }) → the inside of one label.
+export const LABEL_STYLES = [
+  {
+    id: 'plain', name: 'Plain', group: 'Everyday',
+    render: ({ name, address }) => `<div class="rl" style="font-family:Helvetica,Arial,sans-serif"><div class="txt" style="left:.12em;right:.1em">
+      ${line(name, 0.16, '', 'font-weight:600')}${addressBlock(address, 0.15, '', 'font-weight:400')}</div></div>`,
+  },
+  {
+    id: 'monogram', name: 'Monogram', group: 'Everyday',
+    render: ({ name, address, initial }) => `<div class="rl">
+      <svg class="mono" viewBox="0 0 100 106" style="left:.04em;top:.07em;width:.76em;height:.86em;color:#9f1239" aria-hidden="true"><text x="14" y="86" font-size="88" fill="currentColor" style="font-family:'Great Vibes','Brush Script MT',cursive">${esc(initial)}</text></svg>
+      <div style="position:absolute;left:.82em;top:.17em;bottom:.17em;border-left:.012em solid #c9a227"></div>
+      <div class="txt" style="left:.92em;right:.08em">${line(name, 0.19, 'pf', 'font-style:italic;line-height:1.25;margin-bottom:.035em')}${addressBlock(address, 0.105, 'ad', 'color:#4b5563;line-height:1.3')}</div></div>`,
+  },
+  {
+    id: 'script', name: 'Script', group: 'Everyday',
+    render: ({ name, address }) => `<div class="rl"><div class="txt c" style="left:.1em;right:.1em">
+      ${line(name, 0.34, 'scr', 'margin-bottom:.02em')}${addressBlock(address, 0.1)}</div></div>`,
+  },
+  {
+    id: 'flourish', name: 'Flourish', group: 'Everyday',
+    render: ({ name, address }) => `<div class="rl">${flourishBar(0.07)}${flourishBar(0.81)}
+      <div class="txt c" style="left:.16em;right:.16em;top:.19em;bottom:.19em">${line(name, 0.15, 'ad', 'font-weight:700;letter-spacing:.14em')}${addressBlock(address, 0.112)}</div></div>`,
+  },
+  {
+    id: 'laurel', name: 'Laurel', group: 'Everyday',
+    render: ({ name, address }) => `<div class="rl">
+      <svg viewBox="0 0 40 100" style="left:.05em;top:.07em;width:.34em;height:.86em" aria-hidden="true">${laurelBranch()}</svg>
+      <svg viewBox="0 0 40 100" style="right:.05em;top:.07em;width:.34em;height:.86em;transform:scaleX(-1)" aria-hidden="true">${laurelBranch()}</svg>
+      <div class="txt c" style="left:.4em;right:.4em">${line(name, 0.27, 'scr')}${addressBlock(address, 0.112, 'pf', '')}</div></div>`,
+  },
+  {
+    id: 'bold', name: 'Bold surname', group: 'Everyday',
+    render: ({ name, address, last }) => `<div class="rl"><div class="txt c" style="left:.12em;right:.12em">
+      ${line((last || name).toUpperCase(), 0.29, '', 'font-weight:700;letter-spacing:.2em;padding-left:.2em')}
+      <span style="display:block;height:.018em;background:#1f2328;margin:.03em 4% .06em"></span>
+      ${addressBlock(address, 0.105, 'ad', 'letter-spacing:.1em')}</div></div>`,
+  },
+  {
+    id: 'frame', name: 'Frame', group: 'Everyday',
+    render: ({ name, address }) => `<div class="rl">
+      <div style="position:absolute;left:.12em;right:.12em;top:.2em;bottom:.09em;border:.03em solid #1f2328"></div>
+      <span class="fit cz" data-size="0.19" style="position:absolute;left:.3em;right:.3em;top:.08em;text-align:center;font-size:.19em;font-weight:600;line-height:1.1"><span style="background:#fff;padding:0 .35em">${esc(name.toUpperCase())}</span></span>
+      <div class="txt c" style="left:.2em;right:.2em;top:.34em;bottom:.14em">${addressBlock(address, 0.12, 'pf')}</div></div>`,
+  },
+  {
+    id: 'candy', name: 'Candy stripe', group: 'Holiday',
+    render: ({ name, address }) => `<div class="rl">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:.6em;background:repeating-linear-gradient(135deg,#b91c1c 0 .055em,#fff .055em .11em)"></div>
+      <div class="txt" style="left:.72em;right:.08em">${line(name, 0.3, 'scr', 'color:#b91c1c')}${addressBlock(address, 0.1, 'ad', 'color:#4b5563')}</div></div>`,
+  },
+  {
+    id: 'pines', name: 'Snowy pines', group: 'Holiday',
+    render: ({ name, address }) => `<div class="rl" style="background:linear-gradient(#bcd4ec,#eef4fa)">
+      <svg viewBox="0 0 90 100" style="left:0;bottom:0;width:.9em;height:1em" aria-hidden="true">${pines}</svg>
+      <div class="txt" style="left:.92em;right:.08em">${line(name, 0.2, 'pf', 'font-style:italic;color:#1e3a5f;margin-bottom:.02em')}${addressBlock(address, 0.1, 'ad', 'color:#1e3a5f')}</div></div>`,
+  },
+  {
+    id: 'snowflake', name: 'Snowflake', group: 'Holiday',
+    render: ({ name, address }) => `<div class="rl">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:.62em;background:#7f1d1d"></div>
+      <svg viewBox="-50 -50 100 100" style="left:.09em;top:.28em;width:.44em;height:.44em" aria-hidden="true">${snowflake()}</svg>
+      <div class="txt" style="left:.74em;right:.08em">${line(name, 0.3, 'scr', 'color:#7f1d1d')}${addressBlock(address, 0.1, 'ad', 'color:#374151')}</div></div>`,
+  },
+  {
+    id: 'ribbon', name: 'Polka-dot ribbon', group: 'Holiday',
+    render: ({ name, address }) => `<div class="rl">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:.42em;background:radial-gradient(circle,#b91c1c 26%,transparent 29%) 0 0/.14em .14em"></div>
+      <div style="position:absolute;right:0;top:0;bottom:0;width:.42em;background:radial-gradient(circle,#b91c1c 26%,transparent 29%) 0 0/.14em .14em"></div>
+      <div style="position:absolute;left:.42em;right:.42em;top:0;bottom:0;background:#b91c1c"></div>
+      <div class="txt c" style="left:.48em;right:.48em;color:#fff">${line(name, 0.27, 'scr')}${addressBlock(address, 0.092, 'ad', 'letter-spacing:.08em')}</div></div>`,
+  },
+  {
+    id: 'night', name: 'Starry night', group: 'Holiday',
+    render: ({ name, address }) => `<div class="rl" style="background:#1e2a44">
+      <svg viewBox="0 0 90 100" style="left:.04em;top:0;width:.76em;height:1em" aria-hidden="true">${night}</svg>
+      <div class="txt" style="left:.82em;right:.08em">${line(name, 0.3, 'scr', 'color:#f3d27a')}${addressBlock(address, 0.1, 'ad', 'color:#e5e7eb')}</div></div>`,
+  },
+];
+
+export const labelStyle = (id) => LABEL_STYLES.find((s) => s.id === id) ?? LABEL_STYLES[0];
+
+/** One label's HTML for a style. lines: the return address lines (name first). */
+export function renderReturnLabel(styleId, lines, { last = '' } = {}) {
+  const [name = '', ...address] = lines;
+  return labelStyle(styleId).render({ name, address, last, initial: initialOf(last, name) });
+}
+
+/**
+ * Shrinks lines that don't fit their label (runs in the browser, after fonts load). Each .fit line
+ * starts at its data-size and shrinks until it fits its width; then, if the text column is too tall,
+ * every line in it shrinks together.
+ */
+export function fitLabel(root) {
+  // A monogram letter is scaled and centred by its ink, since script capitals reach well past their
+  // own letter space (and by different amounts for each letter).
+  for (const text of root.querySelectorAll('svg.mono text')) {
+    const svg = text.ownerSVGElement;
+    const vb = svg.viewBox.baseVal;
+    const ctx = (fitLabel.canvas ||= svg.ownerDocument.createElement('canvas')).getContext('2d');
+    const cs = getComputedStyle(text);
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} 100px ${cs.fontFamily}`;
+    const m = ctx.measureText(text.textContent);
+    const w = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+    const h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+    if (!(w > 0 && h > 0)) continue;
+    const k = Math.min((vb.width * 0.96) / w, (vb.height * 0.94) / h);
+    text.setAttribute('font-size', (100 * k).toFixed(2));
+    text.setAttribute('x', ((vb.width - w * k) / 2 + m.actualBoundingBoxLeft * k).toFixed(2));
+    text.setAttribute('y', ((vb.height - h * k) / 2 + m.actualBoundingBoxAscent * k).toFixed(2));
+  }
+  const fits = [...root.querySelectorAll('.fit')];
+  for (const el of fits) {
+    let s = Number(el.dataset.size) || 0.1;
+    el.style.fontSize = `${s}em`;
+    for (let i = 0; i < 40 && el.scrollWidth > el.clientWidth + 0.5; i++) { s *= 0.95; el.style.fontSize = `${s}em`; }
+  }
+  for (const box of root.querySelectorAll('.txt')) {
+    const inBox = [...box.querySelectorAll('.fit')];
+    for (let i = 0; i < 30 && box.scrollHeight > box.clientHeight + 0.5; i++) {
+      for (const el of inBox) el.style.fontSize = `${parseFloat(el.style.fontSize) * 0.95}em`;
+    }
+  }
+}

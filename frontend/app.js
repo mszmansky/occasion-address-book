@@ -1,12 +1,14 @@
 import { createAuth } from './auth.js';
 import {
-  addressLines, addressProblem, buildEnvelopes, buildLabels, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES, INVITE_MEDIA, invitePages, inviteLayout,
+  addressLines, addressProblem, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES, INVITE_MEDIA, invitePages, inviteLayout,
 } from './print-core.js';
 import { activeCount, emptyFilter, filterChips, filterOptions, matchesFilter } from './filter-core.js';
 import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
   defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact, formatPhone, findExistingHousehold, mergeHousehold,
 } from './csv-core.js';
+import { LABEL_CSS, LABEL_FONT_LINK, LABEL_STYLES, fitLabel, renderReturnLabel } from './label-styles.js';
+import { envelopesHtml, labelSheetsHtml } from './print-sheets.js';
 import { householdToVcard, fileBaseName, parseVcards, contactsToHouseholds } from './vcard-core.js';
 import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
 import {
@@ -1718,18 +1720,11 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
 }
 
 // ---------- printing ----------
-const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js';
-let jspdfLoad = null;
-async function getJsPDF() {
-  jspdfLoad ??= new Promise((resolve, reject) => {
-    const el = document.createElement('script');
-    el.src = JSPDF_URL;
-    el.onload = resolve;
-    el.onerror = () => { jspdfLoad = null; reject(new Error('Could not load the PDF tools. Check your connection and try again.')); };
-    document.head.appendChild(el);
-  });
-  await jspdfLoad;
-  return window.jspdf.jsPDF;
+
+// The last name in the return address, for a monogram: from the return name ("The Szmansky Family"), else yours.
+function returnLastName() {
+  const p = state.me?.profile ?? {};
+  return householdLastName({ labelName: p.returnName || '' }) || p.lastName || '';
 }
 
 function returnLines() {
@@ -1787,6 +1782,10 @@ function printModal() {
       <label><input type="radio" name="orient" value="portrait" ${printPrefs().orient === 'landscape' ? '' : 'checked'}><span>Portrait</span></label>
       <label><input type="radio" name="orient" value="landscape" ${printPrefs().orient === 'landscape' ? 'checked' : ''}><span>Landscape</span></label>
     </div></div>
+    <div data-for="style"><span class="field-label">Style</span><div class="lbl-styles" role="radiogroup" aria-label="Label style">
+      ${['Everyday', 'Holiday'].map((g) => `<div class="lbl-group"><span class="small muted">${g}</span><div class="lbl-grid">${LABEL_STYLES.filter((x) => x.group === g).map((x) => `<label class="lbl-opt" title="${esc(x.name)}"><input type="radio" name="retStyle" value="${x.id}" ${(printPrefs().retStyle ?? 'plain') === x.id ? 'checked' : ''}>
+        <span class="lbl-prev">${hasReturn ? renderReturnLabel(x.id, returnLines(), { last: returnLastName() }) : ''}</span><span class="lbl-name">${esc(x.name)}</span></label>`).join('')}</div></div>`).join('')}
+    </div></div>
     <label data-for="start">Start on label number<input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
     <label data-for="count">How many<input name="count" type="number" min="1" max="500" value="${Math.max(1, tags.size)}" style="max-width:110px"></label>
     <label class="check" data-for="back"><input type="checkbox" name="withBack" checked> Print the address on the back</label>
@@ -1794,9 +1793,25 @@ function printModal() {
     <label class="check" data-for="outline"><input type="checkbox" name="outline"> Draw outlines (test print on plain paper)</label>
     <div data-after hidden class="notice"></div>`, {
     form: 'print',
-    foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button><button class="btn primary">Make PDF</button></div>',
+    foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Close</button><button class="btn primary">Print…</button></div>',
   });
   syncPrintForm({ whatChanged: true });
+  showLabelPreviews();
+}
+
+// The label designs use a few web fonts and their own styles; both are added to the app once.
+function ensureLabelStyles() {
+  if (document.getElementById('label-styles')) return;
+  document.head.insertAdjacentHTML('beforeend', `<link id="label-fonts" rel="stylesheet" href="${LABEL_FONT_LINK}"><style id="label-styles">${LABEL_CSS}</style>`);
+}
+async function showLabelPreviews() {
+  const previews = [...modal.querySelectorAll('.lbl-prev')];
+  if (!previews.length) return;
+  ensureLabelStyles();
+  previews.forEach(fitLabel);
+  await Promise.resolve(document.fonts?.ready).catch(() => {});
+  await new Promise((r) => setTimeout(r, 150)); // let the newly loaded fonts lay out
+  previews.forEach(fitLabel);
 }
 
 // Shows what applies to the current choices. whatChanged: refill "Print on" and the greeting default.
@@ -1819,10 +1834,10 @@ function syncPrintForm({ whatChanged = false } = {}) {
   show('start', Boolean(sheet));
   if (sheet) f.start.max = String(sheet.cols * sheet.rows);
   show('count', what === 'return' && isEnvelope(media));
+  show('style', what === 'return' && Boolean(sheet));
   show('back', Boolean(postcard));
   show('ret', (what === 'addresses' && isEnvelope(media)) || Boolean(postcard && f.withBack.checked));
   show('outline', Boolean(sheet) || isEnvelope(media) || media === 'avery8387');
-  form.querySelector('.modal-foot .btn.primary').textContent = what === 'invitations' ? 'Print invitations' : 'Make PDF';
 }
 
 function chosenHouseholds(f, { needAddress }) {
@@ -1854,19 +1869,49 @@ function showAfterPrint(message) {
     ${lastPrinted.length && canEdit() ? '<button type="button" class="btn sm primary" data-action="mark-printed">Mark mailed</button>' : ''}`;
 }
 
+// Opens the pages in the new tab, as a page of their own with a small script that waits for fonts
+// and pictures, fits any text that's too long (fitLabel), then opens the browser's print dialog
+// (where "Save as PDF" makes a PDF). A real page, rather than one written into a blank tab, loads
+// its fonts reliably.
+const fontCss = new Map(); // web-font stylesheet text, fetched once per address
+async function printPages(win, { title, css, body, fontHref = '' }) {
+  let fonts = '';
+  if (fontHref) {
+    if (!fontCss.has(fontHref)) fontCss.set(fontHref, await fetch(fontHref).then((r) => (r.ok ? r.text() : '')).catch(() => ''));
+    fonts = fontCss.get(fontHref) ? `<style>${fontCss.get(fontHref)}</style>` : `<link rel="stylesheet" href="${esc(fontHref)}">`;
+  }
+  const script = `(async () => {
+    const fit = ${fitLabel.toString()};
+    await Promise.resolve(document.fonts && document.fonts.ready).catch(() => {});
+    await Promise.all([...document.images].map((img) => (img.complete ? null : new Promise((r) => { img.onload = r; img.onerror = r; }))));
+    fit(document.body);
+    setTimeout(() => { window.focus(); window.print(); }, 50);
+  })();`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
+    ${fonts}<style>${css}</style></head><body>${body}<script>${script.replace(/<\/script/gi, '<\\/script')}</script></body></html>`;
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  win.location.replace(url);
+  setTimeout(() => URL.revokeObjectURL(url), 120_000);
+}
+
+const openPrintTab = () => {
+  const win = window.open('', '_blank'); // opened right away, in the click, so the browser doesn't block it
+  if (!win) modalError('Your browser blocked the new tab. Allow pop-ups for this site and try again.');
+  return win;
+};
+
 // Printed invitations: the design filled in for each household, one card per cell of the chosen
 // stock. On postcards the back can carry the address, each sheet's back following its front and
 // laid out so every address lands behind its own invitation (two-sided, flip on long edge).
-async function printInvitations(form) {
+async function printInvitations(form, win) {
   const f = form.elements;
   const o = state.occ.occasion;
   const media = INVITE_MEDIA[f.media.value] ?? INVITE_MEDIA.avery8387;
   const backs = Boolean(media.postcard && f.withBack.checked);
   const { households, skipped } = chosenHouseholds(f, { needAddress: backs });
-  if (!households.length) return modalError(skipped.length ? 'Nobody chosen has a complete mailing address for the back.' : 'Nobody to print for.');
-  if (!o.design?.html) return modalError('Design the invitation first.');
-  const win = window.open('', '_blank'); // opened right away so the browser doesn't block it
-  if (!win) return modalError('Your browser blocked the new tab. Allow pop-ups for this site and try again.');
+  const problem = !households.length ? (skipped.length ? 'Nobody chosen has a complete mailing address for the back.' : 'Nobody to print for.')
+    : !o.design?.html ? 'Design the invitation first.' : '';
+  if (problem) { win.close(); return modalError(problem); }
   skippedToast(skipped);
   const layout = inviteLayout(media, f.orient.value);
   const [cw, ch] = layout.card;
@@ -1879,17 +1924,19 @@ async function printInvitations(form) {
   // The address side always runs along the card's long side.
   const back = (h) => place(`${ret.length ? `<div class="ret">${ret.map(esc).join('<br>')}</div>` : ''}
       <div class="to">${addressLines(addressName(h, o), h.address).map(esc).join('<br>')}</div>`, cw < ch, 'back');
-  const pages = invitePages(households.length, media, { backs }).map((pg) => `<section class="sheet">${pg.cells.map((i, c) => {
+  const body = invitePages(households.length, media, { backs }).map((pg) => `<section class="sheet">${pg.cells.map((i, c) => {
     const x = (c % media.cols) * cw;
     const y = Math.floor(c / media.cols) * ch;
-    const body = i === null ? '' : pg.side === 'front' ? front(households[i]) : back(households[i]);
-    return `<div class="cell${f.outline.checked ? ' outlined' : ''}" style="left:${x}in;top:${y}in">${body}</div>`;
+    const inner = i === null ? '' : pg.side === 'front' ? front(households[i]) : back(households[i]);
+    return `<div class="cell${f.outline.checked ? ' outlined' : ''}" style="left:${x}in;top:${y}in">${inner}</div>`;
   }).join('')}</section>`).join('');
-  const link = fontLink(o.design);
-  win.document.open();
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(o.name)} - invitations</title>
-    ${link ? `<link rel="stylesheet" href="${esc(link)}">` : ''}
-    <style>
+  lastPrinted = households.map((h) => h.id);
+  showAfterPrint(`${plural(households.length, 'invitation')} opened in a new tab.`);
+  await printPages(win, {
+    title: `${o.name} - invitations`,
+    fontHref: fontLink(o.design),
+    body,
+    css: `
       @page { size: ${layout.sheet[0]}in ${layout.sheet[1]}in; margin: 0; }
       html, body { margin: 0; }
       .sheet { position: relative; width: ${layout.sheet[0]}in; height: ${layout.sheet[1]}in; overflow: hidden; break-after: page; page-break-after: always; background: #fff; }
@@ -1905,66 +1952,60 @@ async function printInvitations(form) {
       .back .ret { position: absolute; left: 0.3in; top: 0.3in; max-width: 45%; font-size: 8pt; line-height: 1.25; }
       .back .to { position: absolute; left: 46%; top: 47%; transform: translateY(-50%); max-width: 50%; font-size: 12pt; line-height: 1.3; overflow-wrap: anywhere; }
       @media screen { body { background: #8a8a8a; padding: 16px 0; } .sheet { margin: 0 auto 16px; box-shadow: 0 2px 10px rgba(0,0,0,.35); } }
-      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    </style></head><body>${pages}</body></html>`);
-  win.document.close();
-  lastPrinted = households.map((h) => h.id);
-  showAfterPrint(`${plural(households.length, 'invitation')} opened in a new tab.`);
-  // Print once the fonts and pictures have loaded.
-  await win.document.fonts?.ready.catch(() => {});
-  await Promise.all([...win.document.images].map((img) => (img.complete ? null : new Promise((r) => { img.onload = r; img.onerror = r; }))));
-  win.focus();
-  win.print();
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }`,
+  });
   return undefined;
 }
 
-async function makePdf(form) {
+// Everything prints the same way: the pages open in a new tab with the print dialog.
+async function runPrint(form) {
   const f = form.elements;
   const what = f.what.value;
   const media = f.media.value;
-  savePrintPref({ [what]: media, ...(what === 'invitations' ? { orient: f.orient.value } : {}) });
-  if (what === 'invitations') return printInvitations(form);
+  const retStyle = f.retStyle?.value || 'plain';
+  savePrintPref({ [what]: media, ...(what === 'invitations' ? { orient: f.orient.value } : {}), ...(what === 'return' && LABEL_SHEETS[media] ? { retStyle } : {}) });
+  const win = openPrintTab();
+  if (!win) return undefined;
+  if (what === 'invitations') return printInvitations(form, win);
   const print = state.me?.profile?.print ?? {};
   const outline = f.outline.checked;
-  await withBusy(form.querySelector('.modal-foot .btn.primary'), async () => {
-    const JsPDF = await getJsPDF();
-    let doc;
-    let households = [];
-    if (what === 'return') {
-      const lines = returnLines();
-      if (!lines.length) throw new Error('Set your return address in Settings first.');
-      if (isEnvelope(media)) {
-        // Return address only, for envelopes addressed by hand.
-        const count = Math.min(500, Math.max(1, Math.floor(Number(f.count.value)) || 1));
-        doc = buildEnvelopes(JsPDF, Array.from({ length: count }, () => []), {
-          envelope: media, returnLines: lines, offsetX: print.envelopeOffsetX, offsetY: print.envelopeOffsetY, outline,
-        });
-      } else {
-        // The rest of the sheet, from the starting label.
-        const sheet = LABEL_SHEETS[media] ?? LABEL_SHEETS.avery5195;
-        const per = sheet.cols * sheet.rows;
-        const start = Math.min(per, Math.max(1, Number(f.start.value) || 1));
-        doc = buildLabels(JsPDF, Array(per - start + 1).fill(lines), {
-          sheet: LABEL_SHEETS[media] ? media : 'avery5195', start, offsetX: print.labelOffsetX, offsetY: print.labelOffsetY, outline,
-        });
-      }
+  const labelOpts = { offsetX: print.labelOffsetX ?? 0, offsetY: print.labelOffsetY ?? 0, outline };
+  const envOpts = { envelope: media, offsetX: print.envelopeOffsetX ?? 0, offsetY: print.envelopeOffsetY ?? 0, outline };
+  let pages;
+  let households = [];
+  let fontHref = '';
+  let title;
+  if (what === 'return') {
+    const lines = returnLines();
+    if (!lines.length) { win.close(); return modalError('Set your return address in Settings first.'); }
+    title = 'Return addresses';
+    if (isEnvelope(media)) {
+      // Return address only, for envelopes addressed by hand.
+      const count = Math.min(500, Math.max(1, Math.floor(Number(f.count.value)) || 1));
+      pages = envelopesHtml(Array.from({ length: count }, () => ({ ret: lines })), envOpts);
     } else {
-      const chosen = chosenHouseholds(f, { needAddress: true });
-      households = chosen.households;
-      if (!households.length) throw new Error(chosen.skipped.length ? 'Nobody chosen has a complete mailing address.' : 'Nobody to print for.');
-      const items = households.map((h) => addressLines(addressName(h, state.occ.occasion), h.address));
-      doc = isEnvelope(media)
-        ? buildEnvelopes(JsPDF, items, {
-          envelope: media, returnLines: f.withReturn.checked ? returnLines() : [], offsetX: print.envelopeOffsetX, offsetY: print.envelopeOffsetY, outline,
-        })
-        : buildLabels(JsPDF, items, { sheet: media, start: Number(f.start.value) || 1, offsetX: print.labelOffsetX, offsetY: print.labelOffsetY, outline });
-      skippedToast(chosen.skipped);
+      // The rest of the sheet, from the starting label, in the chosen style.
+      const sheet = LABEL_SHEETS[media] ?? LABEL_SHEETS.avery5195;
+      const per = sheet.cols * sheet.rows;
+      const start = Math.min(per, Math.max(1, Number(f.start.value) || 1));
+      const label = renderReturnLabel(retStyle, lines, { last: returnLastName() });
+      pages = labelSheetsHtml(Array(per - start + 1).fill(label), { ...labelOpts, sheet: LABEL_SHEETS[media] ? media : 'avery5195', start });
+      if (retStyle !== 'plain') fontHref = LABEL_FONT_LINK;
     }
-    const url = doc.output('bloburl');
-    const win = window.open(url, '_blank');
-    lastPrinted = households.map((h) => h.id);
-    showAfterPrint(win ? 'The PDF opened in a new tab.' : `<a href="${url}" target="_blank" rel="noopener">Open the PDF</a> (your browser blocked the new tab).`);
-  });
+  } else {
+    const chosen = chosenHouseholds(f, { needAddress: true });
+    households = chosen.households;
+    if (!households.length) { win.close(); return modalError(chosen.skipped.length ? 'Nobody chosen has a complete mailing address.' : 'Nobody to print for.'); }
+    skippedToast(chosen.skipped);
+    title = `${state.occ.occasion.name} - addresses`;
+    const items = households.map((h) => addressLines(addressName(h, state.occ.occasion), h.address));
+    pages = isEnvelope(media)
+      ? envelopesHtml(items.map((to) => ({ to, ret: f.withReturn.checked ? returnLines() : [] })), envOpts)
+      : labelSheetsHtml(items.map((lines) => renderReturnLabel('plain', lines)), { ...labelOpts, sheet: media, start: Number(f.start.value) || 1 });
+  }
+  lastPrinted = households.map((h) => h.id);
+  showAfterPrint('Opened in a new tab with the print window.');
+  await printPages(win, { title, fontHref, css: pages.css, body: pages.body });
   return undefined;
 }
 
@@ -3114,16 +3155,16 @@ async function disableMfa(btn) {
 // Alignment pages use the offsets typed on the Printer tab (saved or not) and the saved return address.
 async function alignTest(what) {
   const s = readSettings(modal.querySelector('form'), 'printer');
-  const JsPDF = await getJsPDF();
+  const win = window.open('', '_blank');
+  if (!win) { toast('Your browser blocked the new tab. Allow pop-ups for this site and try again.', true); return; }
   const sample = ['The Sample Family', '1234 Example Street', 'Apt 5', 'Evergreen Falls, MI  49001'];
   const ret = returnLines();
-  const doc = what === 'labels'
-    ? buildLabels(JsPDF, Array(30).fill(sample), { offsetX: s.print.labelOffsetX, offsetY: s.print.labelOffsetY, outline: true })
-    : buildEnvelopes(JsPDF, [sample], {
-      returnLines: ret.length ? ret : ['Your Name', '1 Return Street', 'Evergreen Falls, MI  49001'],
-      offsetX: s.print.envelopeOffsetX, offsetY: s.print.envelopeOffsetY, outline: true,
+  const pages = what === 'labels'
+    ? labelSheetsHtml(Array(30).fill(renderReturnLabel('plain', sample)), { offsetX: s.print.labelOffsetX ?? 0, offsetY: s.print.labelOffsetY ?? 0, outline: true })
+    : envelopesHtml([{ to: sample, ret: ret.length ? ret : ['Your Name', '1 Return Street', 'Evergreen Falls, MI  49001'] }], {
+      envelope: 'a7', offsetX: s.print.envelopeOffsetX ?? 0, offsetY: s.print.envelopeOffsetY ?? 0, outline: true,
     });
-  window.open(doc.output('bloburl'), '_blank');
+  await printPages(win, { title: 'Alignment test', css: pages.css, body: pages.body });
 }
 
 // ---------- events ----------
@@ -3446,7 +3487,7 @@ document.addEventListener('submit', async (e) => {
   if (kind === 'auth') return submitAuth(form);
   if (kind.startsWith('household-')) return saveHousehold(form);
   if (kind.startsWith('occasion-')) return saveOccasion(form);
-  if (kind === 'print') return makePdf(form);
+  if (kind === 'print') return runPrint(form);
   if (kind === 'invites') return sendInvites(form);
   if (kind === 'design') return saveDesign(form);
   if (kind === 'import') return runImport(form.querySelector('[data-import-go]'));
