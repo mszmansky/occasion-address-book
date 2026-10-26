@@ -17,7 +17,7 @@ export const LABEL_CSS = `
 .rl * { box-sizing: border-box; }
 .rl .txt { position: absolute; top: .08em; bottom: .08em; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .rl .txt.c { align-items: stretch; text-align: center; }
-.rl .fit { display: block; white-space: nowrap; overflow: hidden; }
+.rl .fit { display: block; white-space: nowrap; } /* not clipped: tall script letters reach above their line */
 .rl .ad { font-family: 'Josefin Sans', Arial, sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
 .rl .scr { font-family: 'Great Vibes', 'Brush Script MT', cursive; line-height: 1.05; }
 .rl .pin { font-family: 'Pinyon Script', 'Great Vibes', cursive; line-height: 1.1; }
@@ -33,7 +33,7 @@ export function initialOf(last, name) {
 }
 
 // One line that shrinks to fit: size is the starting size in em of the label's height.
-const line = (text, size, cls = '', style = '') => `<span class="fit ${cls}" data-size="${size}" style="font-size:${size}em;${style}">${esc(text)}</span>`;
+const line = (text, size, cls = '', style = '') => `<span class="fit ${cls}" data-size="${size}" style="font-size:${size}em;${style}"><span>${esc(text)}</span></span>`;
 const addressBlock = (lines, size, cls = 'ad', style = '') => lines.map((l) => line(l, size, cls, style)).join('');
 
 // ---------- artwork ----------
@@ -181,6 +181,18 @@ export function renderReturnLabel(styleId, lines, { last = '' } = {}) {
 }
 
 /**
+ * Loads the fonts a page declares (their Latin part) before anything is measured. Browsers load a
+ * font only once text uses it, and Safari reports fonts "ready" before that, so measuring right away
+ * would size text in a stand-in font.
+ */
+export async function loadLabelFonts(doc) {
+  const fonts = doc && doc.fonts;
+  if (!fonts) return;
+  const latin = [...fonts].filter((f) => /U\+0+-/i.test(f.unicodeRange) || /^U\+0-10FFFF$/i.test(f.unicodeRange));
+  await Promise.all(latin.map((f) => f.load().catch(() => {})));
+}
+
+/**
  * Shrinks lines that don't fit their label (runs in the browser, after fonts load). Each .fit line
  * starts at its data-size and shrinks until it fits its width; then, if the text column is too tall,
  * every line in it shrinks together.
@@ -203,11 +215,14 @@ export function fitLabel(root) {
     text.setAttribute('x', ((vb.width - w * k) / 2 + m.actualBoundingBoxLeft * k).toFixed(2));
     text.setAttribute('y', ((vb.height - h * k) / 2 + m.actualBoundingBoxAscent * k).toFixed(2));
   }
+  // A line's text sits in an inner span, measured against the line's width (with a little room for
+  // script flourishes past the last letter); a line without one is measured by its overflow.
   const fits = [...root.querySelectorAll('.fit')];
+  const tooWide = (el) => (el.firstElementChild ? el.firstElementChild.offsetWidth > el.clientWidth * 0.97 : el.scrollWidth > el.clientWidth + 0.5);
   for (const el of fits) {
     let s = Number(el.dataset.size) || 0.1;
     el.style.fontSize = `${s}em`;
-    for (let i = 0; i < 40 && el.scrollWidth > el.clientWidth + 0.5; i++) { s *= 0.95; el.style.fontSize = `${s}em`; }
+    for (let i = 0; i < 40 && tooWide(el); i++) { s *= 0.95; el.style.fontSize = `${s}em`; }
   }
   for (const box of root.querySelectorAll('.txt')) {
     const inBox = [...box.querySelectorAll('.fit')];

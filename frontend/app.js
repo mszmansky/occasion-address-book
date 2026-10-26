@@ -7,7 +7,7 @@ import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
   defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact, formatPhone, findExistingHousehold, mergeHousehold,
 } from './csv-core.js';
-import { LABEL_CSS, LABEL_FONT_LINK, LABEL_STYLES, fitLabel, renderReturnLabel } from './label-styles.js';
+import { LABEL_CSS, LABEL_FONT_LINK, LABEL_STYLES, fitLabel, loadLabelFonts, renderReturnLabel } from './label-styles.js';
 import { envelopesHtml, labelSheetsHtml } from './print-sheets.js';
 import { householdToVcard, fileBaseName, parseVcards, contactsToHouseholds } from './vcard-core.js';
 import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
@@ -1800,18 +1800,27 @@ function printModal() {
 }
 
 // The label designs use a few web fonts and their own styles; both are added to the app once.
+let labelStylesLoaded = null;
 function ensureLabelStyles() {
-  if (document.getElementById('label-styles')) return;
-  document.head.insertAdjacentHTML('beforeend', `<link id="label-fonts" rel="stylesheet" href="${LABEL_FONT_LINK}"><style id="label-styles">${LABEL_CSS}</style>`);
+  labelStylesLoaded ??= new Promise((resolve) => {
+    document.head.insertAdjacentHTML('beforeend', `<style id="label-styles">${LABEL_CSS}</style>`);
+    const link = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: LABEL_FONT_LINK, id: 'label-fonts' });
+    link.onload = resolve; link.onerror = resolve;
+    setTimeout(resolve, 5000);
+    document.head.appendChild(link);
+    // Refit the previews whenever more fonts arrive.
+    document.fonts?.addEventListener?.('loadingdone', () => modal.querySelectorAll('.lbl-prev').forEach(fitLabel));
+  });
+  return labelStylesLoaded;
 }
 async function showLabelPreviews() {
   const previews = [...modal.querySelectorAll('.lbl-prev')];
   if (!previews.length) return;
-  ensureLabelStyles();
-  previews.forEach(fitLabel);
-  await Promise.resolve(document.fonts?.ready).catch(() => {});
-  await new Promise((r) => setTimeout(r, 150)); // let the newly loaded fonts lay out
-  previews.forEach(fitLabel);
+  const loaded = ensureLabelStyles();
+  previews.forEach(fitLabel); // with whatever fonts are here now
+  await loaded;
+  await loadLabelFonts(document);
+  modal.querySelectorAll('.lbl-prev').forEach(fitLabel);
 }
 
 // Shows what applies to the current choices. whatChanged: refill "Print on" and the greeting default.
@@ -1882,6 +1891,8 @@ async function printPages(win, { title, css, body, fontHref = '' }) {
   }
   const script = `(async () => {
     const fit = ${fitLabel.toString()};
+    const loadFonts = ${loadLabelFonts.toString()};
+    await loadFonts(document);
     await Promise.resolve(document.fonts && document.fonts.ready).catch(() => {});
     await Promise.all([...document.images].map((img) => (img.complete ? null : new Promise((r) => { img.onload = r; img.onerror = r; }))));
     fit(document.body);
