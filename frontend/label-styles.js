@@ -91,6 +91,56 @@ const star = (x, y, r) => {
 const night = `<g fill="#f3d27a"><circle cx="36" cy="44" r="22"/></g><circle cx="47" cy="37" r="20" fill="#1e2a44"/>
   <g fill="#f3d27a">${star(64, 18, 6)}${star(18, 80, 4.5)}${star(62, 76, 3.5)}${star(14, 16, 3)}${star(76, 52, 2.6)}</g>`;
 
+
+const wreath = () => {
+  let leaves = '';
+  for (let i = 0; i < 26; i++) {
+    const a = (i / 26) * 360;
+    const r = (a * Math.PI) / 180;
+    const x = 50 + 31 * Math.cos(r);
+    const y = 50 + 31 * Math.sin(r);
+    const tilt = i % 2 ? 28 : -28;
+    leaves += `<ellipse cx="0" cy="0" rx="5.2" ry="11" fill="${i % 3 ? '#166534' : '#15803d'}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(a + tilt).toFixed(1)})"/>`;
+  }
+  const berries = [20, 75, 130, 200, 250, 315].map((a) => {
+    const r = (a * Math.PI) / 180;
+    return `<circle cx="${(50 + 33 * Math.cos(r)).toFixed(1)}" cy="${(50 + 33 * Math.sin(r)).toFixed(1)}" r="3.4" fill="#dc2626"/>`;
+  }).join('');
+  return `${leaves}${berries}
+    <g fill="#b91c1c"><path d="M50 80 34 98 40 99 50 86Z"/><path d="M50 80 66 98 60 99 50 86Z"/>
+    <ellipse cx="38" cy="78" rx="12" ry="7" transform="rotate(-18 38 78)"/><ellipse cx="62" cy="78" rx="12" ry="7" transform="rotate(18 62 78)"/>
+    <circle cx="50" cy="80" r="5.5" fill="#991b1b"/></g>`;
+};
+
+const tree = () => `<path d="M50 14 30 42H40L22 64H34L16 88H84L66 64H78L60 42H70Z" fill="#4ea36b"/>
+  <path d="M50 14 30 42H40L22 64H34L16 88H50Z" fill="#5fb87b"/>
+  <rect x="44" y="88" width="12" height="9" fill="#7c4a2d"/>
+  <g fill="#fbbf24">${star(50, 12, 9)}</g>
+  <path d="M34 50Q50 58 64 47M27 73Q50 82 74 70" fill="none" stroke="#fde68a" stroke-width="1.6"/>
+  ${[[42, 36, '#ef4444'], [58, 39, '#fde047'], [36, 56, '#fde047'], [55, 58, '#ef4444'], [68, 61, '#fff'], [28, 79, '#ef4444'], [46, 78, '#fff'], [64, 81, '#fde047'], [48, 47, '#fff']]
+    .map(([x, y, c]) => `<circle cx="${x}" cy="${y}" r="3.3" fill="${c}"/>`).join('')}`;
+
+const mistletoe = () => `<g fill="none" stroke="#7aa34a" stroke-width="2.6" stroke-linecap="round">
+    <path d="M50 22C48 38 40 50 28 62"/><path d="M50 22C51 40 50 54 50 70"/><path d="M50 22C53 38 61 50 73 60"/></g>
+  <g fill="#9bc95a"><ellipse cx="20" cy="66" rx="6" ry="15" transform="rotate(55 20 66)"/><ellipse cx="32" cy="74" rx="6" ry="15" transform="rotate(-5 32 74)"/>
+    <ellipse cx="44" cy="80" rx="6" ry="14" transform="rotate(20 44 80)"/><ellipse cx="57" cy="80" rx="6" ry="14" transform="rotate(-20 57 80)"/>
+    <ellipse cx="69" cy="72" rx="6" ry="15" transform="rotate(8 69 72)"/><ellipse cx="81" cy="64" rx="6" ry="15" transform="rotate(-55 81 64)"/></g>
+  <g fill="#7fae46"><ellipse cx="38" cy="50" rx="5" ry="12" transform="rotate(40 38 50)"/><ellipse cx="62" cy="49" rx="5" ry="12" transform="rotate(-40 62 49)"/></g>
+  <g fill="#f8fafc" stroke="#cbd5e1" stroke-width=".8">${[[46, 44], [53, 46], [49, 51], [42, 50], [57, 52]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3.6"/>`).join('')}</g>
+  <g fill="#dc2626"><ellipse cx="41" cy="16" rx="9" ry="5.5" transform="rotate(-20 41 16)"/><ellipse cx="59" cy="16" rx="9" ry="5.5" transform="rotate(20 59 16)"/>
+    <path d="M48 19 42 33 46 33 50 22Z"/><path d="M52 19 58 33 54 33 50 22Z"/><circle cx="50" cy="18" r="4" fill="#b91c1c"/></g>`;
+
+const santa = () => `<path d="M22 46C26 18 52 6 74 15C82 19 86 26 84 33C76 34 71 39 70 46Z" fill="#d42a2a"/>
+  <circle cx="84" cy="33" r="6.5" fill="#fff"/>
+  <ellipse cx="50" cy="60" rx="20" ry="14" fill="#f6cfae"/>
+  <path d="M27 58C24 84 38 96 50 97C62 96 76 84 73 58C66 70 58 72 50 70C42 72 34 70 27 58Z" fill="#fff"/>
+  <path d="M29 62C29 76 39 86 50 86C61 86 71 76 71 62" fill="none" stroke="#e5e7eb" stroke-width="1.2"/>
+  <ellipse cx="43" cy="68" rx="8" ry="4" fill="#fff"/><ellipse cx="57" cy="68" rx="8" ry="4" fill="#fff"/>
+  <circle cx="50" cy="64" r="3.4" fill="#e9967a"/>
+  <circle cx="43" cy="57" r="2" fill="#3b2a20"/><circle cx="57" cy="57" r="2" fill="#3b2a20"/>
+  <circle cx="37" cy="62" r="3.6" fill="#f4a1a1" opacity=".75"/><circle cx="63" cy="62" r="3.6" fill="#f4a1a1" opacity=".75"/>
+  <rect x="20" y="40" width="60" height="11" rx="5.5" fill="#fff"/>`;
+
 // ---------- the designs ----------
 // render({ name, address: [lines], initial, last }) → the inside of one label.
 export const LABEL_STYLES = [
@@ -136,6 +186,32 @@ export const LABEL_STYLES = [
       <div style="position:absolute;left:.12em;right:.12em;top:.2em;bottom:.09em;border:.03em solid #1f2328"></div>
       <span class="fit cz" data-size="0.19" style="position:absolute;left:.3em;right:.3em;top:.08em;text-align:center;font-size:.19em;font-weight:600;line-height:1.1"><span style="background:#fff;padding:0 .35em">${esc(name.toUpperCase())}</span></span>
       <div class="txt c" style="left:.2em;right:.2em;top:.34em;bottom:.14em">${addressBlock(address, 0.12, 'pf')}</div></div>`,
+  },
+  {
+    id: 'wreath', name: 'Wreath', group: 'Holiday',
+    render: ({ name, address }) => `<div class="rl">
+      <svg viewBox="0 0 100 100" style="left:.06em;top:.07em;width:.86em;height:.86em" aria-hidden="true">${wreath()}</svg>
+      <div class="txt" style="left:.98em;right:.08em">${line(name, 0.3, 'scr', 'color:#14532d')}${addressBlock(address, 0.1, 'ad', 'color:#3f5e4a')}</div></div>`,
+  },
+  {
+    id: 'tree', name: 'Christmas tree', group: 'Holiday',
+    render: ({ name, address }) => `<div class="rl">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:.74em;background:#14532d"></div>
+      <svg viewBox="0 0 100 100" style="left:.03em;top:.06em;width:.68em;height:.88em" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${tree()}</svg>
+      <div class="txt" style="left:.86em;right:.08em">${line(name, 0.3, 'scr', 'color:#14532d')}${addressBlock(address, 0.1, 'ad', 'color:#374151')}</div></div>`,
+  },
+  {
+    id: 'mistletoe', name: 'Mistletoe', group: 'Holiday',
+    render: ({ name, address }) => `<div class="rl" style="background:#1f4d36">
+      <svg viewBox="0 0 100 100" style="left:.04em;top:.05em;width:.86em;height:.9em" aria-hidden="true">${mistletoe()}</svg>
+      <div class="txt" style="left:.96em;right:.08em">${line(name, 0.3, 'scr', 'color:#f3d27a')}${addressBlock(address, 0.1, 'ad', 'color:#f6eedb')}</div></div>`,
+  },
+  {
+    id: 'santa', name: 'Santa Claus', group: 'Holiday',
+    render: ({ name, address }) => `<div class="rl">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:.84em;background:#fdeee6"></div>
+      <svg viewBox="0 0 100 100" style="left:.04em;top:.05em;width:.8em;height:.9em" aria-hidden="true">${santa()}</svg>
+      <div class="txt" style="left:.96em;right:.08em">${line(name, 0.3, 'scr', 'color:#b91c1c')}${addressBlock(address, 0.1, 'ad', 'color:#4b5563')}</div></div>`,
   },
   {
     id: 'candy', name: 'Candy stripe', group: 'Holiday',
