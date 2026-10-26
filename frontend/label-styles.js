@@ -18,6 +18,7 @@ export const LABEL_CSS = `
 .rl .txt { position: absolute; top: .08em; bottom: .08em; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .rl .txt.c { align-items: stretch; text-align: center; }
 .rl .fit { display: block; white-space: nowrap; } /* not clipped: tall script letters reach above their line */
+.rl .fit > span { display: inline-block; } /* measured (and watched for size changes) when fitting */
 .rl .ad { font-family: 'Josefin Sans', Arial, sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
 .rl .scr { font-family: 'Great Vibes', 'Brush Script MT', cursive; line-height: 1.05; }
 .rl .pin { font-family: 'Pinyon Script', 'Great Vibes', cursive; line-height: 1.1; }

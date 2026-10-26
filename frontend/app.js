@@ -1813,10 +1813,23 @@ function ensureLabelStyles() {
   });
   return labelStylesLoaded;
 }
+// Each preview refits itself whenever its text changes size: when it first becomes visible (the
+// Style section starts hidden), and when a font arrives, however late the browser loads it.
 async function showLabelPreviews() {
   const previews = [...modal.querySelectorAll('.lbl-prev')];
   if (!previews.length) return;
   const loaded = ensureLabelStyles();
+  if (typeof ResizeObserver === 'function') {
+    const pending = new Set();
+    const refit = () => { pending.forEach(fitLabel); pending.clear(); };
+    const ro = new ResizeObserver((entries) => {
+      if (!pending.size) requestAnimationFrame(refit);
+      for (const e of entries) { const p = e.target.closest('.lbl-prev'); if (p) pending.add(p); }
+    });
+    previews.forEach((p) => p.querySelectorAll('.fit > span').forEach((t) => ro.observe(t)));
+    const stop = () => { ro.disconnect(); modal.removeEventListener('close', stop); };
+    modal.addEventListener('close', stop);
+  }
   previews.forEach(fitLabel); // with whatever fonts are here now
   await loaded;
   await loadLabelFonts(document);
@@ -1844,6 +1857,8 @@ function syncPrintForm({ whatChanged = false } = {}) {
   if (sheet) f.start.max = String(sheet.cols * sheet.rows);
   show('count', what === 'return' && isEnvelope(media));
   show('style', what === 'return' && Boolean(sheet));
+  // Hidden previews can't be measured, so they're fitted once they show.
+  if (what === 'return' && sheet) requestAnimationFrame(() => form.querySelectorAll('.lbl-prev').forEach(fitLabel));
   show('back', Boolean(postcard));
   show('ret', (what === 'addresses' && isEnvelope(media)) || Boolean(postcard && f.withBack.checked));
   show('outline', Boolean(sheet) || isEnvelope(media) || media === 'avery8387');
@@ -1896,7 +1911,9 @@ async function printPages(win, { title, css, body, fontHref = '' }) {
     await Promise.resolve(document.fonts && document.fonts.ready).catch(() => {});
     await Promise.all([...document.images].map((img) => (img.complete ? null : new Promise((r) => { img.onload = r; img.onerror = r; }))));
     fit(document.body);
-    setTimeout(() => { window.focus(); window.print(); }, 50);
+    await new Promise((r) => setTimeout(r, 300)); // fonts that arrived late: fit once more
+    fit(document.body);
+    window.focus(); window.print();
   })();`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
     ${fonts}<style>${css}</style></head><body>${body}<script>${script.replace(/<\/script/gi, '<\\/script')}</script></body></html>`;
