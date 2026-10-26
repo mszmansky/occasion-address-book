@@ -7,7 +7,7 @@ import {
   parseCsv, FIELDS, guessMapping, looksLikeHeader, buildHouseholds, householdsToCsv, splitFirstNames, splitMembers,
   defaultFormalName, householdLastName, effectiveFormalName, peopleWithHouseholdContact, formatPhone, findExistingHousehold, mergeHousehold,
 } from './csv-core.js';
-import { LABEL_CSS, LABEL_FONT_LINK, LABEL_STYLES, fitLabel, loadLabelFonts, renderReturnLabel } from './label-styles.js';
+import { LABEL_CSS, LABEL_FONT_LINK, LABEL_STYLES, LABEL_THEMES, fitLabel, labelStyle, loadLabelFonts, renderReturnLabel } from './label-styles.js';
 import { envelopesHtml, labelSheetsHtml } from './print-sheets.js';
 import { householdToVcard, fileBaseName, parseVcards, contactsToHouseholds } from './vcard-core.js';
 import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
@@ -1761,6 +1761,9 @@ function printModal() {
   const hasReturn = returnLines().length > 0;
   const invite = kindOf(o) === 'invite';
   const designed = Boolean(o.design?.html);
+  // Return labels: the last design picked, shown in its theme.
+  const retStyle = labelStyle(printPrefs().retStyle).id;
+  const retTheme = labelStyle(retStyle).group;
   const whatChoice = (value, label, { checked = false, disabled = false } = {}) => `<label><input type="radio" name="what" value="${value}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span>${label}</span></label>`;
   openModal('Print', `
     <div class="print-what"><span class="field-label">Print</span><div class="seg fp-seg" role="radiogroup" aria-label="Print">
@@ -1782,9 +1785,11 @@ function printModal() {
       <label><input type="radio" name="orient" value="portrait" ${printPrefs().orient === 'landscape' ? '' : 'checked'}><span>Portrait</span></label>
       <label><input type="radio" name="orient" value="landscape" ${printPrefs().orient === 'landscape' ? 'checked' : ''}><span>Landscape</span></label>
     </div></div>
-    <div data-for="style"><span class="field-label">Style</span><div class="lbl-styles" role="radiogroup" aria-label="Label style">
-      ${['Everyday', 'Holiday'].map((g) => `<div class="lbl-group"><span class="small muted">${g}</span><div class="lbl-grid">${LABEL_STYLES.filter((x) => x.group === g).map((x) => `<label class="lbl-opt" title="${esc(x.name)}"><input type="radio" name="retStyle" value="${x.id}" ${(printPrefs().retStyle ?? 'plain') === x.id ? 'checked' : ''}>
-        <span class="lbl-prev">${hasReturn ? renderReturnLabel(x.id, returnLines(), { last: returnLastName() }) : ''}</span><span class="lbl-name">${esc(x.name)}</span></label>`).join('')}</div></div>`).join('')}
+    <div data-for="style" class="stack">
+      <label>Styles<select name="retTheme">${LABEL_THEMES.map((g) => `<option value="${g}" ${g === retTheme ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+      <div class="lbl-styles" role="radiogroup" aria-label="Label style">
+      ${LABEL_THEMES.map((g) => `<div class="lbl-grid" data-theme="${g}" ${g === retTheme ? '' : 'hidden'}>${LABEL_STYLES.filter((x) => x.group === g).map((x) => `<label class="lbl-opt" title="${esc(x.name)}"><input type="radio" name="retStyle" value="${x.id}" ${retStyle === x.id ? 'checked' : ''}>
+        <span class="lbl-prev">${hasReturn ? renderReturnLabel(x.id, returnLines(), { last: returnLastName() }) : ''}</span><span class="lbl-name">${esc(x.name)}</span></label>`).join('')}</div>`).join('')}
     </div></div>
     <label data-for="start">Start on label number<input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
     <label data-for="count">How many<input name="count" type="number" min="1" max="500" value="${Math.max(1, tags.size)}" style="max-width:110px"></label>
@@ -1797,6 +1802,14 @@ function printModal() {
   });
   syncPrintForm({ whatChanged: true });
   showLabelPreviews();
+}
+
+// Styles: show one theme's designs; if the picked design isn't in it, pick that theme's first one.
+function showLabelTheme(form, theme) {
+  form.querySelectorAll('.lbl-grid').forEach((g) => { g.hidden = g.dataset.theme !== theme; });
+  const grid = form.querySelector(`.lbl-grid[data-theme="${theme}"]`);
+  if (grid && !grid.querySelector('input:checked')) grid.querySelector('input').checked = true;
+  requestAnimationFrame(() => grid?.querySelectorAll('.lbl-prev').forEach(fitLabel));
 }
 
 // The label designs use a few web fonts and their own styles; both are added to the app once.
@@ -3504,6 +3517,7 @@ document.addEventListener('change', (e) => {
   if (k === 'csv-file' && t.files?.[0]) readImportFile(t.files[0]).catch((err) => modalError(err.message));
   if (t.dataset?.map !== undefined) updateImportSummary();
   if (t.form?.dataset.form === 'print' && ['what', 'media', 'withBack'].includes(t.name)) syncPrintForm({ whatChanged: t.name === 'what' });
+  if (t.form?.dataset.form === 'print' && t.name === 'retTheme') showLabelTheme(t.form, t.value);
 });
 
 document.addEventListener('submit', async (e) => {
