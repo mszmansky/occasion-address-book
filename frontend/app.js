@@ -1856,7 +1856,8 @@ function syncPrintForm({ whatChanged = false } = {}) {
   const what = f.what.value || 'addresses';
   if (whatChanged) {
     const options = PRINT_MEDIA[what];
-    const keep = printPrefs()[what]; // each kind of printing starts from its own last choice
+    // Return addresses always start on return-address labels; the others start from their last choice.
+    const keep = what === 'return' ? 'avery5195' : printPrefs()[what];
     f.media.innerHTML = options.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('');
     f.media.value = options.some(([k]) => k === keep) ? keep : options[0][0];
   }
