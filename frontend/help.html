@@ -230,13 +230,13 @@
 
       <section id="admin">
         <h2>Admin</h2>
-        <p>Admins see <b>Admin</b> in the account menu. It lists every account, with its status: <b>Active</b> (has signed in), <b>Invited</b> (hasn't chosen a password yet) or <b>Turned off</b>.</p>
+        <p>Admins see <b>Admin</b> in the account menu. It lists every account, with its status: <b>Active</b> (has signed in), <b>Invited</b> (hasn't chosen a password yet) or <b>Disabled</b>.</p>
         <ul>
           <li><b>Invite</b> creates an account and emails a temporary password. The invitation is good for 30 days; <b>Resend invite</b> sends a fresh one.</li>
-          <li><b>Turn off</b> signs the person out everywhere and stops them signing in. Nothing is deleted, and <b>Turn on</b> lets them back in. Books they share stay shared.</li>
+          <li><b>Disable</b> signs the person out everywhere and stops them signing in. Nothing is deleted, and <b>Enable</b> lets them back in. Books they share stay shared.</li>
           <li><b>Delete</b> permanently removes the account with its address book, occasions, designs, trash and photo. Anyone that person shared with loses the shared book, and they lose the books shared with them. It can't be undone.</li>
         </ul>
-        <p>You can't turn off or delete your own account. Admins are added with <code>scripts/make-admin.sh</code> and need to sign out and back in once to see the menu item.</p>
+        <p>You can't disable or delete your own account. Admins are added with <code>scripts/make-admin.sh</code> and need to sign out and back in once to see the menu item.</p>
       </section>
     </main>
   </div>

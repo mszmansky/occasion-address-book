@@ -2887,7 +2887,7 @@ async function openAdmin() {
 
 const ACCOUNT_STATUS = { active: ['Active', 'ok'], invited: ['Invited', 'info'] };
 function accountStatus(u) {
-  if (!u.enabled) return '<span class="pill overdue">Turned off</span>';
+  if (!u.enabled) return '<span class="pill overdue">Disabled</span>';
   const [label, cls] = ACCOUNT_STATUS[u.status] ?? [u.status.replace(/_/g, ' '), 'unknown'];
   return `<span class="pill ${cls}">${esc(label)}</span>`;
 }
@@ -2904,7 +2904,7 @@ function renderAdmin() {
       <td class="small">${u.createdAt ? fmtDate(u.createdAt) : ''}</td>
       <td class="row-actions"><div class="admin-actions">${self ? '' : `
         ${u.status === 'invited' && u.enabled ? `<button type="button" class="btn sm" data-action="admin-resend" data-id="${esc(u.id)}" data-email="${esc(u.email)}" title="Email ${esc(u.email)} a new invitation">Resend invite</button>` : ''}
-        <button type="button" class="btn sm" data-action="admin-onoff" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-on="${u.enabled ? '0' : '1'}" title="${u.enabled ? `Sign ${esc(u.email)} out and block sign-in` : `Let ${esc(u.email)} sign in again`}">${u.enabled ? 'Turn off' : 'Turn on'}</button>
+        <button type="button" class="btn sm" data-action="admin-onoff" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-on="${u.enabled ? '0' : '1'}" title="${u.enabled ? `Sign ${esc(u.email)} out and block sign-in` : `Let ${esc(u.email)} sign in again`}">${u.enabled ? 'Disable' : 'Enable'}</button>
         <button type="button" class="icon-btn admin-del" data-action="admin-delete" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-name="${who}" title="Delete ${esc(u.email)}'s account" aria-label="Delete ${esc(u.email)}'s account">${X_ICON}</button>`}</div></td>
     </tr>`;
   }).join('');
@@ -2936,7 +2936,7 @@ async function adminInvite(form) {
 
 async function adminAction(el, what) {
   const { id, email } = el.dataset;
-  if (what === 'disable' && !await askConfirm({ title: `Turn off ${email}?`, text: "They're signed out and can't sign in until you turn the account back on. Nothing is deleted.", ok: 'Turn off', danger: true })) return;
+  if (what === 'disable' && !await askConfirm({ title: `Disable ${email}?`, text: "They're signed out and can't sign in until you enable the account again. Nothing is deleted.", ok: 'Disable', danger: true })) return;
   if (what === 'delete' && !await askConfirm({ title: `Delete ${el.dataset.name}?`, text: `This permanently deletes ${email}'s account, address book, occasions and designs, and stops all sharing with it. It can't be undone.`, ok: 'Delete account', danger: true, strict: true })) return;
   await withBusy(el, async () => {
     const res = what === 'delete'
@@ -2944,7 +2944,7 @@ async function adminAction(el, what) {
       : await api(`/admin/users/${encodeURIComponent(id)}/${what}`, { method: 'POST' });
     adminUsers = res.users;
     render();
-    toast({ resend: `Invitation re-sent to ${email}`, enable: `${email} is turned on`, disable: `${email} is turned off`, delete: `${email} is deleted` }[what]);
+    toast({ resend: `Invitation re-sent to ${email}`, enable: `${email} is enabled`, disable: `${email} is disabled`, delete: `${email} is deleted` }[what]);
   });
 }
 

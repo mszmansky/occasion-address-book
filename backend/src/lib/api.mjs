@@ -1109,7 +1109,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
       const user = match.open ? null : await verify(event.headers?.authorization ?? event.headers?.Authorization);
       if (user) {
         if (match.admin && !isAdmin(user)) throw new HttpError(403, 'Only admins can do that');
-        if (await repo.get(accountPk(user.sub), 'OFF')) throw new HttpError(401, 'This account has been turned off', 'account_off');
+        if (await repo.get(accountPk(user.sub), 'OFF')) throw new HttpError(401, 'This account has been disabled', 'account_off');
         user.book = await resolveBook(user, event.headers?.['x-book'] ?? event.headers?.['X-Book']);
         if (match.write && !canEdit(user)) throw new HttpError(403, 'You have view-only access to this address book', 'view_only');
       }
