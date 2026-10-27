@@ -1818,6 +1818,8 @@ function printModal() {
       ${LABEL_THEMES.map((g) => `<div class="lbl-grid" data-theme="${g}" ${g === retTheme ? '' : 'hidden'}>${LABEL_STYLES.filter((x) => x.group === g).map((x) => `<label class="lbl-opt" title="${esc(x.name)}"><input type="radio" name="retStyle" value="${x.id}" ${retStyle === x.id ? 'checked' : ''}>
         <span class="lbl-prev">${hasReturn ? renderReturnLabel(x.id, returnLines(), { last: returnLastName() }) : ''}</span><span class="lbl-name">${esc(x.name)}</span></label>`).join('')}</div>`).join('')}
     </div></div>
+    <label class="check" data-for="retonly"><input type="checkbox" name="retOnly"> Return address only</label>
+    <label data-for="count">How many<input name="count" type="number" min="1" max="500" value="${Math.max(1, tags.size)}" style="max-width:110px"></label>
     <label data-for="start">Start on label number<input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
     <label class="check" data-for="back"><input type="checkbox" name="withBack" checked> Print the address on the back</label>
     <label class="check" data-for="ret"><input type="checkbox" name="withReturn" ${hasReturn ? 'checked' : 'disabled'}> Return address in the corner</label>
@@ -1892,7 +1894,10 @@ function syncPrintForm({ whatChanged = false } = {}) {
   const postcard = what === 'invitations' && INVITE_MEDIA[media]?.postcard;
   const show = (k, on) => { form.querySelector(`[data-for=${k}]`).hidden = !on; };
   const envelope = isEnvelope(media) && what !== 'invitations';
-  show('who', what !== 'return' || envelope);
+  const retOnly = what === 'return' && envelope && f.retOnly.checked; // envelopes to address by hand
+  show('retonly', what === 'return' && envelope);
+  show('count', retOnly);
+  show('who', what !== 'return' || (envelope && !retOnly));
   show('orient', what === 'invitations');
   const sheet = LABEL_SHEETS[media];
   show('start', Boolean(sheet));
@@ -2048,7 +2053,16 @@ async function runPrint(form) {
   let households = [];
   let fontHref = '';
   let title;
-  if (what === 'return' && !envelope) {
+  if (what === 'return' && envelope && f.retOnly.checked) {
+    // Envelopes with only the return address, to address by hand.
+    const lines = returnLines();
+    if (!lines.length) { win.close(); return modalError('Set your return address in Settings first.'); }
+    title = 'Return addresses';
+    const count = Math.min(500, Math.max(1, Math.floor(Number(f.count.value)) || 1));
+    const retLabel = renderReturnLabel(retStyle, lines, { last: returnLastName() });
+    pages = envelopesHtml(Array.from({ length: count }, () => ({ retLabel })), envOpts);
+    if (retStyle !== 'plain') fontHref = LABEL_FONT_LINK;
+  } else if (what === 'return' && !envelope) {
     const lines = returnLines();
     if (!lines.length) { win.close(); return modalError('Set your return address in Settings first.'); }
     title = 'Return addresses';
@@ -3629,7 +3643,7 @@ document.addEventListener('change', (e) => {
   }
   if (k === 'csv-file' && t.files?.[0]) readImportFile(t.files[0]).catch((err) => modalError(err.message));
   if (t.dataset?.map !== undefined) updateImportSummary();
-  if (t.form?.dataset.form === 'print' && ['what', 'media', 'withBack', 'withReturn'].includes(t.name)) syncPrintForm({ whatChanged: t.name === 'what' });
+  if (t.form?.dataset.form === 'print' && ['what', 'media', 'withBack', 'withReturn', 'retOnly'].includes(t.name)) syncPrintForm({ whatChanged: t.name === 'what' });
   if (t.form?.dataset.form === 'print' && t.name === 'retTheme') showLabelTheme(t.form, t.value);
 });
 
