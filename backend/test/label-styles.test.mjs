@@ -16,8 +16,8 @@ test('every style renders the return address, escaped', () => {
   }
 });
 
-test('every theme in the Styles list has designs', () => {
-  for (const t of LABEL_THEMES) assert.ok(LABEL_STYLES.some((s) => s.group === t), t);
+test('every theme in the Styles list has nine designs', () => {
+  for (const t of LABEL_THEMES) assert.equal(LABEL_STYLES.filter((s) => s.group === t).length, 9, t);
 });
 
 test('the monogram uses the last name\'s first letter', () => {

@@ -247,6 +247,255 @@ const rainbow = () => {
   return `${arcs}${cloud(12)}${cloud(84)}`;
 };
 
+// ---------- more artwork (so every theme has nine designs) ----------
+// A picture on the left (svg: its viewBox and where it sits), the name and address beside it.
+const sideArt = ({ id, name, group, art, vb = '0 0 100 100', at = 'left:.05em;top:.05em;width:.86em;height:.9em', under = '', bg = '', tx = 0.96, font = 'scr', nc, ac = '#374151', nameStyle = '' }) => ({
+  id, name, group,
+  render: ({ name: n, address }) => `<div class="rl"${bg ? ` style="background:${bg}"` : ''}>${under}
+      <svg viewBox="${vb}" style="${at}" aria-hidden="true">${art()}</svg>
+      <div class="txt" style="left:${tx}em;right:.08em">${line(n, { scr: 0.3, pac: 0.22, pf: 0.2, cz: 0.17 }[font], font, `color:${nc};${nameStyle}`)}${addressBlock(address, 0.1, 'ad', `color:${ac}`)}</div></div>`,
+});
+const band = (w, bg) => `<div style="position:absolute;left:0;top:0;bottom:0;width:${w}em;background:${bg}"></div>`;
+
+// Patriotic
+// A prize rosette: pleated edge, ribbon tails, a star in the middle.
+const rosette = () => {
+  const pts = [];
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * Math.PI * 2;
+    const r = i % 2 ? 31 : 37;
+    pts.push(`${(50 + r * Math.cos(a)).toFixed(1)},${(40 + r * Math.sin(a)).toFixed(1)}`);
+  }
+  return `<path d="M38 58L24 98L33 92L40 99L50 62Z" fill="${RED}"/><path d="M62 58L76 98L67 92L60 99L50 62Z" fill="${NAVY}"/>
+    <polygon points="${pts.join(' ')}" fill="${NAVY}"/><circle cx="50" cy="40" r="27" fill="#fff"/><circle cx="50" cy="40" r="23" fill="none" stroke="${RED}" stroke-width="1.5" stroke-dasharray="3 2.4"/>
+    <g fill="${RED}">${star(50, 42, 17)}</g>`;
+};
+const burst = (x, y, r, c, n = 12) => {
+  let s = '';
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const [c1, s1] = [Math.cos(a), Math.sin(a)];
+    s += `<path d="M${(x + c1 * r * 0.3).toFixed(1)} ${(y + s1 * r * 0.3).toFixed(1)}L${(x + c1 * r * 0.85).toFixed(1)} ${(y + s1 * r * 0.85).toFixed(1)}"/><circle cx="${(x + c1 * r).toFixed(1)}" cy="${(y + s1 * r).toFixed(1)}" r="1.8" stroke="none"/>`;
+  }
+  return `<g stroke="${c}" fill="${c}" stroke-width="2" stroke-linecap="round">${s}</g>`;
+};
+const fireworks = () => burst(34, 30, 24, '#ef4444') + burst(62, 62, 20, '#fff', 10) + burst(24, 76, 14, '#93c5fd', 8) + burst(70, 18, 10, '#fff', 8);
+const HEART = 'M50 90C20 68 4 52 4 32C4 17 16 7 30 7C40 7 46 13 50 21C54 13 60 7 70 7C84 7 96 17 96 32C96 52 80 68 50 90Z';
+const flagHeart = () => {
+  let stripes = '';
+  for (let i = 0; i < 9; i++) stripes += `<rect x="0" y="${i * 11}" width="100" height="11" fill="${i % 2 ? '#fff' : RED}"/>`;
+  let stars = '';
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) stars += star(12 + c * 13, 14 + r * 11, 3.6);
+  return `<clipPath id="rl-heart"><path d="${HEART}"/></clipPath><g clip-path="url(#rl-heart)">${stripes}<rect width="50" height="44" fill="${NAVY}"/><g fill="#fff">${stars}</g></g>
+    <path d="${HEART}" fill="none" stroke="${NAVY}" stroke-width="2"/>`;
+};
+const starColumn = () => [[15, 14, 10, RED], [15, 38, 8, NAVY], [15, 62, 10, RED], [15, 86, 8, NAVY]].map(([x, y, r, c]) => `<g fill="${c}">${star(x, y, r)}</g>`).join('');
+
+// Spring
+const daisy = (x, y, r) => {
+  let petals = '';
+  for (let i = 0; i < 12; i++) petals += `<ellipse cx="0" cy="${-r * 0.6}" rx="${r * 0.2}" ry="${r * 0.5}" transform="rotate(${i * 30})"/>`;
+  return `<g transform="translate(${x} ${y})"><g fill="#fff" stroke="#d1d5db" stroke-width=".8">${petals}</g><circle r="${r * 0.26}" fill="#facc15"/></g>`;
+};
+const daisies = () => `<g fill="none" stroke="#4d7c0f" stroke-width="2.4" stroke-linecap="round"><path d="M30 40Q34 70 40 98"/><path d="M66 30Q62 66 56 98"/><path d="M48 70Q50 84 50 98"/></g>
+  <g fill="#65a30d"><ellipse cx="34" cy="80" rx="4" ry="10" transform="rotate(-35 34 80)"/><ellipse cx="62" cy="78" rx="4" ry="10" transform="rotate(35 62 78)"/></g>
+  ${daisy(30, 38, 26)}${daisy(68, 28, 22)}${daisy(48, 70, 18)}`;
+const drop = (x, y) => `<path d="M${x} ${y - 6}Q${x + 4} ${y + 1} ${x} ${y + 3}Q${x - 4} ${y + 1} ${x} ${y - 6}Z"/>`;
+const umbrella = () => `<g fill="#93c5fd">${drop(14, 14)}${drop(40, 8)}${drop(70, 12)}${drop(88, 26)}${drop(8, 40)}${drop(90, 60)}${drop(16, 78)}</g>
+  <path d="M10 52A40 34 0 0 1 90 52Q83 44 76 52Q70 44 63 52Q57 44 50 52Q43 44 37 52Q30 44 24 52Q17 44 10 52Z" fill="#ec4899"/>
+  <path d="M50 18Q36 30 37 52M50 18Q64 30 63 52M50 18Q42 30 24 52M50 18Q58 30 76 52" fill="none" stroke="#be185d" stroke-width="1.2"/>
+  <path d="M50 14V18" stroke="#475569" stroke-width="2.4"/>
+  <path d="M50 52V84Q50 92 43 92Q37 92 37 86" fill="none" stroke="#475569" stroke-width="3" stroke-linecap="round"/>`;
+const bunny = () => `<path d="M0 94Q50 86 100 94V100H0Z" fill="#86efac"/>
+  <g fill="#fff" stroke="#c4b5fd" stroke-width="1.6">
+    <ellipse cx="42" cy="20" rx="6" ry="17" transform="rotate(-12 42 20)"/><ellipse cx="58" cy="20" rx="6" ry="17" transform="rotate(12 58 20)"/>
+    <ellipse cx="50" cy="72" rx="24" ry="21"/><circle cx="50" cy="44" r="16"/></g>
+  <g fill="#f9a8d4"><ellipse cx="42" cy="21" rx="2.6" ry="11" transform="rotate(-12 42 21)"/><ellipse cx="58" cy="21" rx="2.6" ry="11" transform="rotate(12 58 21)"/>
+    <path d="M47 47h6l-3 3Z"/><circle cx="40" cy="50" r="3" opacity=".6"/><circle cx="60" cy="50" r="3" opacity=".6"/></g>
+  <g fill="#374151"><circle cx="44" cy="42" r="2"/><circle cx="56" cy="42" r="2"/></g>
+  <path d="M50 50V53M50 53Q47 56 44 54M50 53Q53 56 56 54" fill="none" stroke="#374151" stroke-width="1.1" stroke-linecap="round"/>`;
+const egg = (x, y, c, k) => {
+  const pat = k === 0
+    ? `<path d="M${x - 12} ${y - 2}l4 -5 4 5 4 -5 4 5 4 -5 4 5" fill="none" stroke="#fff" stroke-width="2.2"/><path d="M${x - 12} ${y + 7}H${x + 12}" stroke="#fff" stroke-width="2"/>`
+    : k === 1
+      ? `<g fill="#fff">${[[-6, -8], [5, -6], [-1, 1], [7, 6], [-7, 7], [0, 11]].map(([dx, dy]) => `<circle cx="${x + dx}" cy="${y + dy}" r="2.2"/>`).join('')}</g>`
+      : `<path d="M${x - 13} ${y - 4}H${x + 13}M${x - 13} ${y + 4}H${x + 13}" stroke="#fff" stroke-width="3"/>`;
+  return `<ellipse cx="${x}" cy="${y}" rx="14" ry="18" fill="${c}"/>${pat}`;
+};
+const eggs = () => `<path d="M2 82Q50 70 98 82V100H2Z" fill="#a7f3d0"/><g stroke="#34d399" stroke-width="1.6" stroke-linecap="round"><path d="M10 84l-2-8M20 82l1-9M80 80l2-8M90 82l3-7"/></g>
+  ${egg(30, 66, '#f472b6', 0)}${egg(70, 64, '#60a5fa', 1)}${egg(50, 40, '#facc15', 2)}`;
+const songbird = () => `<path d="M2 74Q50 64 98 76" fill="none" stroke="#78350f" stroke-width="3.4" stroke-linecap="round"/>
+  <g fill="#65a30d"><ellipse cx="18" cy="68" rx="4" ry="9" transform="rotate(60 18 68)"/><ellipse cx="84" cy="80" rx="4" ry="9" transform="rotate(-50 84 80)"/><ellipse cx="90" cy="68" rx="4" ry="8" transform="rotate(40 90 68)"/></g>
+  <path d="M32 54L10 46L14 60Z" fill="#1d4ed8"/>
+  <ellipse cx="50" cy="52" rx="21" ry="15" fill="#3b82f6"/><ellipse cx="58" cy="57" rx="11" ry="9" fill="#fb923c"/>
+  <circle cx="66" cy="40" r="11" fill="#3b82f6"/><ellipse cx="45" cy="49" rx="13" ry="7" fill="#1d4ed8" transform="rotate(-15 45 49)"/>
+  <path d="M76 38L85 41L76 44Z" fill="#f59e0b"/><circle cx="69" cy="37" r="2.2" fill="#111827"/>
+  <path d="M48 66V71M56 66V70" stroke="#78350f" stroke-width="1.8" stroke-linecap="round"/>`;
+
+// Summer
+const palm = () => `<path d="M41 62A15 15 0 0 1 71 62Z" fill="#fde68a"/>
+  <path d="M8 70H30M44 76H72M20 84H40" stroke="#e0f2fe" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M26 100Q30 74 42 46" fill="none" stroke="#3b2f2f" stroke-width="4.5" stroke-linecap="round"/>
+  <g fill="none" stroke="#1f2a1f" stroke-width="4" stroke-linecap="round"><path d="M42 46Q28 34 12 44"/><path d="M42 46Q34 26 18 24"/><path d="M42 46Q46 26 62 22"/><path d="M42 46Q58 36 74 46"/><path d="M42 46Q44 30 38 16"/></g>`;
+const sailboat = () => `<circle cx="80" cy="18" r="9" fill="#fbbf24"/>
+  <path d="M50 14V70" stroke="#475569" stroke-width="2"/>
+  <path d="M53 18V64H78Z" fill="#fff" stroke="#94a3b8" stroke-width="1"/><path d="M47 24V64H26Z" fill="#ef4444"/>
+  <path d="M20 68H82L72 80H30Z" fill="${NAVY}"/>
+  <path d="M0 84Q8 78 16 84T32 84T48 84T64 84T80 84T96 84V100H0Z" fill="#38bdf8"/><path d="M0 92Q8 86 16 92T32 92T48 92T64 92T80 92T96 92" fill="none" stroke="#e0f2fe" stroke-width="1.6"/>`;
+const lemonSlice = (x, y, r) => {
+  let seg = '';
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    seg += `<path d="M${x} ${y}L${(x + Math.cos(a) * r * 0.82).toFixed(1)} ${(y + Math.sin(a) * r * 0.82).toFixed(1)}"/>`;
+  }
+  return `<circle cx="${x}" cy="${y}" r="${r}" fill="#eab308"/><circle cx="${x}" cy="${y}" r="${r * 0.86}" fill="#fef9c3"/><circle cx="${x}" cy="${y}" r="${r * 0.82}" fill="#fde047"/>
+    <g stroke="#fef9c3" stroke-width="2">${seg}</g><circle cx="${x}" cy="${y}" r="${r * 0.12}" fill="#fef9c3"/>`;
+};
+const lemons = () => `<ellipse cx="66" cy="72" rx="22" ry="16" fill="#facc15" transform="rotate(-20 66 72)"/><circle cx="86" cy="64" r="3.5" fill="#facc15"/>
+  <ellipse cx="60" cy="68" rx="7" ry="3.5" fill="#fff" opacity=".45" transform="rotate(-20 60 68)"/>
+  <ellipse cx="82" cy="50" rx="6" ry="12" fill="#16a34a" transform="rotate(40 82 50)"/>
+  ${lemonSlice(32, 34, 24)}${lemonSlice(26, 80, 15)}`;
+const shells = () => {
+  let ridges = '';
+  for (let i = 0; i <= 8; i++) {
+    const a = Math.PI * (1.05 + (i / 8) * 0.9);
+    ridges += `<path d="M44 86L${(44 + Math.cos(a) * 32).toFixed(1)} ${(52 + Math.sin(a) * 32).toFixed(1)}"/>`;
+  }
+  return `<path d="M44 86L14 52Q16 22 44 18Q72 22 74 52Z" fill="#fda4af"/><g stroke="#f43f5e" stroke-width="1.3" opacity=".7">${ridges}</g>
+    <path d="M36 86H52L49 93H39Z" fill="#fb7185"/>
+    <g fill="#fb923c" transform="rotate(12 80 74)">${star(80, 74, 18)}</g><g fill="#fed7aa">${[[80, 66], [87, 72], [84, 80], [76, 80], [73, 72]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.4"/>`).join('')}</g>`;
+};
+const iceCream = () => `<path d="M36 52L50 98L64 52Z" fill="#d97706"/>
+  <path d="M38 58L58 78M42 70L54 82M40 52L62 70M62 58L42 78M58 70L46 82M60 52L38 70" stroke="#92400e" stroke-width="1.2"/>
+  <circle cx="50" cy="44" r="16" fill="#a7f3d0"/><circle cx="40" cy="34" r="14" fill="#f9a8d4"/><circle cx="60" cy="32" r="14" fill="#fde68a"/>
+  <path d="M34 52Q40 46 46 52Q52 46 58 52Q64 46 68 52" fill="none" stroke="#a7f3d0" stroke-width="4"/>
+  <circle cx="52" cy="16" r="6" fill="#dc2626"/><path d="M52 10Q54 4 60 2" fill="none" stroke="#166534" stroke-width="1.6"/>
+  <g stroke-width="2.2" stroke-linecap="round"><path d="M36 30l3 2" stroke="#7c3aed"/><path d="M60 26l-2 3" stroke="#2563eb"/><path d="M44 40l3-1" stroke="#16a34a"/><path d="M64 38l2 2" stroke="#ef4444"/></g>`;
+const sunshine = () => {
+  let rays = '';
+  for (let i = 0; i < 12; i++) rays += `<path d="M-6-30L0-46L6-30Z" transform="rotate(${i * 30})"/>`;
+  return `<g transform="translate(50 50)"><g fill="#f59e0b">${rays}</g><circle r="27" fill="#facc15"/><circle r="22" fill="#fde047"/></g>`;
+};
+
+// Fall
+const acorn = (x, y, rot, k = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${k})">
+  <ellipse cx="0" cy="8" rx="10" ry="13" fill="#b45309"/><ellipse cx="-3" cy="6" rx="2.5" ry="6" fill="#fff" opacity=".25"/>
+  <path d="M-13 0A13 9 0 0 1 13 0Q0 5-13 0Z" fill="#78350f"/><path d="M-8-4L-4 1M-2-6L1 0M5-5L7 0" stroke="#a16207" stroke-width="1"/>
+  <path d="M0-8V-14Q2-17 5-17" fill="none" stroke="#78350f" stroke-width="2" stroke-linecap="round"/></g>`;
+const acorns = () => leaf(70, 30, 35, '#65a30d', 1.5) + leaf(26, 26, -40, '#ca8a04', 1.1) + acorn(36, 58, -15, 1.4) + acorn(68, 70, 18, 1.2);
+const wheat = () => {
+  const stalk = (x, top, lean) => {
+    let grains = '';
+    for (let i = 0; i < 5; i++) {
+      const y = top + i * 7;
+      grains += `<ellipse cx="${x - 4}" cy="${y}" rx="3" ry="6" transform="rotate(-30 ${x - 4} ${y})"/><ellipse cx="${x + 4}" cy="${y}" rx="3" ry="6" transform="rotate(30 ${x + 4} ${y})"/>`;
+    }
+    return `<g transform="rotate(${lean} 50 92)"><path d="M${x} ${top - 6}V92" stroke="#a16207" stroke-width="1.8"/><g fill="#ca8a04">${grains}<ellipse cx="${x}" cy="${top - 6}" rx="2.6" ry="6"/></g></g>`;
+  };
+  return `${stalk(50, 14, -24)}${stalk(50, 10, 0)}${stalk(50, 14, 24)}
+    <path d="M40 70Q50 76 60 70L58 78Q50 82 42 78Z" fill="#9a3412"/><path d="M48 76L40 90M52 76L60 90" stroke="#9a3412" stroke-width="3" stroke-linecap="round"/>`;
+};
+const apple = (x, y, c, k = 1) => `<g transform="translate(${x} ${y}) scale(${k})">
+  <path d="M0-14C-10-22-24-14-22 0C-20 16-8 22 0 18C8 22 20 16 22 0C24-14 10-22 0-14Z" fill="${c}"/>
+  <ellipse cx="-11" cy="-4" rx="4" ry="7" fill="#fff" opacity=".3" transform="rotate(20 -11 -4)"/>
+  <path d="M0-14Q1-22 5-26" fill="none" stroke="#78350f" stroke-width="2.4" stroke-linecap="round"/>
+  <ellipse cx="11" cy="-22" rx="8" ry="4" fill="#16a34a" transform="rotate(-25 11 -22)"/></g>`;
+const apples = () => apple(36, 40, '#dc2626', 1.3) + apple(68, 70, '#b91c1c', 1.1) + apple(28, 82, '#ca8a04', 0.75);
+const turkey = () => {
+  const colors = ['#b91c1c', '#ea580c', '#facc15', '#ea580c', '#b91c1c', '#ea580c', '#facc15', '#ea580c', '#b91c1c'];
+  const tail = colors.map((c, i) => `<ellipse cx="0" cy="-30" rx="9" ry="24" fill="${c}" transform="translate(50 64) rotate(${-80 + i * 20})"/>`).join('');
+  return `${tail}<ellipse cx="50" cy="68" rx="19" ry="21" fill="#78350f"/><ellipse cx="50" cy="74" rx="11" ry="12" fill="#92400e"/>
+    <circle cx="50" cy="44" r="11" fill="#92400e"/>
+    <g fill="#fff"><circle cx="46" cy="42" r="3"/><circle cx="54" cy="42" r="3"/></g><g fill="#111827"><circle cx="46.5" cy="42.5" r="1.5"/><circle cx="54.5" cy="42.5" r="1.5"/></g>
+    <path d="M46 47L54 47L50 53Z" fill="#f59e0b"/><path d="M52 49Q57 55 53 60Q50 55 52 49Z" fill="#dc2626"/>
+    <path d="M44 88V95M44 95l-4 3M44 95l4 3M56 88V95M56 95l-4 3M56 95l4 3" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>`;
+};
+const MAPLE = 'M50 6L57 24L67 18L65 37L81 28L77 43L93 45L80 55L86 61L64 63L66 73L54 67L52 90H48L46 67L34 73L36 63L14 61L20 55L7 45L23 43L19 28L35 37L33 18L43 24Z';
+const maple = () => `<path d="${MAPLE}" fill="#dc2626"/><path d="M50 90V20M50 66L28 46M50 66L72 46M50 58L30 32M50 58L70 32" fill="none" stroke="#991b1b" stroke-width="1.3"/>
+  <path d="M50 90V98" stroke="#7f1d1d" stroke-width="2.4" stroke-linecap="round"/>`;
+const harvestMoon = () => `<circle cx="52" cy="40" r="28" fill="#fb923c"/><circle cx="44" cy="32" r="5" fill="#f97316" opacity=".6"/><circle cx="62" cy="48" r="7" fill="#f97316" opacity=".5"/>
+  <g fill="none" stroke="#0b0918" stroke-width="3" stroke-linecap="round"><path d="M0 58Q30 52 58 58Q76 62 94 54"/><path d="M28 54Q34 42 44 38"/><path d="M58 58Q66 46 74 44"/><path d="M76 60Q84 70 94 72"/><path d="M40 56Q44 64 52 66"/></g>
+  <g fill="#fcd34d">${star(14, 20, 3)}${star(88, 14, 2.5)}${star(86, 40, 2)}</g>`;
+
+// Fun
+const polkaDots = () => {
+  let d = '';
+  for (let r = 0; r < 6; r++) for (let c = 0; c < 5; c++) d += `<circle cx="${8 + c * 16 + (r % 2) * 8}" cy="${8 + r * 17}" r="5.2" fill="${CONFETTI[(r * 5 + c) % CONFETTI.length]}"/>`;
+  return d;
+};
+const twinkle = () => [[24, 26, 18, '#f59e0b'], [64, 18, 10, '#ec4899'], [62, 56, 16, '#3b82f6'], [22, 74, 12, '#10b981'], [80, 84, 8, '#a855f7'], [44, 90, 6, '#ef4444'], [86, 38, 5, '#f59e0b']]
+  .map(([x, y, r, c]) => `<g fill="${c}">${star(x, y, r)}</g>`).join('');
+const smiley = () => `<circle cx="50" cy="50" r="42" fill="#facc15" stroke="#eab308" stroke-width="3"/>
+  <ellipse cx="36" cy="40" rx="5" ry="8" fill="#422006"/><ellipse cx="64" cy="40" rx="5" ry="8" fill="#422006"/>
+  <path d="M28 58Q50 82 72 58" fill="none" stroke="#422006" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="26" cy="58" r="5" fill="#fb923c" opacity=".55"/><circle cx="74" cy="58" r="5" fill="#fb923c" opacity=".55"/>`;
+const cupcake = () => `<path d="M26 56H74L66 96H34Z" fill="#f472b6"/><path d="M34 56L38 96M44 56L46 96M56 56L54 96M66 56L62 96" stroke="#fbcfe8" stroke-width="2.6"/>
+  <ellipse cx="50" cy="54" rx="28" ry="9" fill="#fef3c7"/><ellipse cx="50" cy="44" rx="22" ry="9" fill="#fef3c7"/><ellipse cx="50" cy="35" rx="14" ry="7" fill="#fef3c7"/>
+  <g stroke-width="2.4" stroke-linecap="round"><path d="M36 50l3 1" stroke="#3b82f6"/><path d="M58 46l3-2" stroke="#10b981"/><path d="M46 40l2 2" stroke="#ef4444"/><path d="M62 54l2 1" stroke="#a855f7"/><path d="M42 56l-2 1" stroke="#f59e0b"/></g>
+  <rect x="47.5" y="12" width="5" height="20" rx="1.5" fill="#60a5fa"/><path d="M50 2Q55 8 50 12Q45 8 50 2Z" fill="#f59e0b"/>`;
+const paw = (x, y, rot, k = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${k})" fill="#92400e">
+  <path d="M0 2C-8 2-12 9-11 13C-10 17-4 16 0 15C4 16 10 17 11 13C12 9 8 2 0 2Z"/>
+  <ellipse cx="-12" cy="-3" rx="3" ry="4.2"/><ellipse cx="-5" cy="-10" rx="3" ry="4.4"/><ellipse cx="5" cy="-10" rx="3" ry="4.4"/><ellipse cx="12" cy="-3" rx="3" ry="4.2"/></g>`;
+const paws = () => paw(22, 86, 25, 0.95) + paw(54, 66, 25, 0.95) + paw(28, 44, 25, 0.95) + paw(62, 22, 25, 0.95);
+const retroArcs = () => ['#7c2d12', '#c2410c', '#f97316', '#f59e0b', '#fde68a'].map((c, i) => {
+  const r = 92 - i * 16;
+  return `<path d="M0 ${100 - r}A${r} ${r} 0 0 1 ${r} 100" fill="none" stroke="${c}" stroke-width="13"/>`;
+}).join('');
+
+const MORE_STYLES = [
+  // Everyday
+  {
+    id: 'classic', name: 'Classic', group: 'Everyday',
+    render: ({ name, address }) => `<div class="rl"><div class="txt c" style="left:.14em;right:.14em">
+      ${line(name, 0.21, 'pf', 'font-weight:600;letter-spacing:.02em')}
+      <span style="display:block;height:.01em;background:#9a7b2f;margin:.035em 30% .045em"></span>
+      ${addressBlock(address, 0.115, 'pf', 'color:#374151')}</div></div>`,
+  },
+  {
+    id: 'elegant', name: 'Elegant border', group: 'Everyday',
+    render: ({ name, address }) => `<div class="rl">
+      <div style="position:absolute;inset:.06em;border:.014em solid #1f2328"></div><div style="position:absolute;inset:.095em;border:.006em solid #1f2328"></div>
+      <div class="txt c" style="left:.2em;right:.2em;top:.13em;bottom:.13em">${line(name, 0.28, 'pin')}${addressBlock(address, 0.095, 'cz', 'letter-spacing:.04em')}</div></div>`,
+  },
+  // Patriotic
+  sideArt({ id: 'rosette', name: 'Rosette', group: 'Patriotic', art: rosette, at: 'left:.05em;top:.04em;width:.86em;height:.92em', tx: 0.96, nc: NAVY, ac: RED }),
+  sideArt({ id: 'fireworks', name: 'Fireworks', group: 'Patriotic', art: fireworks, bg: '#0f1d4a', at: 'left:.04em;top:.03em;width:.86em;height:.94em', tx: 0.94, nc: '#fff', ac: '#dbeafe' }),
+  sideArt({ id: 'tricolor', name: 'Red, white & blue', group: 'Patriotic', art: () => `<g fill="#fff">${star(13, 18, 8)}${star(13, 50, 8)}${star(13, 82, 8)}</g>`, vb: '0 0 26 100',
+    under: band(0.46, `linear-gradient(90deg,${NAVY} 0 .26em,#fff .26em .31em,${RED} .31em .46em)`), at: 'left:0;top:0;width:.26em;height:1em', tx: 0.58, nc: NAVY, ac: '#374151' }),
+  sideArt({ id: 'flagheart', name: 'Flag heart', group: 'Patriotic', art: flagHeart, at: 'left:.06em;top:.08em;width:.84em;height:.84em', tx: 0.98, nc: RED, ac: NAVY }),
+  sideArt({ id: 'starcolumn', name: 'Star column', group: 'Patriotic', art: starColumn, vb: '0 0 30 100', at: 'left:.08em;top:0;width:.3em;height:1em',
+    under: `<div style="position:absolute;left:.44em;top:.1em;bottom:.1em;width:.05em;border-left:.014em solid ${RED};border-right:.014em solid ${NAVY}"></div>`, tx: 0.6, font: 'pf', nc: NAVY, ac: RED, nameStyle: 'font-style:italic;margin-bottom:.02em' }),
+  // Spring
+  sideArt({ id: 'daisies', name: 'Daisies', group: 'Spring', art: daisies, bg: '#f0fdf4', at: 'left:.04em;top:0;width:.9em;height:1em', tx: 0.98, nc: '#3f6212', ac: '#374151' }),
+  sideArt({ id: 'umbrella', name: 'April showers', group: 'Spring', art: umbrella, bg: '#eff6ff', tx: 0.96, nc: '#be185d', ac: '#374151' }),
+  sideArt({ id: 'bunny', name: 'Bunny', group: 'Spring', art: bunny, bg: '#faf5ff', at: 'left:.04em;top:.02em;width:.88em;height:.98em', tx: 0.96, nc: '#7e22ce', ac: '#4b5563' }),
+  sideArt({ id: 'eggs', name: 'Easter eggs', group: 'Spring', art: eggs, at: 'left:.04em;top:.02em;width:.88em;height:.96em', tx: 0.96, nc: '#db2777', ac: '#4b5563' }),
+  sideArt({ id: 'songbird', name: 'Songbird', group: 'Spring', art: songbird, bg: '#f7fee7', tx: 0.96, nc: '#1d4ed8', ac: '#4b5563' }),
+  sideArt({ id: 'gingham', name: 'Gingham', group: 'Spring', art: () => '', at: 'width:0;height:0',
+    under: band(0.6, 'repeating-linear-gradient(0deg,rgba(74,222,128,.45) 0 .07em,transparent .07em .14em),repeating-linear-gradient(90deg,rgba(74,222,128,.45) 0 .07em,transparent .07em .14em),#fff'), tx: 0.72, nc: '#15803d', ac: '#374151' }),
+  // Summer
+  sideArt({ id: 'palms', name: 'Palm sunset', group: 'Summer', art: palm, vb: '0 0 80 100', under: band(0.8, 'linear-gradient(#f97316,#fdba74 62%,#0ea5e9 62%)'), at: 'left:0;top:0;width:.8em;height:1em', tx: 0.92, nc: '#c2410c', ac: '#374151' }),
+  sideArt({ id: 'sailboat', name: 'Sailboat', group: 'Summer', art: sailboat, under: band(0.92, '#e0f2fe'), at: 'left:.02em;top:0;width:.9em;height:1em', tx: 1.02, nc: NAVY, ac: '#374151' }),
+  sideArt({ id: 'lemons', name: 'Lemons', group: 'Summer', art: lemons, bg: '#fefce8', tx: 0.96, nc: '#a16207', ac: '#4b5563' }),
+  sideArt({ id: 'shells', name: 'Seashells', group: 'Summer', art: shells, bg: '#fef7e6', tx: 0.96, nc: '#c2410c', ac: '#57534e' }),
+  sideArt({ id: 'icecream', name: 'Ice cream', group: 'Summer', art: iceCream, bg: '#fdf2f8', at: 'left:.04em;top:.02em;width:.86em;height:.96em', tx: 0.94, font: 'pac', nc: '#db2777', ac: '#4b5563' }),
+  sideArt({ id: 'sunshine', name: 'Sunshine', group: 'Summer', art: sunshine, under: band(0.94, '#e0f2fe'), tx: 1.04, nc: '#b45309', ac: '#374151' }),
+  // Fall
+  sideArt({ id: 'acorns', name: 'Acorns', group: 'Fall', art: acorns, bg: '#fefce8', tx: 0.96, nc: '#78350f', ac: '#57534e' }),
+  sideArt({ id: 'wheat', name: 'Harvest wheat', group: 'Fall', art: wheat, bg: '#fffbeb', at: 'left:.04em;top:.02em;width:.86em;height:.96em', tx: 0.94, nc: '#92400e', ac: '#57534e' }),
+  sideArt({ id: 'apples', name: 'Apples', group: 'Fall', art: apples, tx: 0.96, nc: '#b91c1c', ac: '#57534e' }),
+  sideArt({ id: 'turkey', name: 'Turkey', group: 'Fall', art: turkey, bg: '#fff7ed', at: 'left:.03em;top:.02em;width:.9em;height:.96em', tx: 0.98, nc: '#9a3412', ac: '#57534e' }),
+  sideArt({ id: 'maple', name: 'Maple leaf', group: 'Fall', art: maple, bg: '#fff7ed', at: 'left:.06em;top:.04em;width:.84em;height:.92em', tx: 0.96, nc: '#b91c1c', ac: '#57534e' }),
+  sideArt({ id: 'harvestmoon', name: 'Harvest moon', group: 'Fall', art: harvestMoon, bg: '#1f1b3a', at: 'left:.02em;top:.04em;width:.9em;height:.9em', tx: 0.98, nc: '#fdba74', ac: '#e7e5e4' }),
+  // Fun
+  sideArt({ id: 'polka', name: 'Polka dots', group: 'Fun', art: polkaDots, vb: '0 0 80 100', at: 'left:0;top:0;width:.8em;height:1em', tx: 0.92, font: 'pac', nc: '#7c3aed', ac: '#374151' }),
+  sideArt({ id: 'twinkle', name: 'Twinkle stars', group: 'Fun', art: twinkle, tx: 0.96, font: 'pac', nc: '#2563eb', ac: '#374151' }),
+  sideArt({ id: 'smiley', name: 'Smiley', group: 'Fun', art: smiley, at: 'left:.07em;top:.07em;width:.86em;height:.86em', tx: 1.02, font: 'pac', nc: '#ca8a04', ac: '#374151' }),
+  sideArt({ id: 'cupcake', name: 'Cupcake', group: 'Fun', art: cupcake, bg: '#fdf4ff', at: 'left:.04em;top:.02em;width:.86em;height:.96em', tx: 0.94, font: 'pac', nc: '#db2777', ac: '#374151' }),
+  sideArt({ id: 'paws', name: 'Paw prints', group: 'Fun', art: paws, bg: '#fefce8', tx: 0.96, font: 'pac', nc: '#92400e', ac: '#57534e' }),
+  sideArt({ id: 'retro', name: 'Retro groove', group: 'Fun', art: retroArcs, under: band(0.92, '#fff7ed'), at: 'left:0;top:0;width:.92em;height:1em', vb: '0 0 92 100', tx: 1.02, font: 'pac', nc: '#c2410c', ac: '#57534e' }),
+];
+
 // ---------- the designs ----------
 // render({ name, address: [lines], initial, last }) → the inside of one label.
 export const LABEL_STYLES = [
@@ -459,6 +708,7 @@ export const LABEL_STYLES = [
       <svg viewBox="0 0 100 100" style="left:.02em;top:.02em;width:.86em;height:.96em" aria-hidden="true">${rainbow()}</svg>
       <div class="txt" style="left:1em;right:.08em">${line(name, 0.22, 'pac', 'color:#2563eb')}${addressBlock(address, 0.1, 'ad', 'color:#374151')}</div></div>`,
   },
+  ...MORE_STYLES,
 ];
 
 /** The themes, in the order the Styles list shows them. */
