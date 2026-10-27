@@ -1670,9 +1670,9 @@ function occasionModal(o) {
       </div>
     </fieldset>
     <div class="grid-2 greet-row">
-      <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Address Greeting<select name="nameStyle">
+      <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Address Greeting Style<select name="nameStyle">
         ${nameStyleOptions(o.nameStyle)}</select></label>
-      <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><span data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}>Invitation Greeting</span><span data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email Greeting</span><select name="greetStyle">
+      <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><span data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}>Invitation Greeting Style</span><span data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email Greeting Style</span><select name="greetStyle">
         ${[['informal', 'Informal Greeting'], ['formal', 'Formal Greeting'], ['household', 'Household Greeting'], ['person', "The person's first name"]]
       .map(([k, l]) => `<option value="${k}" ${k === 'person' ? `data-kinds="email" ${kind === 'email' ? '' : 'hidden disabled'}` : ''} ${(o.greetStyle ?? 'informal') === k && !(k === 'person' && kind !== 'email') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     </div>
@@ -1751,7 +1751,7 @@ const PRINT_MEDIA = {
   return: [['avery5195', LABEL_SHEETS.avery5195.name], ['avery5160', LABEL_SHEETS.avery5160.name],
     ['a2', `${ENVELOPES.a2.name}, return address only`], ['a7', `${ENVELOPES.a7.name}, return address only`]],
 };
-// Printing follows the occasion: its Address Greeting for the first line of addresses, and its
+// Printing follows the occasion: its Address Greeting Style for the first line of addresses, and its
 // Invitation Greeting for the greeting inside each invitation.
 const inviteGreetStyle = (o) => (['formal', 'household'].includes(o?.greetStyle) ? o.greetStyle : 'informal');
 const isEnvelope = (media) => Boolean(ENVELOPES[media]);
@@ -1899,7 +1899,7 @@ function chosenHouseholds(f, { needAddress }) {
   return { households, skipped };
 }
 
-// The first line of an address: the occasion's Address Greeting, falling back to the Household Greeting.
+// The first line of an address: the occasion's Address Greeting Style, falling back to the Household Greeting.
 const addressName = (h, o) => envelopeName({ ...h, formalName: effectiveFormalName(h) }, o.nameStyle);
 
 function skippedToast(skipped) {
