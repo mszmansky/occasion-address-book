@@ -689,7 +689,6 @@ fieldset > * + * { margin-top: 10px; }
 legend { font-weight: 600; font-size: 13px; color: var(--ink-2); padding: 0 6px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
 .grid-3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px 12px; }
-.grid-3:has(> [data-kinds][hidden]) { grid-template-columns: 1fr; } /* Type alone when Date and Time are hidden */
 .grid-2 > *, .grid-3 > * { margin-top: 0 !important; min-width: 0; }
 
 .member-head, .member-row { display: grid; grid-template-columns: 1fr 1fr 1.5fr 1fr 58px 34px; gap: 6px; align-items: center; }
@@ -1200,3 +1199,7 @@ label > span.hint { display: block; }
 .lbl-opt input:focus-visible + .lbl-prev { outline: 2px solid var(--focus); outline-offset: 2px; }
 .lbl-name { font-size: 12.5px; color: var(--ink-2); }
 .lbl-opt input:checked ~ .lbl-name { color: var(--ink); font-weight: 600; }
+/* Edit occasion: Type and Name on one row. */
+.occ-head { display: grid; grid-template-columns: minmax(160px, 1fr) 2fr; gap: 10px 12px; }
+fieldset[hidden] { display: none; }
+@media (max-width: 520px) { .occ-head { grid-template-columns: 1fr; } }

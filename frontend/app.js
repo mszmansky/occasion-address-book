@@ -834,7 +834,7 @@ function openModal(title, body, { form, foot = '', wide = false, head = '', base
     <div class="modal-foot">${foot}</div>
   </form>`;
   if (!modal.open) modal.showModal();
-  modal.querySelector('input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea')?.focus();
+  (modal.querySelector('[autofocus]') ?? modal.querySelector('input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea'))?.focus();
 }
 const closeModal = () => modal.close();
 function modalError(msg) {
@@ -1658,13 +1658,17 @@ function occasionModal(o) {
   const kind = kindOf(o);
   const copyable = state.occasions.filter((x) => x.counts.tagged);
   openModal(isNew ? 'New occasion' : 'Edit occasion', `
-    <label>Name<input name="name" required maxlength="120" value="${val(o.name)}" placeholder="Christmas cards ${new Date().getFullYear()}"></label>
-    <div class="grid-3">
+    <div class="occ-head">
       <label>Type<select name="kind" data-occ-kind>${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}>Date <span class="muted">(optional)</span><input type="date" name="date" value="${val(o.date)}"></label>
-      <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
+      <label>Name<input name="name" required maxlength="120" autofocus value="${val(o.name)}" placeholder="Christmas cards ${new Date().getFullYear()}"></label>
     </div>
-    <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
+    <fieldset data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><legend>When and where</legend>
+      <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
+      <div class="grid-2">
+        <label>Date <span class="muted">(optional)</span><input type="date" name="date" value="${val(o.date)}"></label>
+        <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
+      </div>
+    </fieldset>
     <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Greeting Style<select name="nameStyle">
       ${nameStyleOptions(o.nameStyle)}</select></label>
     <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design invitation…</button></div>
