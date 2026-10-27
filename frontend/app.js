@@ -71,6 +71,11 @@ const BOOK_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="
 const REQUIRED = '<span class="req" aria-hidden="true" title="Required">*</span>';
 // The standard share icon: a box with an arrow coming up out of it.
 const SHARE_ICON = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 1.75v8.5M5.25 4.5 8 1.75l2.75 2.75M5.5 6.5H4.25c-.7 0-1.25.55-1.25 1.25v5.5c0 .7.55 1.25 1.25 1.25h7.5c.7 0 1.25-.55 1.25-1.25v-5.5c0-.7-.55-1.25-1.25-1.25H10.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// Duplicate: a page with a copy behind it and an arrow over the top (thin lines).
+const DUPLICATE_ICON = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">'
+  + '<rect x="8.6" y="8.8" width="8.4" height="9.2" rx=".9"/><path d="M12.4 12.2h2.6M12.4 14.2h2.6M12.4 16.2h2.6"/>'
+  + '<rect x="2.6" y="5.6" width="8.4" height="9.2" rx=".9" fill="var(--surface, #fff)"/><path d="M4.6 8.6h4.4M4.6 10.6h4.4M4.6 12.6h4.4"/>'
+  + '<path d="M5.8 4.2C7 1.6 12.6 1.3 14.4 6.4"/><path d="M12.6 5.4l1.9 1.7 1.3-2.2"/></svg>';
 const CHECK_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const BRUSH = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M13.6 2.4a1.4 1.4 0 0 0-2 0L6.8 7.2l2 2 4.8-4.8a1.4 1.4 0 0 0 0-2zM6 8.4c-1.4 0-2.4 1-2.4 2.4 0 .9-.5 1.6-1.6 2 .7.6 1.6.8 2.4.8 2 0 3.2-1.3 3.2-3.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>';
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -1499,6 +1504,7 @@ function renderOccasions() {
   </div>
   ${state.occasions.length ? `<div class="occ-grid">${state.occasions.map((o) => `
     <button class="occ-card" data-action="open-occasion" data-id="${esc(o.id)}">
+      ${canEdit() ? `<span class="occ-dup" data-action="duplicate-occasion" data-id="${esc(o.id)}" title="Duplicate">${DUPLICATE_ICON}<span class="sr">Duplicate ${esc(o.name)}</span></span>` : ''}
       <span class="occ-kind pill ${KIND_PILL[kindOf(o)]}">${KIND_LABEL[kindOf(o)]}</span>
       <span class="hh-name">${esc(o.name)}</span>
       ${kindOf(o) === 'card' ? '' : `<span class="small muted">${o.date ? fmtDate(o.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'No date'}</span>`}
@@ -1656,7 +1662,6 @@ function occasionModal(o) {
   const isNew = !o;
   o ??= { kind: 'card', nameStyle: 'label', invite: {} };
   const kind = kindOf(o);
-  const copyable = state.occasions.filter((x) => x.counts.tagged);
   openModal(isNew ? 'New occasion' : 'Edit occasion', `
     <div class="occ-head">
       <label>Type<select name="kind" data-occ-kind>${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -1679,8 +1684,6 @@ function occasionModal(o) {
     <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design invitation…</button></div>
     <div data-kinds="email" ${kind === 'email' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design email…</button></div>
     <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email subject<input name="subject" maxlength="200" value="${val(o.invite?.subject)}" placeholder="You're invited: ${val(o.name) || 'our holiday open house'}"></label>
-    ${isNew && copyable.length ? `<label>Start with the list from <span class="muted">(optional)</span><select name="copyFrom"><option value="">Nobody yet</option>
-      ${copyable.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} (${x.counts.tagged})</option>`).join('')}</select></label>` : ''}
     <label>Notes<textarea name="notes" rows="2" maxlength="2000">${esc(o.notes ?? '')}</textarea></label>`, {
     form: isNew ? 'occasion-new' : 'occasion-edit',
     base: isNew ? '' : o.updatedAt ?? '',
@@ -1700,7 +1703,6 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
     nameStyle: f.nameStyle.value, greetStyle: f.greetStyle.value, notes: f.notes.value.trim(),
     // The plain message from earlier versions is kept; designs are saved from the design window.
     invite: { subject: f.subject.value.trim(), message: (form.dataset.form === 'occasion-new' ? '' : state.occ?.occasion?.invite?.message) || undefined },
-    copyFrom: f.copyFrom?.value || undefined,
   };
   if (!body.name) return modalError('Give the occasion a name.');
   const isNew = form.dataset.form === 'occasion-new';
@@ -1759,6 +1761,22 @@ const isEnvelope = (media) => Boolean(ENVELOPES[media]);
 // The last stock chosen for each kind of printing (this browser only).
 function printPrefs() { try { return JSON.parse(localStorage.getItem('oab.print') || '{}'); } catch { return {}; } }
 function savePrintPref(prefs) { try { localStorage.setItem('oab.print', JSON.stringify({ ...printPrefs(), ...prefs })); } catch { /* not saved */ } }
+
+// Makes "Copy of …" with the same settings and list (mailed and sent marks start fresh).
+async function duplicateOccasion(el) {
+  if (el.dataset.busy) return;
+  el.dataset.busy = '1';
+  try {
+    const { occasion, copied } = await api(`/occasions/${el.dataset.id}/duplicate`, { method: 'POST' });
+    await refreshOccasions();
+    render();
+    toast(`Created "${occasion.name}"${copied ? ` with ${plural(copied, 'household')} on the list` : ''}`);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    delete el.dataset.busy;
+  }
+}
 
 function printModal() {
   const o = state.occ.occasion;
@@ -3325,6 +3343,7 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'show-note': showNoteTip(el); break;
+    case 'duplicate-occasion': duplicateOccasion(el); break;
     case 'import': importModal(); break;
     case 'imp-row': showImportRow(importRows.at + Number(el.dataset.step)); break;
     case 'export': setUserMenu(false); exportModal(); break;

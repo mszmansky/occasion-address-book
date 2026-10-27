@@ -701,6 +701,25 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     return { occasion: occOut(item), copied: tags.length };
   }, { write: true });
 
+  // Duplicate: everything about the occasion (type, greetings, when and where, notes, design, email
+  // subject) and its list, named "Copy of …". Mailed and sent marks start fresh.
+  route('POST', '/occasions/:id/duplicate', async ({ user, params }) => {
+    const src = await mustGet(user, `OCC#${params.id}`, 'Occasion');
+    const id = newId();
+    const { PK, SK, id: _old, createdAt, updatedAt, updatedBy, updatedByName, ...rest } = src;
+    const item = {
+      ...rest, PK: bk(user), SK: `OCC#${id}`, id, name: `Copy of ${src.name}`.slice(0, 120),
+      createdAt: nowIso(), updatedAt: nowIso(), ...await stampOf(user),
+    };
+    const [old, households] = await Promise.all([repo.query(bk(user), `TAG#${src.id}#`), repo.query(bk(user), 'HH#')]);
+    const alive = new Set(households.map((h) => h.id));
+    const tags = old.filter((t) => alive.has(t.householdId))
+      .map((t) => ({ ...tagItem(user, id, t.householdId), ...(t.to ? { to: t.to } : {}) }));
+    await repo.put(item);
+    if (tags.length) await repo.batchPut(tags);
+    return { occasion: occOut(item), copied: tags.length };
+  }, { write: true });
+
   route('GET', '/occasions/:id', async ({ user, params }) => {
     const o = await mustGet(user, `OCC#${params.id}`, 'Occasion');
     const tags = await repo.query(bk(user), `TAG#${params.id}#`);

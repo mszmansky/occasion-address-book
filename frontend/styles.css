@@ -1205,3 +1205,9 @@ fieldset[hidden] { display: none; }
 @media (max-width: 520px) { .occ-head { grid-template-columns: 1fr; } }
 /* Edit occasion: the two greetings side by side; one alone takes the row. */
 .greet-row:has(> [hidden]) { grid-template-columns: 1fr; }
+/* Duplicate, top right of an occasion card. */
+.occ-card { position: relative; }
+.occ-card .hh-name { padding-right: 26px; }
+.occ-dup { position: absolute; top: 10px; right: 10px; display: flex; padding: 3px; border-radius: 6px; color: var(--ink-3); cursor: pointer; }
+.occ-dup:hover { color: var(--accent); background: var(--surface-2); }
+.occ-dup:hover rect[fill] { fill: var(--surface-2); }

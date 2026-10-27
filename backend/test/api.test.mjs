@@ -738,3 +738,26 @@ test('address verified: saving with the address a check confirmed marks it; chan
   h = (await call('PUT', `/households/${h.id}`, { labelName: 'The Oak Family', address: confirmed, baseUpdatedAt: h.updatedAt })).body.household;
   assert.ok(h.addressVerifiedAt);
 });
+
+test('duplicate an occasion: same settings and list, "Copy of" name, fresh mailed and sent marks', async () => {
+  const { call } = await setup();
+  const a = (await call('POST', '/households', { labelName: 'The Smiths', members: [{ firstName: 'John', email: 'john@example.com' }] })).body.household;
+  const b = (await call('POST', '/households', { labelName: 'The Lees' })).body.household;
+  const o = (await call('POST', '/occasions', { name: 'Holiday open house', kind: 'invite', date: '2026-12-19', time: '7:00 PM', location: 'Our place', nameStyle: 'formal', greetStyle: 'household', notes: 'Bring chips' })).body.occasion;
+  await call('PUT', `/occasions/${o.id}/design`, { html: '<p>Hi {{greeting}}</p>', background: '#fef3c7' });
+  await call('PUT', `/occasions/${o.id}/tags`, { add: [a.id, b.id] });
+  await call('POST', `/occasions/${o.id}/mailed`, { householdIds: [a.id], mailed: true });
+  await call('DELETE', `/households/${b.id}`); // gone from the address book: not copied
+
+  const r = await call('POST', `/occasions/${o.id}/duplicate`);
+  assert.equal(r.status, 200);
+  const copy = r.body.occasion;
+  assert.notEqual(copy.id, o.id);
+  assert.deepEqual([copy.name, copy.kind, copy.date, copy.time, copy.location, copy.nameStyle, copy.greetStyle, copy.notes, copy.design.html],
+    ['Copy of Holiday open house', 'invite', '2026-12-19', '7:00 PM', 'Our place', 'formal', 'household', 'Bring chips', '<p>Hi {{greeting}}</p>']);
+  assert.equal(r.body.copied, 1);
+  const got = (await call('GET', `/occasions/${copy.id}`)).body;
+  assert.deepEqual(got.tags.map((t) => [t.householdId, t.mailedAt]), [[a.id, undefined]]);
+  assert.equal((await call('GET', '/occasions')).body.occasions.length, 2);
+  assert.equal((await call('POST', '/occasions/nope/duplicate')).status, 404);
+});
