@@ -1203,3 +1203,5 @@ label > span.hint { display: block; }
 .occ-head { display: grid; grid-template-columns: minmax(160px, 1fr) 2fr; gap: 10px 12px; }
 fieldset[hidden] { display: none; }
 @media (max-width: 520px) { .occ-head { grid-template-columns: 1fr; } }
+/* Edit occasion: the two greetings side by side; one alone takes the row. */
+.greet-row:has(> [hidden]) { grid-template-columns: 1fr; }

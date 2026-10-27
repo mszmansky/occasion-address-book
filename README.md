@@ -37,7 +37,7 @@ Data lives in Amazon DynamoDB, email goes through Amazon SES, and sign-in uses A
   - **Cards or Labels:** print labels or envelopes and mark who was mailed.
   - **Invitations:** the same, plus a designed invitation (see below) printed one card per household, filled in with the greeting chosen as the occasion's **Invitation Greeting** (Informal, Formal or Household).
 
-  Cards and invitations have a **Greeting Style** for the first line of labels, envelopes and postcard backs (Household, Formal or Informal Greeting). The Print window uses these settings rather than asking again.
+  Cards and invitations have an **Address Greeting** for the first line of labels, envelopes and postcard backs (Household, Formal or Informal Greeting). The Print window uses these settings rather than asking again.
   - **Emails:** a designed email. The occasion's list shows each household's people who have an email address, each with a checkbox: tick who gets it (ticking a household ticks its default contact). **Edit** has an **Email Greeting** setting: Informal (default), Formal, Household, or the first names of the people ticked. The Greeting column shows the result, so a couple's informal "Kim and Jim" can go to Kim alone. The send window lists who each email goes to and can still change a household's greeting (Informal, Formal, Household, the people ticked, or any one person by name).
 
   Occasions saved as "Other" by earlier versions show as Cards or Labels.

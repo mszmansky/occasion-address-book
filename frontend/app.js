@@ -1669,13 +1669,15 @@ function occasionModal(o) {
         <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
       </div>
     </fieldset>
-    <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Greeting Style<select name="nameStyle">
-      ${nameStyleOptions(o.nameStyle)}</select></label>
+    <div class="grid-2 greet-row">
+      <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Address Greeting<select name="nameStyle">
+        ${nameStyleOptions(o.nameStyle)}</select></label>
+      <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><span data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}>Invitation Greeting</span><span data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email Greeting</span><select name="greetStyle">
+        ${[['informal', 'Informal Greeting'], ['formal', 'Formal Greeting'], ['household', 'Household Greeting'], ['person', "The person's first name"]]
+      .map(([k, l]) => `<option value="${k}" ${k === 'person' ? `data-kinds="email" ${kind === 'email' ? '' : 'hidden disabled'}` : ''} ${(o.greetStyle ?? 'informal') === k && !(k === 'person' && kind !== 'email') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    </div>
     <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design invitation…</button></div>
     <div data-kinds="email" ${kind === 'email' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design email…</button></div>
-    <label data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><span data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}>Invitation Greeting</span><span data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email Greeting</span><select name="greetStyle">
-      ${[['informal', 'Informal Greeting'], ['formal', 'Formal Greeting'], ['household', 'Household Greeting'], ['person', "The person's first name"]]
-    .map(([k, l]) => `<option value="${k}" ${k === 'person' ? `data-kinds="email" ${kind === 'email' ? '' : 'hidden disabled'}` : ''} ${(o.greetStyle ?? 'informal') === k && !(k === 'person' && kind !== 'email') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email subject<input name="subject" maxlength="200" value="${val(o.invite?.subject)}" placeholder="You're invited: ${val(o.name) || 'our holiday open house'}"></label>
     ${isNew && copyable.length ? `<label>Start with the list from <span class="muted">(optional)</span><select name="copyFrom"><option value="">Nobody yet</option>
       ${copyable.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} (${x.counts.tagged})</option>`).join('')}</select></label>` : ''}
@@ -1749,7 +1751,7 @@ const PRINT_MEDIA = {
   return: [['avery5195', LABEL_SHEETS.avery5195.name], ['avery5160', LABEL_SHEETS.avery5160.name],
     ['a2', `${ENVELOPES.a2.name}, return address only`], ['a7', `${ENVELOPES.a7.name}, return address only`]],
 };
-// Printing follows the occasion: its Greeting Style for the first line of addresses, and its
+// Printing follows the occasion: its Address Greeting for the first line of addresses, and its
 // Invitation Greeting for the greeting inside each invitation.
 const inviteGreetStyle = (o) => (['formal', 'household'].includes(o?.greetStyle) ? o.greetStyle : 'informal');
 const isEnvelope = (media) => Boolean(ENVELOPES[media]);
@@ -1897,7 +1899,7 @@ function chosenHouseholds(f, { needAddress }) {
   return { households, skipped };
 }
 
-// The first line of an address: the occasion's Greeting Style, falling back to the Household Greeting.
+// The first line of an address: the occasion's Address Greeting, falling back to the Household Greeting.
 const addressName = (h, o) => envelopeName({ ...h, formalName: effectiveFormalName(h) }, o.nameStyle);
 
 function skippedToast(skipped) {
