@@ -1216,7 +1216,8 @@ fieldset[hidden] { display: none; }
 .admin-invite { display: flex; gap: 8px; flex-wrap: wrap; }
 .admin-invite input { width: 260px; max-width: 100%; }
 .admin-table td { vertical-align: middle; }
-.admin-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.admin-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+.admin-del:hover, .admin-del:focus-visible { color: var(--overdue); }
 .admin-pill { margin-left: 6px; font-size: 11px; vertical-align: 1px; }
 .admin-pill::before { display: none; }
 @media (max-width: 640px) {

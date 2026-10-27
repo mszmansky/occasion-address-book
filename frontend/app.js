@@ -750,6 +750,7 @@ function householdCard(h) {
 
 // ---------- Trash: deleted households and occasions, kept 30 days ----------
 const TRASH_DAYS = 30;
+const X_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 const daysLeft = (iso) => Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000));
 
 async function trashModal() {
@@ -2902,9 +2903,9 @@ function renderAdmin() {
       <td>${accountStatus(u)}</td>
       <td class="small">${u.createdAt ? fmtDate(u.createdAt) : ''}</td>
       <td class="row-actions"><div class="admin-actions">${self ? '' : `
-        ${u.status === 'invited' && u.enabled ? `<button type="button" class="btn sm" data-action="admin-resend" data-id="${esc(u.id)}" data-email="${esc(u.email)}">Resend invite</button>` : ''}
-        <button type="button" class="btn sm" data-action="admin-onoff" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-on="${u.enabled ? '0' : '1'}">${u.enabled ? 'Turn off' : 'Turn on'}</button>
-        <button type="button" class="btn sm danger" data-action="admin-delete" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-name="${who}">Delete</button>`}</div></td>
+        ${u.status === 'invited' && u.enabled ? `<button type="button" class="btn sm" data-action="admin-resend" data-id="${esc(u.id)}" data-email="${esc(u.email)}" title="Email ${esc(u.email)} a new invitation">Resend invite</button>` : ''}
+        <button type="button" class="btn sm" data-action="admin-onoff" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-on="${u.enabled ? '0' : '1'}" title="${u.enabled ? `Sign ${esc(u.email)} out and block sign-in` : `Let ${esc(u.email)} sign in again`}">${u.enabled ? 'Turn off' : 'Turn on'}</button>
+        <button type="button" class="icon-btn admin-del" data-action="admin-delete" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-name="${who}" title="Delete ${esc(u.email)}'s account" aria-label="Delete ${esc(u.email)}'s account">${X_ICON}</button>`}</div></td>
     </tr>`;
   }).join('');
   return `
@@ -2912,7 +2913,7 @@ function renderAdmin() {
     <h1>Accounts${adminUsers ? `<span class="count muted">${users.length}</span>` : ''}</h1>
     <form class="admin-invite" data-form="admin-invite">
       <input type="email" name="email" required autocomplete="off" placeholder="Email address" aria-label="Email address to invite">
-      <button class="btn primary">Invite</button>
+      <button class="btn primary" title="Email an invitation with a temporary password">Invite</button>
     </form>
   </div>
   <div class="panel tight admin-panel">${adminUsers === null ? '<p class="muted" style="margin:12px">Loading…</p>' : `
