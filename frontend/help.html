@@ -61,6 +61,7 @@
       <a href="#sharing">Sharing your address book</a>
       <a href="#settings">Settings</a>
       <a href="#trash">Trash</a>
+      <a href="#admin">Admin</a>
     </nav>
 
     <main>
@@ -225,6 +226,17 @@
       <section id="trash">
         <h2>Trash</h2>
         <p>Deleted households and occasions go to the Trash (in the account menu) for 30 days, then disappear for good. <b>Restore</b> brings a household back onto the occasion lists it was on, and an occasion back with its list. <b>Delete forever</b> and <b>Empty trash</b> are there too.</p>
+      </section>
+
+      <section id="admin">
+        <h2>Admin</h2>
+        <p>Admins see <b>Admin</b> in the account menu. It lists every account, with its status: <b>Active</b> (has signed in), <b>Invited</b> (hasn't chosen a password yet) or <b>Turned off</b>.</p>
+        <ul>
+          <li><b>Invite</b> creates an account and emails a temporary password. The invitation is good for 30 days; <b>Resend invite</b> sends a fresh one.</li>
+          <li><b>Turn off</b> signs the person out everywhere and stops them signing in. Nothing is deleted, and <b>Turn on</b> lets them back in. Books they share stay shared.</li>
+          <li><b>Delete</b> permanently removes the account with its address book, occasions, designs, trash and photo. Anyone that person shared with loses the shared book, and they lose the books shared with them. It can't be undone.</li>
+        </ul>
+        <p>You can't turn off or delete your own account. Admins are added with <code>scripts/make-admin.sh</code> and need to sign out and back in once to see the menu item.</p>
       </section>
     </main>
   </div>

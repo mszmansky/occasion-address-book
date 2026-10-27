@@ -239,16 +239,20 @@ export function householdEmails(h) {
 
 const strip = ({ PK, SK, GSI1PK, GSI1SK, ...rest }) => rest;
 const occOut = (o) => ({ ...strip(o), kind: kindOf(o) });
+const ADMIN_GROUP = 'admin';
+const isAdmin = (user) => Array.isArray(user?.groups) && user.groups.includes(ADMIN_GROUP);
+const accountPk = (sub) => `ACCOUNT#${sub}`; // OFF: turned off or deleted by an admin
 const fullName = (p) => [p.firstName, p.lastName].filter(Boolean).join(' ');
 
 export function createApi({ repo, verify, mailer, appUrl, files, media, directory, addressChecker, now = () => new Date(), log = console, pause = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const routes = [];
   // open: no sign-in (the address-check page). write: changes the book or sends email, so
   // View-only people can't.
-  const route = (method, pattern, fn, { open = false, write = false, owner = false } = {}) => {
+  // admin: only people in the user pool's "admin" group (managing accounts).
+  const route = (method, pattern, fn, { open = false, write = false, owner = false, admin = false } = {}) => {
     const keys = [];
     const re = new RegExp(`^${pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return '([^/]+)'; })}$`);
-    routes.push({ method, re, keys, fn, open, write, owner });
+    routes.push({ method, re, keys, fn, open, write, owner, admin });
   };
   const nowIso = () => now().toISOString();
   const pk = (user) => userPk(user.sub);   // the person: profile, photo, printer settings
@@ -379,6 +383,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
         ? { id: user.book.id, role: 'owner', canEdit: true }
         : { id: user.book.id, role: user.book.role, canEdit: canEdit(user), ownerName: user.book.ownerName, ownerEmail: user.book.ownerEmail },
       linkDays: LINK_DAYS,
+      isAdmin: isAdmin(user) || undefined,
     };
   }
 
@@ -1007,6 +1012,89 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     return { saved: true };
   }, { open: true });
 
+  // ---------- admin: managing accounts ----------
+  // Admins are the accounts in the user pool's "admin" group (scripts/make-admin.sh). They see every
+  // account, invite people, re-send invitations, turn accounts off and on, and delete them.
+  // An account that's turned off or deleted can't sign in again, and the sessions it already has stop
+  // working right away: ACCOUNT#<sub> / OFF is checked on every request (sign-in tokens last an hour).
+  async function adminAccount(sub, me) {
+    if (!/^[\w-]{1,64}$/.test(sub)) throw new HttpError(400, 'Invalid account');
+    const acct = await directory.getBySub(sub);
+    if (!acct) throw new HttpError(404, 'That account no longer exists');
+    if (me && sub === me.sub) throw new HttpError(400, "You can't do that to your own account");
+    return acct;
+  }
+  const accountsView = async () => {
+    const [accounts, admins] = await Promise.all([directory.listUsers(), directory.groupMembers(ADMIN_GROUP)]);
+    const adminSet = new Set(admins);
+    const out = [];
+    for (const a of accounts) {
+      const p = (await repo.get(userPk(a.sub), 'PROFILE')) ?? {};
+      out.push({ id: a.sub, email: a.email, name: fullName(p), status: a.status, enabled: a.enabled, createdAt: a.createdAt, admin: adminSet.has(a.sub) || undefined });
+    }
+    return out.sort((x, y) => x.email.localeCompare(y.email));
+  };
+  const needDirectory = () => { if (!directory?.listUsers) throw new HttpError(503, 'Account management is not set up'); };
+
+  route('GET', '/admin/users', async () => {
+    needDirectory();
+    return { users: await accountsView() };
+  }, { admin: true });
+
+  route('POST', '/admin/users', async ({ body }) => {
+    needDirectory();
+    const email = (str(body.email, 'Email', { max: 254, required: true }) ?? '').toLowerCase();
+    if (!EMAIL.test(email)) throw new HttpError(400, `"${email}" is not a valid email`);
+    const res = await directory.invite(email);
+    if (res.exists) throw new HttpError(400, `${email} already has an account`);
+    return { invited: email, users: await accountsView() };
+  }, { admin: true });
+
+  route('POST', '/admin/users/:sub/resend', async ({ params }) => {
+    needDirectory();
+    const acct = await adminAccount(params.sub);
+    if (acct.status !== 'invited') throw new HttpError(400, `${acct.email} has already signed in`);
+    await directory.invite(acct.email);
+    return { resent: acct.email, users: await accountsView() };
+  }, { admin: true });
+
+  route('POST', '/admin/users/:sub/:onoff', async ({ user, params }) => {
+    needDirectory();
+    if (!['enable', 'disable'].includes(params.onoff)) throw new HttpError(404, 'Not found');
+    const on = params.onoff === 'enable';
+    const acct = await adminAccount(params.sub, user);
+    await directory.setEnabled(acct.username, on);
+    if (on) await repo.del(accountPk(acct.sub), 'OFF');
+    else await repo.put({ PK: accountPk(acct.sub), SK: 'OFF', email: acct.email, at: nowIso(), by: user.sub });
+    return { users: await accountsView() };
+  }, { admin: true });
+
+  // Deletes the account and everything in it: its address book, occasions, designs, trash, photo, and
+  // its sharing on both sides (books it shared, and books shared with it).
+  route('DELETE', '/admin/users/:sub', async ({ user, params }) => {
+    needDirectory();
+    const acct = await adminAccount(params.sub, user);
+    const sub = acct.sub;
+    // Stop it first, so nothing new is written while the data goes.
+    await repo.put({ PK: accountPk(sub), SK: 'OFF', email: acct.email, at: nowIso(), by: user.sub, deleted: true, ttl: Math.floor(now().getTime() / 1000) + 2 * 86_400 });
+    await directory.setEnabled(acct.username, false).catch((e) => log.error(e));
+
+    const own = await repo.query(userPk(sub));
+    const memberOf = await repo.query(memberPk(sub));
+    const keys = [...own, ...memberOf].map(({ PK, SK }) => ({ PK, SK }));
+    for (const sh of own.filter((r) => r.SK.startsWith('SHARE#') && r.memberSub)) {
+      keys.push({ PK: memberPk(sh.memberSub), SK: `BOOK#${sub}` }); // the people it shared with lose the book
+    }
+    for (const m of memberOf.filter((r) => r.ownerSub)) {
+      keys.push({ PK: userPk(m.ownerSub), SK: `SHARE#${sub}` }); // owners who shared with it
+    }
+    await repo.batchDel(keys);
+    const avatar = own.find((r) => r.SK === 'PROFILE')?.avatar?.key;
+    if (avatar && files) await files.remove([avatar]).catch((e) => log.error(e));
+    await directory.deleteUser(acct.username);
+    return { deleted: acct.email, users: await accountsView() };
+  }, { admin: true });
+
   // ---------- dispatch ----------
   return async function handler(event) {
     const method = event.requestContext?.http?.method ?? event.httpMethod;
@@ -1020,6 +1108,8 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
       }
       const user = match.open ? null : await verify(event.headers?.authorization ?? event.headers?.Authorization);
       if (user) {
+        if (match.admin && !isAdmin(user)) throw new HttpError(403, 'Only admins can do that');
+        if (await repo.get(accountPk(user.sub), 'OFF')) throw new HttpError(401, 'This account has been turned off', 'account_off');
         user.book = await resolveBook(user, event.headers?.['x-book'] ?? event.headers?.['X-Book']);
         if (match.write && !canEdit(user)) throw new HttpError(403, 'You have view-only access to this address book', 'view_only');
       }

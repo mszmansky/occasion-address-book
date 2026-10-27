@@ -8,15 +8,25 @@ import { createMemoryRepo, createFakeMailer, createFakeFiles, createTokenFactory
 function createFakeDirectory(existing = {}) {
   const users = new Map(Object.entries(existing));
   const invited = [];
+  const signedIn = new Set(Object.keys(existing)); // accounts given up front have signed in
+  const off = new Set();
+  const admins = new Set();
+  const account = (email) => ({ sub: users.get(email), username: users.get(email), email, status: signedIn.has(email) ? 'active' : 'invited', enabled: !off.has(users.get(email)), createdAt: '2026-10-01T00:00:00.000Z' });
   return {
-    invited, users,
+    invited, users, admins, off,
     async invite(email) {
-      if (users.has(email)) return { sub: users.get(email), invited: false, exists: true };
+      if (users.has(email) && signedIn.has(email)) return { sub: users.get(email), invited: false, exists: true };
+      if (users.has(email)) { invited.push(email); return { sub: users.get(email), invited: true, resent: true }; }
       const sub = `user-${email.split('@')[0]}`;
       users.set(email, sub);
       invited.push(email);
       return { sub, invited: true };
     },
+    async listUsers() { return [...users.keys()].map(account); },
+    async groupMembers() { return [...admins]; },
+    async getBySub(sub) { const e = [...users].find(([, s]) => s === sub)?.[0]; return e ? account(e) : null; },
+    async setEnabled(username, on) { if (on) off.delete(username); else off.add(username); },
+    async deleteUser(username) { for (const [e, s] of users) if (s === username) users.delete(e); },
     changeEmail(from, to) { const sub = users.get(from); users.delete(from); users.set(to, sub); },
   };
 }
@@ -760,4 +770,80 @@ test('duplicate an occasion: same settings and list, "Copy of" name, fresh maile
   assert.deepEqual(got.tags.map((t) => [t.householdId, t.mailedAt]), [[a.id, undefined]]);
   assert.equal((await call('GET', '/occasions')).body.occasions.length, 2);
   assert.equal((await call('POST', '/occasions/nope/duplicate')).status, 404);
+});
+
+// ---------- admin ----------
+const ADMIN = { claims: { 'cognito:groups': ['admin'] } };
+
+test('only admins can manage accounts, and /me says who is one', async () => {
+  const { call, directory } = await setup();
+  directory.admins.add('user-1');
+  assert.equal((await call('GET', '/me')).body.isAdmin, undefined);
+  assert.equal((await call('GET', '/me', undefined, ADMIN)).body.isAdmin, true);
+  const no = await call('GET', '/admin/users');
+  assert.equal(no.status, 403);
+  const res = await call('GET', '/admin/users', undefined, ADMIN);
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.users.map((u) => [u.email, u.status, u.enabled, !!u.admin]), [
+    ['kim@example.com', 'active', true, false],
+    ['mike@example.com', 'active', true, true],
+  ]);
+});
+
+test('admins invite people and re-send invitations', async () => {
+  const { call, directory } = await setup();
+  let res = await call('POST', '/admin/users', { email: 'Joe@Example.com' }, ADMIN);
+  assert.equal(res.status, 200);
+  assert.deepEqual(directory.invited, ['joe@example.com']);
+  assert.equal(res.body.users.find((u) => u.email === 'joe@example.com').status, 'invited');
+  assert.match((await call('POST', '/admin/users', { email: 'kim@example.com' }, ADMIN)).body.error, /already has an account/);
+  assert.match((await call('POST', '/admin/users', { email: 'nope' }, ADMIN)).body.error, /not a valid email/);
+  res = await call('POST', '/admin/users/user-joe/resend', undefined, ADMIN);
+  assert.equal(res.status, 200);
+  assert.deepEqual(directory.invited, ['joe@example.com', 'joe@example.com']);
+  assert.match((await call('POST', '/admin/users/user-kim/resend', undefined, ADMIN)).body.error, /already signed in/);
+  assert.equal((await call('POST', '/admin/users/user-nobody/resend', undefined, ADMIN)).status, 404);
+});
+
+test('a turned-off account is locked out at once, and can be turned back on', async () => {
+  const { call } = await setup();
+  const KIM = { claims: { sub: 'user-kim', email: 'kim@example.com' } };
+  assert.equal((await call('GET', '/me', undefined, KIM)).status, 200);
+  let res = await call('POST', '/admin/users/user-kim/disable', undefined, ADMIN);
+  assert.equal(res.body.users.find((u) => u.id === 'user-kim').enabled, false);
+  res = await call('GET', '/me', undefined, KIM); // her sign-in token is still unexpired
+  assert.equal(res.status, 401);
+  assert.equal(res.body.code, 'account_off');
+  await call('POST', '/admin/users/user-kim/enable', undefined, ADMIN);
+  assert.equal((await call('GET', '/me', undefined, KIM)).status, 200);
+  assert.match((await call('POST', '/admin/users/user-1/disable', undefined, ADMIN)).body.error, /your own account/);
+  assert.equal((await call('POST', '/admin/users/user-kim/explode', undefined, ADMIN)).status, 404);
+});
+
+test('deleting an account removes its data and its sharing on both sides', async () => {
+  const { call, repo, files, directory } = await setup();
+  const KIM = { claims: { sub: 'user-kim', email: 'kim@example.com' } };
+  directory.users.set('ann@example.com', 'user-ann');
+  const ANN = { claims: { sub: 'user-ann', email: 'ann@example.com' } };
+  // Kim has a household and a photo, shares her book with Ann, and Mike shares his with Kim.
+  await call('POST', '/households', smiths, KIM);
+  const { id } = (await call('POST', '/me/avatar', { type: 'image/jpeg', size: 1000 }, KIM)).body;
+  files.put?.(`avatars/user-kim/${id}.jpg`, 1000);
+  await call('POST', `/me/avatar/${id}/complete`, { type: 'image/jpeg' }, KIM);
+  await call('POST', '/shares', { email: 'ann@example.com', role: 'edit' }, KIM);
+  await call('POST', '/shares', { email: 'kim@example.com', role: 'view' });
+  assert.equal((await repo.query('USER#user-kim')).length > 0, true);
+
+  const res = await call('DELETE', '/admin/users/user-kim', undefined, ADMIN);
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.users.map((u) => u.email), ['ann@example.com', 'mike@example.com']);
+  assert.deepEqual(await repo.query('USER#user-kim'), []);
+  assert.deepEqual(await repo.query('MEMBER#user-kim'), []);
+  assert.deepEqual(await repo.query('MEMBER#user-ann', 'BOOK#'), []);
+  assert.deepEqual((await call('GET', '/shares')).body.shares, []);
+  assert.equal(await files.size(`avatars/user-kim/${id}.jpg`), null);
+  assert.equal((await call('GET', '/me', undefined, KIM)).status, 401);
+  assert.equal((await call('GET', '/me', undefined, ANN)).status, 200);
+  assert.match((await call('DELETE', '/admin/users/user-1', undefined, ADMIN)).body.error, /your own account/);
+  assert.equal((await call('DELETE', '/admin/users/user-kim')).status, 403);
 });

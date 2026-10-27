@@ -47,7 +47,7 @@ const INVITE_BATCH = 25;
 const state = {
   session: null, pendingEmail: null, books: [], bookId: '', authMode: 'signin', showLanding: true, authMsg: '', authErr: '', authEmail: rememberedEmail(),
   me: null, households: [], occasions: [], loading: true,
-  view: 'people',                 // 'people' | 'occasions'
+  view: 'people',                 // 'people' | 'occasions' | 'admin'
   occasionId: null, occ: null,    // open occasion: { occasion, tags }
   search: '',
   filters: { people: emptyFilter(), occ: emptyFilter() }, // the Filter panel, per screen
@@ -469,7 +469,7 @@ function render() {
     <div class="actions">${userChip(email)}</div>
   </header>
   <main class="page">${state.loading && !state.me ? '<p class="boot">Loading your address book…</p>'
-    : state.view === 'people' ? renderPeople() : state.occasionId && state.occ ? renderOccasion() : renderOccasions()}</main>`;
+    : state.view === 'admin' ? renderAdmin() : state.view === 'people' ? renderPeople() : state.occasionId && state.occ ? renderOccasion() : renderOccasions()}</main>`;
   document.title = currentBook() && !currentBook().own ? `${bookLabel(currentBook())} · ${APP_NAME}` : APP_NAME;
   if (state.view === 'people') renderHouseholdList();
   if (state.view === 'occasions' && state.occasionId && state.occ) renderRecipientRows();
@@ -499,6 +499,7 @@ function userChip(email) {
     <div class="menu" id="user-menu-list" role="menu" hidden>
       <button type="button" role="menuitem" data-action="settings">Settings</button>
       <button type="button" role="menuitem" data-action="trash">Trash</button>
+      ${state.me?.isAdmin ? '<button type="button" role="menuitem" data-action="admin">Admin</button>' : ''}
       <hr>
       ${canEdit() ? '<button type="button" role="menuitem" data-action="import">Import…</button>' : ''}
       <button type="button" role="menuitem" data-action="export">Export…</button>
@@ -2869,6 +2870,83 @@ async function sendInvites(form) {
   return undefined;
 }
 
+// ---------- admin: everyone's accounts ----------
+// Only for admins (the user pool's "admin" group); the API checks too. Explanations are on the help page.
+let adminUsers = null; // null while loading
+
+async function openAdmin() {
+  state.view = 'admin';
+  state.occasionId = null; state.occ = null;
+  adminUsers = null;
+  render();
+  window.scrollTo(0, 0);
+  try { adminUsers = (await api('/admin/users')).users; } catch (e) { adminUsers = []; toast(e.message, true); }
+  if (state.view === 'admin') render();
+}
+
+const ACCOUNT_STATUS = { active: ['Active', 'ok'], invited: ['Invited', 'info'] };
+function accountStatus(u) {
+  if (!u.enabled) return '<span class="pill overdue">Turned off</span>';
+  const [label, cls] = ACCOUNT_STATUS[u.status] ?? [u.status.replace(/_/g, ' '), 'unknown'];
+  return `<span class="pill ${cls}">${esc(label)}</span>`;
+}
+
+function renderAdmin() {
+  const me = state.session?.user?.sub;
+  const users = adminUsers ?? [];
+  const rows = users.map((u) => {
+    const self = u.id === me;
+    const who = esc(u.name || u.email);
+    return `<tr data-account="${esc(u.id)}">
+      <td><div class="iname">${who}${u.admin ? ' <span class="pill unknown admin-pill">Admin</span>' : ''}${self ? ' <span class="muted small">(you)</span>' : ''}</div>${u.name ? `<div class="small muted">${esc(u.email)}</div>` : ''}</td>
+      <td>${accountStatus(u)}</td>
+      <td class="small">${u.createdAt ? fmtDate(u.createdAt) : ''}</td>
+      <td class="row-actions"><div class="admin-actions">${self ? '' : `
+        ${u.status === 'invited' && u.enabled ? `<button type="button" class="btn sm" data-action="admin-resend" data-id="${esc(u.id)}" data-email="${esc(u.email)}">Resend invite</button>` : ''}
+        <button type="button" class="btn sm" data-action="admin-onoff" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-on="${u.enabled ? '0' : '1'}">${u.enabled ? 'Turn off' : 'Turn on'}</button>
+        <button type="button" class="btn sm danger" data-action="admin-delete" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-name="${who}">Delete</button>`}</div></td>
+    </tr>`;
+  }).join('');
+  return `
+  <div class="page-head">
+    <h1>Accounts${adminUsers ? `<span class="count muted">${users.length}</span>` : ''}</h1>
+    <form class="admin-invite" data-form="admin-invite">
+      <input type="email" name="email" required autocomplete="off" placeholder="Email address" aria-label="Email address to invite">
+      <button class="btn primary">Invite</button>
+    </form>
+  </div>
+  <div class="panel tight admin-panel">${adminUsers === null ? '<p class="muted" style="margin:12px">Loading…</p>' : `
+    <table class="items admin-table">
+      <thead><tr><th>Name</th><th>Status</th><th>Joined</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`}</div>`;
+}
+
+async function adminInvite(form) {
+  const email = form.elements.email.value.trim();
+  if (!email) return undefined;
+  return withBusy(form.querySelector('.btn.primary'), async () => {
+    const res = await api('/admin/users', { method: 'POST', body: { email } });
+    adminUsers = res.users;
+    render();
+    toast(`Invitation emailed to ${res.invited}`);
+  });
+}
+
+async function adminAction(el, what) {
+  const { id, email } = el.dataset;
+  if (what === 'disable' && !await askConfirm({ title: `Turn off ${email}?`, text: "They're signed out and can't sign in until you turn the account back on. Nothing is deleted.", ok: 'Turn off', danger: true })) return;
+  if (what === 'delete' && !await askConfirm({ title: `Delete ${el.dataset.name}?`, text: `This permanently deletes ${email}'s account, address book, occasions and designs, and stops all sharing with it. It can't be undone.`, ok: 'Delete account', danger: true, strict: true })) return;
+  await withBusy(el, async () => {
+    const res = what === 'delete'
+      ? await api(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      : await api(`/admin/users/${encodeURIComponent(id)}/${what}`, { method: 'POST' });
+    adminUsers = res.users;
+    render();
+    toast({ resend: `Invitation re-sent to ${email}`, enable: `${email} is turned on`, disable: `${email} is turned off`, delete: `${email} is deleted` }[what]);
+  });
+}
+
 // ---------- settings ----------
 // Tabs across the top, like Vehicle Maintenance. Each tab saves only its own fields.
 const SETTINGS_TABS = [['profile', 'Profile'], ['return', 'Return address'], ['security', 'Security'], ['printer', 'Printer'], ['sharing', 'Sharing']];
@@ -3256,6 +3334,10 @@ document.addEventListener('click', async (e) => {
       if (state.view === 'occasions') await refreshOccasions().catch((err) => toast(err.message, true));
       render();
       break;
+    case 'admin': setUserMenu(false); await openAdmin(); break;
+    case 'admin-resend': await adminAction(el, 'resend'); break;
+    case 'admin-onoff': await adminAction(el, el.dataset.on === '1' ? 'enable' : 'disable'); break;
+    case 'admin-delete': await adminAction(el, 'delete'); break;
     case 'settings': setUserMenu(false); mfaEnrollment = null; settingsModal('profile'); break;
     case 'align-test': await withBusy(el, () => alignTest(el.dataset.what)); break;
     case 'settings-tab': settingsModal(el.dataset.tab); break;
@@ -3560,6 +3642,7 @@ document.addEventListener('submit', async (e) => {
   if (kind === 'design') return saveDesign(form);
   if (kind === 'import') return runImport(form.querySelector('[data-import-go]'));
   if (kind === 'share') return addShare(form);
+  if (kind === 'admin-invite') return adminInvite(form);
   if (kind === 'settings-password') return withBusy(form.querySelector('button[type=submit]'), () => changePassword(form));
   if (['settings-profile', 'settings-return', 'settings-printer'].includes(kind)) {
     const tab = kind.slice('settings-'.length);

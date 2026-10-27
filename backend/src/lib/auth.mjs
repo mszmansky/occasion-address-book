@@ -39,6 +39,8 @@ export function createCognitoVerifier({ region, userPoolId, clientId, allowedEma
     if (!payload.sub || !email) throw new HttpError(401, 'Token is missing user details');
     if (payload.email_verified !== true && payload.email_verified !== 'true') throw new HttpError(403, 'Confirm your email address first');
     if (allow.length && !allow.includes(email)) throw new HttpError(403, 'This account is not allowed to use this app');
-    return { sub: payload.sub, email };
+    // cognito:groups lists the user pool groups the account is in ("admin" for the people who manage accounts).
+    const groups = Array.isArray(payload['cognito:groups']) ? payload['cognito:groups'].map(String) : [];
+    return { sub: payload.sub, email, groups };
   };
 }

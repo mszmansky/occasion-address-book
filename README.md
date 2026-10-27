@@ -128,6 +128,8 @@ The API Lambda verifies each Cognito ID token against the user pool's JWKS befor
 | `backend/src/handlers/cognito-message.mjs` | Cognito's invitation, password-reset and email-change emails |
 | `frontend/auth.js` | Cognito sign-in from the browser (shared with Vehicle Maintenance) |
 | `scripts/invite-user.sh` | Invite someone (Cognito emails a temporary password) |
+| `scripts/make-admin.sh` | Make someone an admin (`--remove` to undo) |
+| `backend/src/lib/directory.mjs` | Cognito accounts: find/invite (sharing), and list, turn off/on, delete (Admin screen) |
 | `backend/src/lib/files.mjs` | Profile photos in a private S3 bucket: signed upload/view links (shared with Vehicle Maintenance) |
 | `frontend/print-core.js` | Label and envelope layout (unit tested) |
 | `frontend/filter-core.js` | Household filters (groups, city, state, ZIP, email, address, review) (unit tested) |
@@ -151,6 +153,7 @@ PK = USER#<Cognito user id (sub)>
   SK = TAG#<occasionId>#<hhId>   household on an occasion's list (mailedAt, invitedAt)
   SK = VERIFIED#<sha256(address)>  an address a check confirmed (marks the household verified when saved with it), removed by TTL after 7 days
   SK = TRASH#<household|occasion>#<id>  a deleted item and its occasion-list rows, removed by TTL after 30 days
+PK = ACCOUNT#<sub>, SK = OFF            account turned off or deleted by an admin (checked on every request)
 PK = TOKEN#<sha256(token)>, SK = TOKEN    address-check link, removed by TTL after 30 days
 PK = ADDRCHECK#QUOTA, SK = MONTH#<yyyy-mm>  address checks this month (Pacific time), removed by TTL
 ```
@@ -183,12 +186,23 @@ Cognito emails a temporary password. Sign in with it and you're asked to choose 
 
 After **30 minutes without activity** (mouse, keyboard, scroll or touch) the app signs out, with a **Still there?** warning 2 minutes before; **Stay signed in** keeps any unsaved edits. Activity in one tab keeps every tab signed in, a computer that slept past the limit signs out when it wakes, and reopening the app more than 30 minutes after the last activity starts at the sign-in screen.
 
-**Settings** (account menu) has four tabs:
+**Settings** (account menu) has five tabs:
 - **Profile:** a profile photo (cropped to a square, shown in a circle here and beside your name at the top), your name, the name invitations come from, and your sign-in email (changing it emails a 6-digit code to the new address).
 - **Return address:** printed on envelopes and return-address labels.
 - **Security:** change password, and two-step verification with an authenticator app.
 - **Printer:** label and envelope alignment offsets, with alignment test pages.
 - **Sharing:** share your address book and occasions with other people (see below).
+
+### Admins
+
+Admins manage everyone's accounts from **Admin** in the account menu: invite, re-send an invitation, turn an account off or back on, and delete it (with all its data and sharing). Admins are the accounts in the user pool's `admin` group:
+
+```bash
+./scripts/make-admin.sh you@example.com            # then sign out and back in
+./scripts/make-admin.sh someone@example.com --remove
+```
+
+The API checks the group on every `/admin/*` request (from the ID token's `cognito:groups`). Turning an account off also signs it out everywhere, and an `ACCOUNT#<sub>/OFF` row stops its unexpired sign-in tokens right away. Admins can't turn off or delete themselves.
 
 ### Sharing
 

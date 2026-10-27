@@ -1211,3 +1211,22 @@ fieldset[hidden] { display: none; }
 .occ-dup { position: absolute; top: 10px; right: 10px; display: flex; padding: 3px; border-radius: 6px; color: var(--ink-3); cursor: pointer; }
 .occ-dup:hover { color: var(--accent); background: var(--surface-2); }
 .occ-dup:hover rect[fill] { fill: var(--surface-2); }
+
+/* ---------- admin: accounts ---------- */
+.admin-invite { display: flex; gap: 8px; flex-wrap: wrap; }
+.admin-invite input { width: 260px; max-width: 100%; }
+.admin-table td { vertical-align: middle; }
+.admin-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.admin-pill { margin-left: 6px; font-size: 11px; vertical-align: 1px; }
+.admin-pill::before { display: none; }
+@media (max-width: 640px) {
+  .admin-invite, .admin-invite input { width: 100%; }
+  .admin-invite input { flex: 1; width: auto; }
+  .admin-table thead { display: none; }
+  .admin-table tr { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; padding: 10px; border-bottom: 1px solid var(--line); }
+  .admin-table tr:last-child { border-bottom: 0; }
+  .admin-table td { padding: 0; border: 0; }
+  .admin-table td:nth-child(3) { display: none; }
+  .admin-table td.row-actions { grid-column: 1 / -1; }
+  .admin-actions { justify-content: flex-start; }
+}
