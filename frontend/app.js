@@ -2898,7 +2898,7 @@ function renderAdmin() {
     const self = u.id === me;
     const who = esc(u.name || u.email);
     return `<tr data-account="${esc(u.id)}">
-      <td><div class="iname">${who}${u.admin ? ' <span class="pill unknown admin-pill">Admin</span>' : ''}${self ? ' <span class="muted small">(you)</span>' : ''}</div>${u.name ? `<div class="small muted">${esc(u.email)}</div>` : ''}</td>
+      <td><div class="iname">${who}${u.admin ? ' <span class="pill unknown admin-pill">Admin</span>' : ''}</div>${u.name ? `<div class="small muted">${esc(u.email)}</div>` : ''}</td>
       <td>${accountStatus(u)}</td>
       <td class="small">${u.createdAt ? fmtDate(u.createdAt) : ''}</td>
       <td class="row-actions"><div class="admin-actions">${self ? '' : `
