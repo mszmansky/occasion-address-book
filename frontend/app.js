@@ -1747,14 +1747,15 @@ let lastPrinted = [];
 
 // ---------- printing ----------
 // First what to print (invitations, addresses or return addresses), then what to print it on; only
-// the stock that suits that choice is offered. Invitations print in a new tab through the browser's
-// print dialog; addresses and return addresses are made as a PDF. Tips live on the help page.
+// the stock that suits that choice is offered. Everything prints in a new tab through the browser's
+// print dialog. Tips live on the help page.
 const PRINT_MEDIA = {
   invitations: Object.entries(INVITE_MEDIA).map(([k, m]) => [k, m.name]),
   addresses: [['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name]],
-  return: [['avery5195', LABEL_SHEETS.avery5195.name], ['avery5160', LABEL_SHEETS.avery5160.name],
-    ['a2', `${ENVELOPES.a2.name}, return address only`], ['a7', `${ENVELOPES.a7.name}, return address only`]],
+  return: [['avery5195', LABEL_SHEETS.avery5195.name], ['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name]],
 };
+// On envelopes, Addresses and Return addresses are the same print: each envelope gets the recipient
+// and the return address (in the chosen design) together.
 // Printing follows the occasion: its Address Greeting Style for the first line of addresses, and its
 // Invitation Greeting for the greeting inside each invitation.
 const inviteGreetStyle = (o) => (['formal', 'household'].includes(o?.greetStyle) ? o.greetStyle : 'informal');
@@ -1818,7 +1819,6 @@ function printModal() {
         <span class="lbl-prev">${hasReturn ? renderReturnLabel(x.id, returnLines(), { last: returnLastName() }) : ''}</span><span class="lbl-name">${esc(x.name)}</span></label>`).join('')}</div>`).join('')}
     </div></div>
     <label data-for="start">Start on label number<input name="start" type="number" min="1" max="30" value="1" style="max-width:110px"></label>
-    <label data-for="count">How many<input name="count" type="number" min="1" max="500" value="${Math.max(1, tags.size)}" style="max-width:110px"></label>
     <label class="check" data-for="back"><input type="checkbox" name="withBack" checked> Print the address on the back</label>
     <label class="check" data-for="ret"><input type="checkbox" name="withReturn" ${hasReturn ? 'checked' : 'disabled'}> Return address in the corner</label>
     <label class="check" data-for="outline"><input type="checkbox" name="outline"> Draw outlines (test print on plain paper)</label>
@@ -1882,25 +1882,27 @@ function syncPrintForm({ whatChanged = false } = {}) {
   const what = f.what.value || 'addresses';
   if (whatChanged) {
     const options = PRINT_MEDIA[what];
-    // Return addresses always start on return-address labels; the others start from their last choice.
-    const keep = what === 'return' ? 'avery5195' : printPrefs()[what];
+    // An envelope stays picked when switching between Addresses and Return addresses. Otherwise return
+    // addresses start on return-address labels, and the others from their last choice.
+    const keep = isEnvelope(f.media.value) && what !== 'invitations' ? f.media.value : what === 'return' ? 'avery5195' : printPrefs()[what];
     f.media.innerHTML = options.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('');
     f.media.value = options.some(([k]) => k === keep) ? keep : options[0][0];
   }
   const media = f.media.value;
   const postcard = what === 'invitations' && INVITE_MEDIA[media]?.postcard;
   const show = (k, on) => { form.querySelector(`[data-for=${k}]`).hidden = !on; };
-  show('who', what !== 'return');
+  const envelope = isEnvelope(media) && what !== 'invitations';
+  show('who', what !== 'return' || envelope);
   show('orient', what === 'invitations');
   const sheet = LABEL_SHEETS[media];
   show('start', Boolean(sheet));
   if (sheet) f.start.max = String(sheet.cols * sheet.rows);
-  show('count', what === 'return' && isEnvelope(media));
-  show('style', what === 'return' && Boolean(sheet));
+  const styled = (what === 'return' && Boolean(sheet)) || (envelope && (what === 'return' || f.withReturn.checked));
+  show('style', styled);
   // Hidden previews can't be measured, so they're fitted once they show.
-  if (what === 'return' && sheet) requestAnimationFrame(() => form.querySelectorAll('.lbl-prev').forEach(fitLabel));
+  if (styled) requestAnimationFrame(() => form.querySelectorAll('.lbl-prev').forEach(fitLabel));
   show('back', Boolean(postcard));
-  show('ret', (what === 'addresses' && isEnvelope(media)) || Boolean(postcard && f.withBack.checked));
+  show('ret', (what === 'addresses' && envelope) || Boolean(postcard && f.withBack.checked));
   show('outline', Boolean(sheet) || isEnvelope(media) || media === 'avery8387');
 }
 
@@ -2031,7 +2033,10 @@ async function runPrint(form) {
   const what = f.what.value;
   const media = f.media.value;
   const retStyle = f.retStyle?.value || 'plain';
-  savePrintPref({ [what]: media, ...(what === 'invitations' ? { orient: f.orient.value } : {}), ...(what === 'return' && LABEL_SHEETS[media] ? { retStyle } : {}) });
+  const envelope = isEnvelope(media);
+  // On envelopes, the return address goes in the corner (always, from Return addresses).
+  const envReturn = envelope && (what === 'return' || f.withReturn.checked);
+  savePrintPref({ [what]: media, ...(what === 'invitations' ? { orient: f.orient.value } : {}), ...((what === 'return' && LABEL_SHEETS[media]) || envReturn ? { retStyle } : {}) });
   const win = openPrintTab();
   if (!win) return undefined;
   if (what === 'invitations') return printInvitations(form, win);
@@ -2043,32 +2048,31 @@ async function runPrint(form) {
   let households = [];
   let fontHref = '';
   let title;
-  if (what === 'return') {
+  if (what === 'return' && !envelope) {
     const lines = returnLines();
     if (!lines.length) { win.close(); return modalError('Set your return address in Settings first.'); }
     title = 'Return addresses';
-    if (isEnvelope(media)) {
-      // Return address only, for envelopes addressed by hand.
-      const count = Math.min(500, Math.max(1, Math.floor(Number(f.count.value)) || 1));
-      pages = envelopesHtml(Array.from({ length: count }, () => ({ ret: lines })), envOpts);
-    } else {
-      // The rest of the sheet, from the starting label, in the chosen style.
-      const sheet = LABEL_SHEETS[media] ?? LABEL_SHEETS.avery5195;
-      const per = sheet.cols * sheet.rows;
-      const start = Math.min(per, Math.max(1, Number(f.start.value) || 1));
-      const label = renderReturnLabel(retStyle, lines, { last: returnLastName() });
-      pages = labelSheetsHtml(Array(per - start + 1).fill(label), { ...labelOpts, sheet: LABEL_SHEETS[media] ? media : 'avery5195', start });
-      if (retStyle !== 'plain') fontHref = LABEL_FONT_LINK;
-    }
+    // The rest of the sheet, from the starting label, in the chosen style.
+    const sheet = LABEL_SHEETS[media] ?? LABEL_SHEETS.avery5195;
+    const per = sheet.cols * sheet.rows;
+    const start = Math.min(per, Math.max(1, Number(f.start.value) || 1));
+    const label = renderReturnLabel(retStyle, lines, { last: returnLastName() });
+    pages = labelSheetsHtml(Array(per - start + 1).fill(label), { ...labelOpts, sheet: LABEL_SHEETS[media] ? media : 'avery5195', start });
+    if (retStyle !== 'plain') fontHref = LABEL_FONT_LINK;
   } else {
+    // Addresses, on labels or envelopes; on envelopes from either button, with the return address.
     const chosen = chosenHouseholds(f, { needAddress: true });
     households = chosen.households;
     if (!households.length) { win.close(); return modalError(chosen.skipped.length ? 'Nobody chosen has a complete mailing address.' : 'Nobody to print for.'); }
     skippedToast(chosen.skipped);
     title = `${state.occ.occasion.name} - addresses`;
     const items = households.map((h) => addressLines(addressName(h, state.occ.occasion), h.address));
-    pages = isEnvelope(media)
-      ? envelopesHtml(items.map((to) => ({ to, ret: f.withReturn.checked ? returnLines() : [] })), envOpts)
+    const lines = envReturn ? returnLines() : [];
+    if (envReturn && !lines.length) { win.close(); return modalError('Set your return address in Settings first.'); }
+    const retLabel = lines.length ? renderReturnLabel(retStyle, lines, { last: returnLastName() }) : '';
+    if (retLabel && retStyle !== 'plain') fontHref = LABEL_FONT_LINK;
+    pages = envelope
+      ? envelopesHtml(items.map((to) => ({ to, retLabel })), envOpts)
       : labelSheetsHtml(items.map((lines) => renderReturnLabel('plain', lines)), { ...labelOpts, sheet: media, start: Number(f.start.value) || 1 });
   }
   lastPrinted = households.map((h) => h.id);
@@ -3625,7 +3629,7 @@ document.addEventListener('change', (e) => {
   }
   if (k === 'csv-file' && t.files?.[0]) readImportFile(t.files[0]).catch((err) => modalError(err.message));
   if (t.dataset?.map !== undefined) updateImportSummary();
-  if (t.form?.dataset.form === 'print' && ['what', 'media', 'withBack'].includes(t.name)) syncPrintForm({ whatChanged: t.name === 'what' });
+  if (t.form?.dataset.form === 'print' && ['what', 'media', 'withBack', 'withReturn'].includes(t.name)) syncPrintForm({ whatChanged: t.name === 'what' });
   if (t.form?.dataset.form === 'print' && t.name === 'retTheme') showLabelTheme(t.form, t.value);
 });
 

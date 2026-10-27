@@ -48,24 +48,27 @@ export function labelSheetsHtml(items, { sheet = 'avery5160', start = 1, offsetX
 }
 
 /**
- * Envelopes, one per page (landscape). items: { to: lines, ret: lines } for each envelope; either can
- * be empty (return address only, to address by hand).
+ * Envelopes, one per page (landscape). items: { to: lines, ret: lines, retLabel } for each envelope;
+ * either address can be empty. retLabel: the return address as a return-label design (a .rl, see
+ * label-styles), printed in the corner at the envelope's returnLabelIn height, instead of ret.
  */
 export function envelopesHtml(items, { envelope = 'a7', offsetX = 0, offsetY = 0, outline = false } = {}) {
   const e = ENVELOPES[envelope] ?? ENVELOPES.a7;
   const [w, h] = e.page;
   const block = (lines) => lines.map((l) => `<span class="fit" data-size="1" style="font-size:1em">${esc(l)}</span>`).join('');
-  const body = items.map(({ to = [], ret = [] }) => `<section class="page${outline ? ' outlined' : ''}">
-    ${ret.length ? `<div class="txt ret" style="left:${r(e.returnAt[0] + offsetX)}in;top:${r(e.returnAt[1] + offsetY)}in;width:${e.returnMaxWidth}in;height:1.2in;font-size:${e.returnPt}pt">${block(ret)}</div>` : ''}
+  const body = items.map(({ to = [], ret = [], retLabel = '' }) => `<section class="page${outline ? ' outlined' : ''}">
+    ${retLabel ? `<div class="retl" style="left:${r(e.returnAt[0] + offsetX)}in;top:${r(e.returnAt[1] + offsetY)}in">${retLabel}</div>` : ret.length ? `<div class="txt ret" style="left:${r(e.returnAt[0] + offsetX)}in;top:${r(e.returnAt[1] + offsetY)}in;width:${e.returnMaxWidth}in;height:1.2in;font-size:${e.returnPt}pt">${block(ret)}</div>` : ''}
     ${to.length ? `<div class="txt to" style="left:${r(e.toLeft + offsetX)}in;top:${r(e.toCenterY - 0.85 + offsetY)}in;width:${e.toMaxWidth}in;height:1.7in;font-size:${e.toMaxPt}pt">${block(to)}</div>` : ''}
   </section>`).join('');
-  const css = `${BASE_CSS}
+  const labels = items.some((it) => it.retLabel);
+  const css = `${BASE_CSS}${labels ? LABEL_CSS : ''}
 @page { size: ${w}in ${h}in; margin: 0; }
+.retl { position: absolute; font-size: ${e.returnLabelIn}in; }
 .page { width: ${w}in; height: ${h}in; font-family: Helvetica, Arial, sans-serif; color: #000; }
 .page.outlined { outline: .5pt solid #b0b0b0; outline-offset: -.02in; }
-.txt { position: absolute; display: flex; flex-direction: column; line-height: 1.18; }
-.txt.ret { justify-content: flex-start; }
-.txt.to { justify-content: center; }
-.fit { display: block; white-space: nowrap; overflow: hidden; }`;
+.page > .txt { position: absolute; display: flex; flex-direction: column; line-height: 1.18; }
+.page > .txt.ret { justify-content: flex-start; }
+.page > .txt.to { justify-content: center; }
+.page > .txt .fit { display: block; white-space: nowrap; overflow: hidden; }`; // not the return design's own lines
   return { pageSize: e.page, css, body: body || '<section class="page"></section>' };
 }

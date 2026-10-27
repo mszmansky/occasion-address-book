@@ -29,13 +29,13 @@ export const ENVELOPES = {
   a2: {
     name: 'A2 envelopes (5¾ × 4⅜ in)', // fits 4¼ × 5½ cards, like Avery 8387
     page: [5.75, 4.375],
-    returnAt: [0.3, 0.3], returnMaxWidth: 2.4, returnPt: 8,
+    returnAt: [0.3, 0.3], returnMaxWidth: 2.4, returnPt: 8, returnLabelIn: 0.72, // a return design: its height
     toLeft: 2.05, toCenterY: 2.45, toMaxWidth: 3.4, toMaxPt: 11.5, toMinPt: 7.5,
   },
   a7: {
     name: 'A7 envelopes (7¼ × 5¼ in)', // fits 5 × 7 cards
     page: [7.25, 5.25],          // landscape: width × height
-    returnAt: [0.35, 0.38], returnMaxWidth: 3.0, returnPt: 9,
+    returnAt: [0.35, 0.38], returnMaxWidth: 3.0, returnPt: 9, returnLabelIn: 0.85,
     // Recipient block: left edge and the vertical centre line it is centred on.
     toLeft: 2.85, toCenterY: 2.95, toMaxWidth: 4.0, toMaxPt: 12.5, toMinPt: 8,
   },

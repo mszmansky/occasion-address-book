@@ -37,4 +37,13 @@ test('envelopes: recipient centred on its line, return address top-left, or retu
   assert.equal((body.match(/class="txt to"/g) ?? []).length, 1);
   assert.equal((body.match(/class="txt ret"/g) ?? []).length, 2);
   assert.ok(!envelopesHtml([{ to: ['<b>x</b>'] }]).body.includes('<b>'));
+  assert.ok(!css.includes('.rl {'), 'label styles only when a design is used');
+});
+
+test('envelopes: the return address as a label design in the corner', () => {
+  const { body, css } = envelopesHtml([{ to: ['The Smiths', '12 Oak St', 'Troy, MI  48083'], retLabel: '<div class="rl">R</div>' }], { envelope: 'a7', offsetX: 0.1 });
+  assert.match(body, /<div class="retl" style="left:0.45in;top:0.38in"><div class="rl">R<\/div><\/div>/);
+  assert.match(css, /\.retl \{ position: absolute; font-size: 0.85in; \}/);
+  assert.ok(css.includes('.rl {'));
+  assert.equal((body.match(/class="txt ret"/g) ?? []).length, 0);
 });
