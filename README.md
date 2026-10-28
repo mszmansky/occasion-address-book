@@ -153,6 +153,7 @@ PK = USER#<Cognito user id (sub)>
   SK = TAG#<occasionId>#<hhId>   household on an occasion's list (mailedAt, invitedAt)
   SK = VERIFIED#<sha256(address)>  an address a check confirmed (marks the household verified when saved with it), removed by TTL after 7 days
   SK = TRASH#<household|occasion>#<id>  a deleted item and its occasion-list rows, removed by TTL after 30 days
+PK = APP#SETTINGS, SK = SETTINGS        app-wide settings from Admin › Settings (idleMinutes)
 PK = ACCOUNT#<sub>, SK = OFF            account disabled or deleted by an admin (checked on every request)
 PK = TOKEN#<sha256(token)>, SK = TOKEN    address-check link, removed by TTL after 30 days
 PK = ADDRCHECK#QUOTA, SK = MONTH#<yyyy-mm>  address checks this month (Pacific time), removed by TTL
@@ -184,7 +185,7 @@ Sign-up is by invitation only. Invite yourself (and anyone else) after the first
 
 Cognito emails a temporary password. Sign in with it and you're asked to choose your own. **Forgot password?** emails a 6-digit code. Whenever a password changes, in **Settings > Security** (the app asks the API to send it) or through **Forgot password?** (a Cognito post-confirmation trigger, `backend/src/handlers/cognito-post-confirmation.mjs`), the account's email gets a *Your password was changed* notice with the time, in the time zone the app last reported, and how to reset it if it wasn't them.
 
-After **30 minutes without activity** (mouse, keyboard, scroll or touch) the app signs out, with a **Still there?** warning 2 minutes before; **Stay signed in** keeps any unsaved edits. Activity in one tab keeps every tab signed in, a computer that slept past the limit signs out when it wakes, and reopening the app more than 30 minutes after the last activity starts at the sign-in screen.
+After **30 minutes without activity** (admins can change this under **Admin › Settings**, 5–480 minutes) (mouse, keyboard, scroll or touch) the app signs out, with a **Still there?** warning 2 minutes before; **Stay signed in** keeps any unsaved edits. Activity in one tab keeps every tab signed in, a computer that slept past the limit signs out when it wakes, and reopening the app after longer than the timeout starts at the sign-in screen.
 
 **Settings** (account menu) has five tabs:
 - **Profile:** a profile photo (cropped to a square, shown in a circle here and beside your name at the top), your name, the name invitations come from, and your sign-in email (changing it emails a 6-digit code to the new address).
@@ -195,12 +196,14 @@ After **30 minutes without activity** (mouse, keyboard, scroll or touch) the app
 
 ### Admins
 
-Admins manage everyone's accounts from **Admin** in the account menu: invite, re-send an invitation, disable or enable an account, and delete it (with all its data and sharing). Admins are the accounts in the user pool's `admin` group:
+Admins manage everyone's accounts from **Admin** in the account menu (**Accounts** tab): invite, re-send an invitation, disable or enable an account, and delete it (with all its data and sharing). Admins are the accounts in the user pool's `admin` group:
 
 ```bash
 ./scripts/make-admin.sh you@example.com            # then sign out and back in
 ./scripts/make-admin.sh someone@example.com --remove
 ```
+
+The **Settings** tab holds app-wide settings (`APP#SETTINGS / SETTINGS`, returned to everyone in `/me` as `settings`): the inactivity timeout in minutes.
 
 The API checks the group on every `/admin/*` request (from the ID token's `cognito:groups`). Disabling an account also signs it out everywhere, and an `ACCOUNT#<sub>/OFF` row stops its unexpired sign-in tokens right away. Admins can't disable or delete themselves.
 

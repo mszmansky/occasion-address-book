@@ -391,6 +391,7 @@ async function loadAll() {
     try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* unknown */ }
     const [me, hh, occ] = await Promise.all([api(`/me${tz ? `?tz=${encodeURIComponent(tz)}` : ''}`), api('/households'), api('/occasions')]);
     state.me = me;
+    if (me.settings?.idleMinutes) { try { localStorage.setItem(IDLE_KEY, String(me.settings.idleMinutes)); } catch { /* this visit only */ } }
     state.households = hh.households;
     state.occasions = occ.occasions;
     if (state.occasionId) await openOccasion(state.occasionId, { quiet: true });
@@ -2892,15 +2893,39 @@ async function sendInvites(form) {
 // ---------- admin: everyone's accounts ----------
 // Only for admins (the user pool's "admin" group); the API checks too. Explanations are on the help page.
 let adminUsers = null; // null while loading
+let adminTab = 'accounts';
+let adminSettings = null;
 
-async function openAdmin() {
+async function openAdmin(tab = 'accounts') {
   state.view = 'admin';
   state.occasionId = null; state.occ = null;
-  adminUsers = null;
+  adminTab = tab;
+  adminUsers = null; adminSettings = null;
   render();
   window.scrollTo(0, 0);
-  try { adminUsers = (await api('/admin/users')).users; } catch (e) { adminUsers = []; toast(e.message, true); }
+  await Promise.all([
+    api('/admin/users').then((r) => { adminUsers = r.users; }).catch((e) => { adminUsers = []; toast(e.message, true); }),
+    api('/admin/settings').then((r) => { adminSettings = r.settings; }).catch((e) => { adminSettings = {}; toast(e.message, true); }),
+  ]);
   if (state.view === 'admin') render();
+}
+
+function adminSettingsPanel() {
+  if (!adminSettings) return '<div class="panel"><p class="muted" style="margin:0">Loading…</p></div>';
+  return `<form class="panel admin-settings stack" data-form="admin-settings">
+    <label>Inactivity timeout (minutes)<input type="number" name="idleMinutes" min="5" max="480" step="1" required value="${val(adminSettings.idleMinutes)}" style="max-width:120px"></label>
+    <div><button class="btn primary" title="Save the settings for everyone">Save</button></div>
+  </form>`;
+}
+
+async function saveAdminSettings(form) {
+  return withBusy(form.querySelector('.btn.primary'), async () => {
+    const res = await api('/admin/settings', { method: 'PUT', body: { idleMinutes: Number(form.elements.idleMinutes.value) } });
+    adminSettings = res.settings;
+    if (state.me) state.me.settings = res.settings;
+    try { localStorage.setItem(IDLE_KEY, String(res.settings.idleMinutes)); } catch { /* this visit only */ }
+    toast('Settings saved');
+  });
 }
 
 const ACCOUNT_STATUS = { active: ['Active', 'ok'], invited: ['Invited', 'info'] };
@@ -2926,9 +2951,13 @@ function renderAdmin() {
         <button type="button" class="icon-btn admin-del" data-action="admin-delete" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-name="${who}" title="Delete ${esc(u.email)}'s account" aria-label="Delete ${esc(u.email)}'s account">${X_ICON}</button>`}</div></td>
     </tr>`;
   }).join('');
+  const tabs = `<div class="tabs admin-tabs" role="tablist">${[['accounts', 'Accounts'], ['settings', 'Settings']].map(([id, label]) => `
+    <button type="button" role="tab" class="tab" data-action="admin-tab" data-tab="${id}" aria-selected="${id === adminTab}">${label}${id === 'accounts' && adminUsers ? `<span class="count">${users.length}</span>` : ''}</button>`).join('')}</div>`;
+  if (adminTab === 'settings') return `<div class="page-head"><h1>Admin</h1></div>${tabs}${adminSettingsPanel()}`;
   return `
-  <div class="page-head">
-    <h1>Accounts${adminUsers ? `<span class="count muted">${users.length}</span>` : ''}</h1>
+  <div class="page-head"><h1>Admin</h1></div>
+  ${tabs}
+  <div class="admin-bar">
     <form class="admin-invite" data-form="admin-invite">
       <input type="email" name="email" required autocomplete="off" placeholder="Email address" aria-label="Email address to invite">
       <button class="btn primary" title="Email an invitation with a temporary password">Invite</button>
@@ -3354,6 +3383,7 @@ document.addEventListener('click', async (e) => {
       render();
       break;
     case 'admin': setUserMenu(false); await openAdmin(); break;
+    case 'admin-tab': adminTab = el.dataset.tab; render(); break;
     case 'admin-resend': await adminAction(el, 'resend'); break;
     case 'admin-onoff': await adminAction(el, el.dataset.on === '1' ? 'enable' : 'disable'); break;
     case 'admin-delete': await adminAction(el, 'delete'); break;
@@ -3662,6 +3692,7 @@ document.addEventListener('submit', async (e) => {
   if (kind === 'import') return runImport(form.querySelector('[data-import-go]'));
   if (kind === 'share') return addShare(form);
   if (kind === 'admin-invite') return adminInvite(form);
+  if (kind === 'admin-settings') return saveAdminSettings(form);
   if (kind === 'settings-password') return withBusy(form.querySelector('button[type=submit]'), () => changePassword(form));
   if (['settings-profile', 'settings-return', 'settings-printer'].includes(kind)) {
     const tab = kind.slice('settings-'.length);
@@ -3690,11 +3721,20 @@ document.addEventListener('submit', async (e) => {
 modal.addEventListener('close', () => { if (!modal.open) modal.innerHTML = ''; });
 
 // ---------- inactivity sign-out ----------
-// After 30 minutes with no mouse, keyboard, scroll or touch activity, the app signs out; a dialog
+// After the inactivity timeout (30 minutes unless an admin changes it) with no mouse, keyboard, scroll or touch activity, the app signs out; a dialog
 // warns 2 minutes before. The last activity time is shared through localStorage, so working in one
 // tab keeps the others signed in, and a Mac that slept past the limit signs out when it wakes.
 // The warning sits on top of any open dialog, so "Stay signed in" keeps unsaved edits.
-const IDLE_LIMIT = 30 * 60_000;
+// The limit is set by admins (Admin › Settings); the last value seen is kept so it also applies
+// before the app has loaded, when it's reopened.
+const IDLE_KEY = 'oab.idleMinutes';
+function idleMinutes() {
+  const fromApi = Number(state.me?.settings?.idleMinutes);
+  if (fromApi > 0) return fromApi;
+  try { return Number(localStorage.getItem(IDLE_KEY)) || 30; } catch { return 30; }
+}
+const idleLimit = () => idleMinutes() * 60_000;
+const idleNote = () => `You were signed out after ${plural(idleMinutes(), 'minute')} without activity.`;
 const IDLE_WARNING = 2 * 60_000;
 const ACTIVE_KEY = 'oab.lastActive';
 const idleEl = Object.assign(document.createElement('dialog'), { className: 'confirm-modal idle-modal' });
@@ -3738,11 +3778,12 @@ function showIdleWarning(left) {
 function checkIdle() {
   if (!state.session) { if (idleEl.open) { idleEl.onclose = null; idleEl.close(); } return; }
   const idle = Date.now() - readLastActive();
-  if (idle >= IDLE_LIMIT) {
+  const limit = idleLimit();
+  if (idle >= limit) {
     if (idleEl.open) { idleEl.onclose = null; idleEl.close(); }
     auth.signOut();
-  } else if (idle >= IDLE_LIMIT - IDLE_WARNING) {
-    showIdleWarning(IDLE_LIMIT - idle);
+  } else if (idle >= limit - IDLE_WARNING) {
+    showIdleWarning(limit - idle);
   } else if (idleEl.open) {
     idleEl.onclose = null; idleEl.close(); // activity in another tab
   }
@@ -3752,7 +3793,7 @@ function checkIdle() {
 function staleSession() {
   try {
     const stored = Number(localStorage.getItem(ACTIVE_KEY)) || 0;
-    return Boolean(stored) && Date.now() - stored >= IDLE_LIMIT;
+    return Boolean(stored) && Date.now() - stored >= idleLimit();
   } catch { return false; }
 }
 
@@ -3780,17 +3821,17 @@ auth.onChange((event, session) => {
     stopIdleWatch();
     if (wasSignedIn) state.showLanding = true; // signing out goes back to the welcome page
     Object.assign(state, { me: null, books: [], households: [], occasions: [], occasionId: null, occ: null, view: 'people' });
-    if (wasSignedIn && Date.now() - readLastActive() >= IDLE_LIMIT) { state.authErr = ''; state.authMsg = 'You were signed out after 30 minutes without activity.'; }
+    if (wasSignedIn && Date.now() - readLastActive() >= idleLimit()) { state.authErr = ''; state.authMsg = idleNote(); }
     if (wasSignedIn) state.bookId = storedBook(); // a different person may sign in next; loadAll checks the book is theirs
     if (modal.open) modal.close();
     if (wasSignedIn || event !== 'INITIAL_SESSION') state.authMode = 'signin';
     return renderAuth();
   }
   if (!wasSignedIn) {
-    // Reopening the app after more than 30 minutes away: sign out instead of picking up where it left off.
+    // Reopening the app after longer than the inactivity timeout: sign out instead of picking up where it left off.
     if (event === 'INITIAL_SESSION' && staleSession()) {
       state.session = null;
-      state.authMsg = 'You were signed out after 30 minutes without activity.';
+      state.authMsg = idleNote();
       auth.signOut();
       return renderAuth();
     }

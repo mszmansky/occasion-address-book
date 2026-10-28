@@ -242,6 +242,10 @@ const occOut = (o) => ({ ...strip(o), kind: kindOf(o) });
 const ADMIN_GROUP = 'admin';
 const isAdmin = (user) => Array.isArray(user?.groups) && user.groups.includes(ADMIN_GROUP);
 const accountPk = (sub) => `ACCOUNT#${sub}`; // OFF: turned off or deleted by an admin
+// Settings for everyone using the app, set by admins on the Admin screen.
+const APP_PK = 'APP#SETTINGS';
+export const APP_DEFAULTS = { idleMinutes: 30 }; // sign out after this long without activity
+export const IDLE_RANGE = [5, 480];
 const fullName = (p) => [p.firstName, p.lastName].filter(Boolean).join(' ');
 
 export function createApi({ repo, verify, mailer, appUrl, files, media, directory, addressChecker, now = () => new Date(), log = console, pause = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
@@ -383,6 +387,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
         ? { id: user.book.id, role: 'owner', canEdit: true }
         : { id: user.book.id, role: user.book.role, canEdit: canEdit(user), ownerName: user.book.ownerName, ownerEmail: user.book.ownerEmail },
       linkDays: LINK_DAYS,
+      settings: await appSettings(),
       isAdmin: isAdmin(user) || undefined,
     };
   }
@@ -1017,6 +1022,22 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
   // account, invite people, re-send invitations, turn accounts off and on, and delete them.
   // An account that's turned off or deleted can't sign in again, and the sessions it already has stop
   // working right away: ACCOUNT#<sub> / OFF is checked on every request (sign-in tokens last an hour).
+  async function appSettings() {
+    const saved = (await repo.get(APP_PK, 'SETTINGS')) ?? {};
+    return Object.fromEntries(Object.keys(APP_DEFAULTS).map((k) => [k, saved[k] ?? APP_DEFAULTS[k]]));
+  }
+
+  route('GET', '/admin/settings', async () => ({ settings: await appSettings() }), { admin: true });
+
+  route('PUT', '/admin/settings', async ({ user, body }) => {
+    const idle = num(body.idleMinutes, 'Inactivity timeout', { min: IDLE_RANGE[0], max: IDLE_RANGE[1] });
+    if (idle !== undefined && !Number.isInteger(idle)) throw new HttpError(400, 'Inactivity timeout must be a whole number of minutes');
+    const current = await appSettings();
+    const next = { ...current, ...(idle !== undefined ? { idleMinutes: idle } : {}) };
+    await repo.put({ PK: APP_PK, SK: 'SETTINGS', ...next, updatedAt: nowIso(), updatedBy: user.sub });
+    return { settings: next };
+  }, { admin: true });
+
   async function adminAccount(sub, me) {
     if (!/^[\w-]{1,64}$/.test(sub)) throw new HttpError(400, 'Invalid account');
     const acct = await directory.getBySub(sub);

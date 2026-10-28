@@ -847,3 +847,15 @@ test('deleting an account removes its data and its sharing on both sides', async
   assert.match((await call('DELETE', '/admin/users/user-1', undefined, ADMIN)).body.error, /your own account/);
   assert.equal((await call('DELETE', '/admin/users/user-kim')).status, 403);
 });
+
+test('admins set the inactivity timeout everyone gets', async () => {
+  const { call } = await setup();
+  assert.deepEqual((await call('GET', '/me')).body.settings, { idleMinutes: 30 });
+  assert.equal((await call('PUT', '/admin/settings', { idleMinutes: 45 })).status, 403);
+  assert.deepEqual((await call('GET', '/admin/settings', undefined, ADMIN)).body.settings, { idleMinutes: 30 });
+  const res = await call('PUT', '/admin/settings', { idleMinutes: 45 }, ADMIN);
+  assert.deepEqual(res.body.settings, { idleMinutes: 45 });
+  assert.equal((await call('GET', '/me', undefined, { claims: { sub: 'user-kim', email: 'kim@example.com' } })).body.settings.idleMinutes, 45);
+  assert.match((await call('PUT', '/admin/settings', { idleMinutes: 2 }, ADMIN)).body.error, /between 5 and 480/);
+  assert.match((await call('PUT', '/admin/settings', { idleMinutes: 12.5 }, ADMIN)).body.error, /whole number/);
+});
