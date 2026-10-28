@@ -314,14 +314,15 @@ test('sharing: people keep their own book and open shared ones; edit vs view onl
   assert.deepEqual((await call('GET', '/households', undefined, as(KIM, 'user-1'))).body.households.map((h) => h.labelName), ['The Lees']);
   assert.equal((await call('GET', '/households')).body.households.length, 1, "Mike doesn't see Kim's private book");
 
-  // In Mike's book Kim edits; the return address is the book's, her name is hers.
+  // In Mike's book Kim edits; her name and return address are still hers.
   let me = (await call('GET', '/me', undefined, as(KIM, 'user-1'))).body;
-  assert.deepEqual([me.book.id, me.book.role, me.book.canEdit, me.profile.firstName, me.profile.returnName], ['user-1', 'edit', true, 'Kim', 'The Szmanskys']);
+  assert.deepEqual([me.book.id, me.book.role, me.book.canEdit, me.profile.firstName, me.profile.returnName], ['user-1', 'edit', true, 'Kim', undefined]);
   assert.equal((await call('POST', '/households', { labelName: 'The Abbotts' }, as(KIM, 'user-1'))).status, 200);
   assert.equal((await call('GET', '/households')).body.households.length, 2, 'Mike sees what Kim added to his book');
   await call('PUT', '/me', { returnAddress: { line1: '2 New Rd', city: 'Troy', state: 'MI', zip: '48083' } }, as(KIM, 'user-1'));
-  assert.equal((await call('GET', '/me')).body.profile.returnAddress.line1, '2 New Rd');
-  assert.equal((await call('GET', '/me', undefined, as(KIM))).body.profile.returnAddress.line1, undefined, "her own book's return address is separate");
+  assert.equal((await call('GET', '/me')).body.profile.returnAddress.line1, '1 Home Rd', "Mike's return address is untouched");
+  assert.equal((await call('GET', '/me', undefined, as(KIM))).body.profile.returnAddress.line1, '2 New Rd', 'hers, in her own book');
+  assert.equal((await call('GET', '/me', undefined, as(KIM, 'user-1'))).body.profile.returnAddress.line1, '2 New Rd', "and in Mike's");
   // Occasions belong to each book.
   await call('POST', '/occasions', { name: "Mike's cards" });
   await call('POST', '/occasions', { name: "Kim's party" }, as(KIM));
@@ -337,12 +338,14 @@ test('sharing: people keep their own book and open shared ones; edit vs view onl
   const occ = (await call('GET', '/occasions')).body.occasions[0];
   for (const [m, path, body] of [['POST', '/households', { labelName: 'X' }], ['PUT', `/households/${lees.id}`, { labelName: 'X' }],
     ['DELETE', `/households/${lees.id}`], ['POST', '/occasions', { name: 'X' }], ['PUT', `/occasions/${occ.id}/tags`, { add: [lees.id] }],
-    ['POST', `/occasions/${occ.id}/mailed`, { householdIds: [lees.id], mailed: true }], ['POST', `/households/${lees.id}/address-request`, {}],
-    ['PUT', '/me', { returnName: 'Hacked' }]]) {
+    ['POST', `/occasions/${occ.id}/mailed`, { householdIds: [lees.id], mailed: true }], ['POST', `/households/${lees.id}/address-request`, {}]]) {
     const r = await call(m, path, body, as(joe, 'user-1'));
     assert.deepEqual([r.status, r.body.code], [403, 'view_only'], `${m} ${path}`);
   }
   assert.equal((await call('POST', '/households', { labelName: 'Joe’s own' }, as(joe))).status, 200, 'his own book is fine');
+  const jr = await call('PUT', '/me', { returnName: 'The Joes' }, as(joe, 'user-1'));
+  assert.equal(jr.body.profile.returnName, 'The Joes', 'his return address is his own, even with view-only access to the open book');
+  assert.equal((await call('GET', '/me')).body.profile.returnName, 'The Szmanskys', "Mike's is untouched");
 
   // Books not shared with you are off limits.
   assert.equal((await call('GET', '/households', undefined, as(joe, 'user-kim'))).body.code, 'book_gone');

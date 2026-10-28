@@ -374,15 +374,10 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     return { ...rest, avatarUrl: avatar && files ? await files.signDownload(avatar.key, { name: 'avatar', type: avatar.type }) : undefined };
   }
 
-  // The book's owner profile holds the return address (it belongs to the shared book).
-  async function bookProfile(user) {
-    return user.book.role === 'owner' ? getProfile(user) : (await repo.get(user.book.pk, 'PROFILE')) ?? {};
-  }
-
+  // Everything in Settings is the person's own, the return address included, whichever book is open.
   async function meResponse(user, own) {
-    const book = user.book.role === 'owner' ? own : await bookProfile(user);
     return {
-      profile: { ...(await publicProfile(own)), returnName: book.returnName, returnAddress: book.returnAddress ?? {} },
+      profile: { ...(await publicProfile(own)), returnAddress: own.returnAddress ?? {} },
       book: user.book.role === 'owner'
         ? { id: user.book.id, role: 'owner', canEdit: true }
         : { id: user.book.id, role: user.book.role, canEdit: canEdit(user), ownerName: user.book.ownerName, ownerEmail: user.book.ownerEmail },
@@ -420,18 +415,11 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     books: [{ id: user.sub, role: 'owner', own: true }, ...(await sharedBooks(user))],
   }));
 
-  // Name, photo and printer settings are the person's own; the return address is the book's.
+  // Name, photo, printer settings and return address: all the person's own (view-only access to a
+  // shared book doesn't limit them).
   route('PUT', '/me', async ({ user, body }) => {
-    const { returnName, returnAddress, ...personal } = body;
     const current = await getProfile(user);
-    const updated = { ...current, ...parseProfile(personal, current), returnName: current.returnName, returnAddress: current.returnAddress, updatedAt: nowIso() };
-    if (returnName !== undefined || returnAddress !== undefined) {
-      if (!canEdit(user)) throw new HttpError(403, 'You have view-only access to this address book', 'view_only');
-      const book = user.book.role === 'owner' ? updated : { PK: user.book.pk, SK: 'PROFILE', ...(await bookProfile(user)) };
-      const parsed = parseProfile({ returnName, returnAddress }, book);
-      Object.assign(book, { returnName: parsed.returnName, returnAddress: parsed.returnAddress });
-      if (book !== updated) await repo.put({ ...book, updatedAt: nowIso() });
-    }
+    const updated = { ...current, ...parseProfile(body, current), updatedAt: nowIso() };
     await repo.put(updated);
     return meResponse(user, updated);
   });

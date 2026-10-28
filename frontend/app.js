@@ -3484,10 +3484,9 @@ function returnAddressTab() {
   const p = state.me?.profile ?? {};
   openModal('Settings', `
     ${settingsTabs('return')}
-    <p style="margin:0">Printed in the corner of envelopes, and on return-address labels.${isOwner() ? '' : ' It belongs to the shared address book, so everyone using it prints the same one.'}</p>
+    <p style="margin:0">Printed in the corner of envelopes, and on return-address labels.</p>
     <label>Name<input name="returnName" maxlength="120" value="${val(p.returnName)}" placeholder="${val([p.firstName, p.lastName].filter(Boolean).join(' ') || 'The Szmansky Family')}"></label>
-    ${addressFields(p.returnAddress, 'r_')}`, { form: 'settings-return', foot: canEdit() ? saveFoot('Save return address') : '<div class="small muted">View only</div><div class="right"><button type="button" class="btn" data-action="close">Close</button></div>' });
-  if (!canEdit()) modal.querySelectorAll('.modal-body input').forEach((el) => { el.disabled = true; });
+    ${addressFields(p.returnAddress, 'r_')}`, { form: 'settings-return', foot: saveFoot('Save return address') });
 }
 
 // ----- sharing: the owner shares the address book and occasions, each person "Can edit" or "View only" -----

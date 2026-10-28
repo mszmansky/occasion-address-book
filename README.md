@@ -215,7 +215,7 @@ Everyone has their own private address book (with its own occasions). You can sh
 - Someone without an account gets a Cognito invitation with a temporary password; everyone gets an email saying the book was shared with them.
 - The people you share with **keep their own address book**. Once a book is shared with them, a switcher appears at the top of the screen listing **My address book** and each book shared with them (e.g. *Mike Szmansky's · Can edit*). The open book drives both **Address book** and **Occasions**, and is remembered on each device. A person can have several books shared with them.
 - **Can edit:** everything the owner can do in that book except change its sharing. **View only:** look up, search, export and print; no changes and no emails. The API enforces this, not just the screens.
-- The return address belongs to each book, so everyone prints the same one from a shared book. Name, photo, password, two-step verification and printer alignment stay personal.
+- Everything in Settings is personal, whichever book is open: name, photo, return address, password, two-step verification and printer alignment. Printing from a shared book uses your own return address.
 - Shares are tied to each person's account (their permanent Cognito id), not their email, so either person can change their sign-in email without re-sharing.
 - **Settings > Sharing** always manages *your own* book, and also lists the books shared with you.
 
