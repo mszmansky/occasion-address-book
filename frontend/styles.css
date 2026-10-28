@@ -1256,3 +1256,5 @@ fieldset[hidden] { display: none; }
 .bh-sw { left: -9px; bottom: -9px; cursor: nesw-resize; }
 .bh-se { right: -9px; bottom: -9px; cursor: nwse-resize; }
 .design-imgbar .img-size { min-width: 34px; font-variant-numeric: tabular-nums; }
+.env-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; margin-top: 4px; }
+.env-grid .check { font-size: 14px; }

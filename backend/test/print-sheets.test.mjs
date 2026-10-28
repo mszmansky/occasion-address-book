@@ -47,3 +47,19 @@ test('envelopes: the return address as a label design in the corner', () => {
   assert.ok(css.includes('.rl {'));
   assert.equal((body.match(/class="txt ret"/g) ?? []).length, 0);
 });
+
+test('every envelope size lays out inside its page, the recipient clear of the return address', async () => {
+  const { ENVELOPES, usedEnvelopes } = await import('../../frontend/print-core.js');
+  for (const [k, e] of Object.entries(ENVELOPES)) {
+    const [w, h] = e.page;
+    assert.ok(e.toLeft + e.toMaxWidth <= w, `${k} recipient fits across`);
+    assert.ok(e.toCenterY - 0.85 >= 0 && e.toCenterY + 0.85 <= h, `${k} recipient fits down`);
+    // The return address (a block 1.2 in tall) stays left of the recipient, or above it.
+    assert.ok(e.returnAt[0] + e.returnMaxWidth <= e.toLeft + 0.01 || e.returnAt[1] + 1.2 <= e.toCenterY - 0.85 + 0.01, `${k} return address clear of the recipient`);
+    assert.ok(e.returnAt[1] + e.returnLabelIn <= e.toCenterY - 0.85 + 0.01, `${k} a return design stays above the recipient`);
+    const { pageSize } = envelopesHtml([{ to: ['A', 'B', 'C'], ret: ['R'] }], { envelope: k });
+    assert.deepEqual(pageSize, [w, h]);
+  }
+  assert.deepEqual(usedEnvelopes(), ['a2', 'a7']);
+  assert.deepEqual(usedEnvelopes(['n10', 'a2', 'nope']), ['a2', 'n10']);
+});

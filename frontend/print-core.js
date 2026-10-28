@@ -25,20 +25,53 @@ export const LABEL_SHEETS = {
   },
 };
 
+// Envelope sizes. Each person picks the ones they use (Settings > Printer); A2 and A7 to start.
+// Layout in inches: the return address at the top left, the recipient block a little left of center
+// and a little below the middle, where the Post Office looks for it.
+function envelope(name, w, h, group, extra = {}) {
+  const small = h < 4.2;
+  const toLeft = Math.round(w * (w >= 9 ? 0.42 : 0.38) * 100) / 100;
+  const returnAt = w >= 7 ? [0.35, 0.35] : [0.3, 0.3];
+  return {
+    name, group, page: [w, h],
+    returnAt, returnMaxWidth: Math.round(Math.min(3.2, toLeft - returnAt[0] - 0.15) * 100) / 100, returnPt: small ? 8 : 9,
+    returnLabelIn: Math.round(Math.min(0.9, Math.max(0.6, h * 0.17)) * 100) / 100, // a return design: its height
+    toLeft, toCenterY: Math.round(h * 0.56 * 100) / 100, toMaxWidth: Math.round((w - toLeft - 0.4) * 100) / 100,
+    toMaxPt: small ? 11 : w >= 9 ? 13 : 12, toMinPt: small ? 7 : 8,
+    ...extra,
+  };
+}
+export const ENVELOPE_GROUPS = ['Cards and invitations', 'Business', 'Large'];
 export const ENVELOPES = {
-  a2: {
-    name: 'A2 envelopes (5¾ × 4⅜ in)', // fits 4¼ × 5½ cards, like Avery 8387
-    page: [5.75, 4.375],
-    returnAt: [0.3, 0.3], returnMaxWidth: 2.4, returnPt: 8, returnLabelIn: 0.72, // a return design: its height
+  a1: envelope('A1 / 4 Bar envelopes (5⅛ × 3⅝ in)', 5.125, 3.625, 'Cards and invitations'), // 3½ × 5 cards
+  a2: envelope('A2 envelopes (5¾ × 4⅜ in)', 5.75, 4.375, 'Cards and invitations', { // fits 4¼ × 5½ cards, like Avery 8387
+    returnAt: [0.3, 0.3], returnMaxWidth: 2.4, returnPt: 8, returnLabelIn: 0.72,
     toLeft: 2.05, toCenterY: 2.45, toMaxWidth: 3.4, toMaxPt: 11.5, toMinPt: 7.5,
-  },
-  a7: {
-    name: 'A7 envelopes (7¼ × 5¼ in)', // fits 5 × 7 cards
-    page: [7.25, 5.25],          // landscape: width × height
+  }),
+  a6: envelope('A6 envelopes (6½ × 4¾ in)', 6.5, 4.75, 'Cards and invitations'), // 4½ × 6¼ cards
+  a7: envelope('A7 envelopes (7¼ × 5¼ in)', 7.25, 5.25, 'Cards and invitations', { // fits 5 × 7 cards
     returnAt: [0.35, 0.38], returnMaxWidth: 3.0, returnPt: 9, returnLabelIn: 0.85,
-    // Recipient block: left edge and the vertical centre line it is centred on.
     toLeft: 2.85, toCenterY: 2.95, toMaxWidth: 4.0, toMaxPt: 12.5, toMinPt: 8,
-  },
+  }),
+  a8: envelope('A8 envelopes (8⅛ × 5½ in)', 8.125, 5.5, 'Cards and invitations'),
+  a9: envelope('A9 envelopes (8¾ × 5¾ in)', 8.75, 5.75, 'Cards and invitations'), // 5½ × 8½ cards
+  a10: envelope('A10 envelopes (9½ × 6 in)', 9.5, 6, 'Cards and invitations'),
+  sq6: envelope('6 in square envelopes (6 × 6 in)', 6, 6, 'Cards and invitations'), // square: extra postage
+  n6: envelope('#6¾ envelopes (6½ × 3⅝ in)', 6.5, 3.625, 'Business'),
+  monarch: envelope('Monarch #7¾ envelopes (7½ × 3⅞ in)', 7.5, 3.875, 'Business'),
+  n9: envelope('#9 envelopes (8⅞ × 3⅞ in)', 8.875, 3.875, 'Business'),
+  n10: envelope('#10 envelopes (9½ × 4⅛ in)', 9.5, 4.125, 'Business'),
+  n11: envelope('#11 envelopes (10⅜ × 4½ in)', 10.375, 4.5, 'Business'),
+  n12: envelope('#12 envelopes (11 × 4¾ in)', 11, 4.75, 'Business'),
+  n14: envelope('#14 envelopes (11½ × 5 in)', 11.5, 5, 'Business'),
+  b6x9: envelope('6 × 9 in booklet envelopes', 9, 6, 'Large'),
+  c9x12: envelope('9 × 12 in catalog envelopes', 12, 9, 'Large'),
+};
+export const DEFAULT_ENVELOPES = ['a2', 'a7'];
+/** The envelope sizes someone uses, in the order above (their choice, else A2 and A7). */
+export const usedEnvelopes = (keys) => {
+  const set = new Set(Array.isArray(keys) && keys.length ? keys : DEFAULT_ENVELOPES);
+  return Object.keys(ENVELOPES).filter((k) => set.has(k));
 };
 
 const US = /^(us|u\.s\.a?\.?|usa|united states( of america)?)$/i;

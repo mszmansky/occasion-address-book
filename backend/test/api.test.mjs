@@ -885,3 +885,13 @@ test('sharing: anyone a book is shared with can copy a household into their own 
   assert.equal((await call('POST', `/households/${h.id}/copy-to-mine`)).status, 400, 'the owner has it already');
   assert.equal((await call('POST', `/households/${h.id}/copy-to-mine`, undefined, as({ sub: 'user-joe', email: 'joe@example.com' }, 'user-1'))).status, 403, 'not shared with Joe');
 });
+
+test('printer settings keep the envelope sizes someone uses', async () => {
+  const { call } = await setup();
+  assert.equal((await call('GET', '/me')).body.profile.print.envelopes, undefined, 'the app starts with A2 and A7');
+  const res = await call('PUT', '/me', { print: { envelopes: ['a2', 'n10', 'n10'] } });
+  assert.deepEqual(res.body.profile.print.envelopes, ['a2', 'n10']);
+  assert.equal((await call('PUT', '/me', { print: { labelOffsetX: 0.1 } })).body.profile.print.envelopes.length, 2, 'kept when not sent');
+  assert.match((await call('PUT', '/me', { print: { envelopes: [] } })).body.error, /at least one/);
+  assert.equal((await call('PUT', '/me', { print: { envelopes: ['<b>'] } })).status, 400);
+});

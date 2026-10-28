@@ -195,6 +195,12 @@ export const PROFILE_DEFAULTS = {
   print: { labelOffsetX: 0, labelOffsetY: 0, envelopeOffsetX: 0, envelopeOffsetY: 0 },
 };
 
+function parseEnvelopes(v) {
+  if (!Array.isArray(v) || v.length > 40 || !v.every((k) => typeof k === 'string' && /^[a-z0-9]{1,12}$/.test(k))) throw new HttpError(400, 'Envelope sizes are invalid');
+  if (!v.length) throw new HttpError(400, 'Choose at least one envelope size');
+  return [...new Set(v)];
+}
+
 function parseProfile(b, current) {
   const p = b.print ?? {};
   const off = (v, field, cur) => (v === undefined ? cur : num(v, field, { min: -1, max: 1 }) ?? 0);
@@ -210,6 +216,8 @@ function parseProfile(b, current) {
       labelOffsetY: off(p.labelOffsetY, 'Label offset (down)', cp.labelOffsetY),
       envelopeOffsetX: off(p.envelopeOffsetX, 'Envelope offset (across)', cp.envelopeOffsetX),
       envelopeOffsetY: off(p.envelopeOffsetY, 'Envelope offset (down)', cp.envelopeOffsetY),
+      // The envelope sizes offered when printing (keys of ENVELOPES in the app's print-core).
+      envelopes: p.envelopes === undefined ? cp.envelopes : parseEnvelopes(p.envelopes),
     },
   };
 }

@@ -1,6 +1,6 @@
 import { createAuth } from './auth.js';
 import {
-  addressLines, addressProblem, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES, INVITE_MEDIA, invitePages, inviteLayout,
+  addressLines, addressProblem, envelopeName, isMailable, sortKey, LABEL_SHEETS, ENVELOPES, ENVELOPE_GROUPS, INVITE_MEDIA, invitePages, inviteLayout, usedEnvelopes,
 } from './print-core.js';
 import { activeCount, emptyFilter, filterChips, filterOptions, matchesFilter } from './filter-core.js';
 import {
@@ -1856,10 +1856,12 @@ let lastPrinted = [];
 // First what to print (invitations, addresses or return addresses), then what to print it on; only
 // the stock that suits that choice is offered. Everything prints in a new tab through the browser's
 // print dialog. Tips live on the help page.
+// Envelopes: only the sizes you use (Settings > Printer).
+const myEnvelopes = () => usedEnvelopes(state.me?.profile?.print?.envelopes).map((k) => [k, ENVELOPES[k].name]);
 const PRINT_MEDIA = {
-  invitations: Object.entries(INVITE_MEDIA).map(([k, m]) => [k, m.name]),
-  addresses: [['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name], ['checklist', 'Occasion Report']],
-  return: [['avery5195', LABEL_SHEETS.avery5195.name], ['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name]],
+  get invitations() { return Object.entries(INVITE_MEDIA).map(([k, m]) => [k, m.name]); },
+  get addresses() { return [['avery5160', LABEL_SHEETS.avery5160.name], ...myEnvelopes(), ['checklist', 'Occasion Report']]; },
+  get return() { return [['avery5195', LABEL_SHEETS.avery5195.name], ['avery5160', LABEL_SHEETS.avery5160.name], ...myEnvelopes()]; },
 };
 // On envelopes, Addresses and Return addresses are the same print: each envelope gets the recipient
 // and the return address (in the chosen design) together.
@@ -3587,18 +3589,24 @@ async function addShare(form) {
 
 function printerTab() {
   const pr = state.me?.profile?.print ?? {};
+  const used = usedEnvelopes(pr.envelopes);
   const off = (name, label, v) => `<label>${label}<input name="${name}" type="number" step="0.01" min="-1" max="1" value="${Number(v ?? 0)}"></label>`;
   openModal('Settings', `
     ${settingsTabs('printer')}
+    <fieldset class="stack env-sizes"><legend>Envelope sizes</legend>
+      ${ENVELOPE_GROUPS.map((g) => `<div><div class="label-like">${g}</div><div class="env-grid">${Object.entries(ENVELOPES).filter(([, e]) => e.group === g).map(([k, e]) => `
+        <label class="check" title="Offer ${esc(e.name)} when printing"><input type="checkbox" name="useEnvelope" value="${k}" ${used.includes(k) ? 'checked' : ''}> ${esc(e.name.replace(/ envelopes/, ''))}</label>`).join('')}</div></div>`).join('')}
+    </fieldset>
     <p style="margin:0">If printing lands off, move it in inches: positive moves right or down, negative left or up (0.06 is about 1/16 in).
       Print an alignment page on plain paper and hold it against a label sheet or envelope to check.</p>
     <fieldset><legend>Avery 5160 / 8160 labels</legend>
       <div class="grid-2">${off('labelOffsetX', 'Across', pr.labelOffsetX)}${off('labelOffsetY', 'Down', pr.labelOffsetY)}</div>
       <div><button type="button" class="btn sm" data-action="align-test" data-what="labels">Label alignment page</button></div>
     </fieldset>
-    <fieldset><legend>A7 envelopes</legend>
+    <fieldset><legend>Envelopes</legend>
       <div class="grid-2">${off('envelopeOffsetX', 'Across', pr.envelopeOffsetX)}${off('envelopeOffsetY', 'Down', pr.envelopeOffsetY)}</div>
-      <div><button type="button" class="btn sm" data-action="align-test" data-what="envelopes">Envelope alignment page</button></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select name="alignEnvelope" aria-label="Envelope for the alignment page" title="Envelope for the alignment page" style="width:auto">${used.map((k) => `<option value="${k}">${esc(ENVELOPES[k].name)}</option>`).join('')}</select>
+        <button type="button" class="btn sm" data-action="align-test" data-what="envelopes">Envelope alignment page</button></div>
     </fieldset>
     <p class="hint">Always print at <b>Actual size / 100%</b>, not "Fit to page".</p>`, { form: 'settings-printer', foot: saveFoot('Save printer settings') });
 }
@@ -3631,7 +3639,8 @@ function readSettings(form, tab) {
   if (tab === 'profile') return { firstName: f.firstName.value.trim(), lastName: f.lastName.value.trim(), emailFromName: f.emailFromName.value.trim() };
   if (tab === 'return') return { returnName: f.returnName.value.trim(), returnAddress: readAddress(form, 'r_') };
   const n = (k) => Number(f[k].value || 0);
-  return { print: { labelOffsetX: n('labelOffsetX'), labelOffsetY: n('labelOffsetY'), envelopeOffsetX: n('envelopeOffsetX'), envelopeOffsetY: n('envelopeOffsetY') } };
+  const envelopes = [...form.querySelectorAll('[name=useEnvelope]:checked')].map((el) => el.value);
+  return { print: { labelOffsetX: n('labelOffsetX'), labelOffsetY: n('labelOffsetY'), envelopeOffsetX: n('envelopeOffsetX'), envelopeOffsetY: n('envelopeOffsetY'), envelopes } };
 }
 
 async function changePassword(form) {
@@ -3771,7 +3780,7 @@ async function alignTest(what) {
   const pages = what === 'labels'
     ? labelSheetsHtml(Array(30).fill(renderReturnLabel('plain', sample)), { offsetX: s.print.labelOffsetX ?? 0, offsetY: s.print.labelOffsetY ?? 0, outline: true })
     : envelopesHtml([{ to: sample, ret: ret.length ? ret : ['Your Name', '1 Return Street', 'Evergreen Falls, MI  49001'] }], {
-      envelope: 'a7', offsetX: s.print.envelopeOffsetX ?? 0, offsetY: s.print.envelopeOffsetY ?? 0, outline: true,
+      envelope: modal.querySelector('[name=alignEnvelope]')?.value || 'a7', offsetX: s.print.envelopeOffsetX ?? 0, offsetY: s.print.envelopeOffsetY ?? 0, outline: true,
     });
   await printPages(win, { title: 'Alignment test', css: pages.css, body: pages.body });
 }

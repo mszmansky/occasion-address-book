@@ -192,7 +192,7 @@ After **30 minutes without activity** (admins can change this under **Admin › 
 - **Profile:** a profile photo (cropped to a square, shown in a circle here and beside your name at the top), your name, the name invitations come from, and your sign-in email (changing it emails a 6-digit code to the new address).
 - **Return address:** printed on envelopes and return-address labels.
 - **Security:** change password, and two-step verification with an authenticator app.
-- **Printer:** label and envelope alignment offsets, with alignment test pages.
+- **Printer:** the envelope sizes offered when printing (`ENVELOPES` in `print-core.js`: A1–A10, square, #6¾–#14, 6 × 9, 9 × 12; A2 and A7 by default; saved as `print.envelopes`), and label and envelope alignment offsets, with alignment test pages.
 - **Sharing:** share your address book and occasions with other people (see below).
 
 ### Admins
