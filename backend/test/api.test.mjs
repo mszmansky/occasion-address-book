@@ -779,14 +779,16 @@ test('duplicate an occasion: same settings and list, "Copy of" name, fresh maile
 const ADMIN = { claims: { 'cognito:groups': ['admin'] } };
 
 test('only admins can manage accounts, and /me says who is one', async () => {
-  const { call, directory } = await setup();
+  const { call, directory, repo } = await setup();
   directory.admins.add('user-1');
   assert.equal((await call('GET', '/me')).body.isAdmin, undefined);
   assert.equal((await call('GET', '/me', undefined, ADMIN)).body.isAdmin, true);
   const no = await call('GET', '/admin/users');
   assert.equal(no.status, 403);
+  await repo.put({ PK: 'ACCOUNT#user-kim', SK: 'LOGIN', at: '2026-10-27T14:05:00.000Z' });
   const res = await call('GET', '/admin/users', undefined, ADMIN);
   assert.equal(res.status, 200);
+  assert.deepEqual(res.body.users.map((u) => u.lastLoginAt), ['2026-10-27T14:05:00.000Z', undefined], 'blank until they sign in');
   assert.deepEqual(res.body.users.map((u) => [u.email, u.status, u.enabled, !!u.admin]), [
     ['kim@example.com', 'active', true, false],
     ['mike@example.com', 'active', true, true],
@@ -950,4 +952,10 @@ test('emails: a test email has working RSVP buttons that save nothing; no date m
   assert.equal((await call('GET', `/public/rsvp/${token}`, undefined, { token: null })).body.test, true);
   const r = await call('POST', `/public/rsvp/${token}`, { answer: 'yes', count: 2 }, { token: null });
   assert.deepEqual([r.body.saved, r.body.test], [false, true]);
+});
+
+test('the sign-in trigger never blocks a sign-in', async () => {
+  const { handler } = await import('../src/handlers/cognito-post-authentication.mjs');
+  const event = { request: { userAttributes: { sub: 'user-kim' } } };
+  assert.equal(await handler(event), event, 'without a table it does nothing and lets the sign-in through');
 });

@@ -158,6 +158,7 @@ PK = USER#<Cognito user id (sub)>
   SK = TRASH#<household|occasion>#<id>  a deleted item and its occasion-list rows, removed by TTL after 30 days
 PK = RSVP#<sha256(token)>, SK = RSVP     one household's RSVP link for an emailed invitation (answer kept on its TAG row as rsvp), removed by TTL after 400 days
 PK = APP#SETTINGS, SK = SETTINGS        app-wide settings from Admin › Settings (idleMinutes)
+PK = ACCOUNT#<sub>, SK = LOGIN          when the account last signed in (Cognito post-authentication trigger), for the Admin screen
 PK = ACCOUNT#<sub>, SK = OFF            account disabled or deleted by an admin (checked on every request)
 PK = TOKEN#<sha256(token)>, SK = TOKEN    address-check link, removed by TTL after 30 days
 PK = ADDRCHECK#QUOTA, SK = MONTH#<yyyy-mm>  address checks this month (Pacific time), removed by TTL

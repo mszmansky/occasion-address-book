@@ -3388,6 +3388,7 @@ function renderAdmin() {
       <td><div class="iname">${who}${u.admin ? ' <span class="pill unknown admin-pill">Admin</span>' : ''}</div>${u.name ? `<div class="small muted">${esc(u.email)}</div>` : ''}</td>
       <td>${accountStatus(u)}</td>
       <td class="small">${u.createdAt ? fmtDate(u.createdAt) : ''}</td>
+      <td class="small">${u.lastLoginAt ? esc(new Date(u.lastLoginAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })) : ''}</td>
       <td class="row-actions"><div class="admin-actions">${self ? '' : `
         ${u.status === 'invited' && u.enabled ? `<button type="button" class="btn sm" data-action="admin-resend" data-id="${esc(u.id)}" data-email="${esc(u.email)}" title="Email ${esc(u.email)} a new invitation">Resend invite</button>` : ''}
         <button type="button" class="btn sm" data-action="admin-onoff" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-on="${u.enabled ? '0' : '1'}" title="${u.enabled ? `Sign ${esc(u.email)} out and block sign-in` : `Let ${esc(u.email)} sign in again`}">${u.enabled ? 'Disable' : 'Enable'}</button>
@@ -3408,7 +3409,7 @@ function renderAdmin() {
   </div>
   <div class="panel tight admin-panel">${adminUsers === null ? '<p class="muted" style="margin:12px">Loading…</p>' : `
     <table class="items admin-table">
-      <thead><tr><th>Name</th><th>Status</th><th>Joined</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Status</th><th>Joined</th><th>Last sign-in</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`}</div>`;
 }

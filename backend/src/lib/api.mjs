@@ -1145,7 +1145,8 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     const out = [];
     for (const a of accounts) {
       const p = (await repo.get(userPk(a.sub), 'PROFILE')) ?? {};
-      out.push({ id: a.sub, email: a.email, name: fullName(p), status: a.status, enabled: a.enabled, createdAt: a.createdAt, admin: adminSet.has(a.sub) || undefined });
+      const login = await repo.get(accountPk(a.sub), 'LOGIN'); // noted at each sign-in (Cognito trigger)
+      out.push({ id: a.sub, email: a.email, name: fullName(p), status: a.status, enabled: a.enabled, createdAt: a.createdAt, lastLoginAt: login?.at, admin: adminSet.has(a.sub) || undefined });
     }
     return out.sort((x, y) => x.email.localeCompare(y.email));
   };
@@ -1197,6 +1198,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     const own = await repo.query(userPk(sub));
     const memberOf = await repo.query(memberPk(sub));
     const keys = [...own, ...memberOf].map(({ PK, SK }) => ({ PK, SK }));
+    keys.push({ PK: accountPk(sub), SK: 'LOGIN' });
     for (const sh of own.filter((r) => r.SK.startsWith('SHARE#') && r.memberSub)) {
       keys.push({ PK: memberPk(sh.memberSub), SK: `BOOK#${sub}` }); // the people it shared with lose the book
     }

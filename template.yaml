@@ -235,6 +235,7 @@ Resources:
       LambdaConfig:
         CustomMessage: !GetAtt CognitoMessageFunction.Arn
         PostConfirmation: !GetAtt CognitoPostConfirmationFunction.Arn
+        PostAuthentication: !GetAtt CognitoPostAuthenticationFunction.Arn
 
   # People in this group manage accounts on the app's Admin screen (scripts/make-admin.sh adds someone).
   AdminGroup:
@@ -296,6 +297,32 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /aws/lambda/${CognitoPostConfirmationFunction}
+      RetentionInDays: 30
+
+  # Notes each sign-in for the Admin screen's Last sign-in column.
+  CognitoPostAuthenticationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/cognito-post-authentication.handler
+      Timeout: 5
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt Table.Arn
+
+  CognitoPostAuthenticationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt CognitoPostAuthenticationFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
+
+  CognitoPostAuthenticationLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CognitoPostAuthenticationFunction}
       RetentionInDays: 30
 
   CognitoMessagePermission:

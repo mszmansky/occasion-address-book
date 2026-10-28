@@ -1231,6 +1231,7 @@ fieldset[hidden] { display: none; }
   .admin-table tr:last-child { border-bottom: 0; }
   .admin-table td { padding: 0; border: 0; }
   .admin-table td:nth-child(3) { display: none; }
+  .admin-table td:nth-child(4):not(:empty)::before { content: 'Last sign-in '; color: var(--ink-3); }
   .admin-table td.row-actions { grid-column: 1 / -1; }
   .admin-actions { justify-content: flex-start; }
 }
