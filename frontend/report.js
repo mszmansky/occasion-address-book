@@ -107,6 +107,7 @@ export function paginateReport(doc) {
     const body = doc.createElement('div');
     if (!pages.length) body.append(header);
     const t = doc.createElement('table');
+    t.className = table.className;
     t.innerHTML = `${table.querySelector('colgroup').outerHTML}${table.tHead.outerHTML}<tbody></tbody>`;
     body.append(t);
     sheet.append(body);
@@ -134,4 +135,39 @@ export function paginateReport(doc) {
     foot.children[2].textContent = `Page ${i + 1} of ${pages.length}`;
     sheet.append(foot);
   });
+}
+
+/**
+ * A checklist for addressing envelopes by hand: one numbered row per household with a box to tick,
+ * the name and address as they go on the envelope, and the people in the household. items: in order,
+ * { name, address, members, mailedAt }. Same pages, header and footer as the Address book report.
+ */
+export function addressChecklist(items, { title = 'Addresses', subtitle = [], printed = new Date(), logo = '', site = '' } = {}) {
+  const rows = items.map((it, i) => {
+    const addr = addressLines('', it.address ?? {}).map(esc);
+    const people = (it.members ?? []).map((m) => esc([m.firstName, m.lastName].filter(Boolean).join(' '))).filter(Boolean);
+    return `<tr${i % 2 ? ' class="alt"' : ''}>
+      <td class="x"><span class="box"></span></td>
+      <td class="n">${i + 1}</td>
+      <td class="env"><div class="name">${esc(it.name)}</div>${lines(addr) || '<span class="muted">No address</span>'}</td>
+      <td>${people.length ? people.join('<br>') : '<span class="muted">—</span>'}</td>
+      <td class="m">${it.mailedAt ? `Mailed ${esc(day(it.mailedAt))}` : ''}</td>
+    </tr>`;
+  }).join('');
+  const sub = [`${items.length} ${items.length === 1 ? 'household' : 'households'}`, ...subtitle.map(esc), `Printed ${esc(day(printed.toISOString()))}`].join(' · ');
+  const body = `<div id="report-src" data-title="${esc(title)}" data-year="${printed.getFullYear()}" data-site="${esc(site)}"><header>${logo ? `<img class="logo" src="${esc(logo)}" alt="">` : ''}<div><div class="app">Occasions Address Book</div><h1>${esc(title)}</h1><p>${sub}</p></div></header>
+    <table class="checklist">
+      <colgroup><col class="c-x"><col class="c-n"><col class="c-e"><col class="c-pp"><col class="c-m"></colgroup>
+      <thead><tr><th>Done</th><th>#</th><th>Name and address (as on the envelope)</th><th>People</th><th>Mailed</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5" class="muted">Nobody to list.</td></tr>'}</tbody>
+    </table></div>`;
+  const css = `${addressBookReport([]).css}
+.c-x { width: 0.5in; } .c-n { width: 0.35in; } .c-e { width: 4.4in; } .c-pp { width: auto; } .c-m { width: 1.2in; }
+.checklist td { padding-top: 7pt; padding-bottom: 7pt; }
+.checklist .env { font-size: 10.5pt; line-height: 1.4; }
+.checklist .env .name { font-size: 10.5pt; }
+.checklist .x { text-align: center; }
+.checklist .box { display: inline-block; width: 13pt; height: 13pt; border: 1.3pt solid #57606a; border-radius: 2pt; background: #fff; }
+.checklist .m { color: #57606a; }`;
+  return { css, body };
 }

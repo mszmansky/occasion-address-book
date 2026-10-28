@@ -9,7 +9,7 @@ import {
 } from './csv-core.js';
 import { LABEL_CSS, LABEL_FONT_LINK, LABEL_STYLES, LABEL_THEMES, fitLabel, labelStyle, loadLabelFonts, renderReturnLabel } from './label-styles.js';
 import { envelopesHtml, labelSheetsHtml } from './print-sheets.js';
-import { addressBookReport, paginateReport } from './report.js';
+import { addressBookReport, addressChecklist, paginateReport } from './report.js';
 import { householdToVcard, fileBaseName, parseVcards, contactsToHouseholds } from './vcard-core.js';
 import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
 import {
@@ -1858,7 +1858,7 @@ let lastPrinted = [];
 // print dialog. Tips live on the help page.
 const PRINT_MEDIA = {
   invitations: Object.entries(INVITE_MEDIA).map(([k, m]) => [k, m.name]),
-  addresses: [['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name]],
+  addresses: [['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name], ['checklist', 'Checklist to address by hand (report)']],
   return: [['avery5195', LABEL_SHEETS.avery5195.name], ['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name]],
 };
 // On envelopes, Addresses and Return addresses are the same print: each envelope gets the recipient
@@ -2195,6 +2195,25 @@ async function runPrint(form) {
     const label = renderReturnLabel(retStyle, lines, { last: returnLastName() });
     pages = labelSheetsHtml(Array(per - start + 1).fill(label), { ...labelOpts, sheet: LABEL_SHEETS[media] ? media : 'avery5195', start });
     if (retStyle !== 'plain') fontHref = LABEL_FONT_LINK;
+  } else if (media === 'checklist') {
+    // A numbered list with boxes to tick, for addressing envelopes by hand (everyone chosen, with an
+    // address or not).
+    const { households: chosen } = chosenHouseholds(f, { needAddress: false });
+    if (!chosen.length) { win.close(); return modalError('Nobody to print for.'); }
+    households = chosen;
+    const o = state.occ.occasion;
+    const tags = tagMap();
+    const items = chosen.map((h) => ({ name: addressName(h, o), address: h.address, members: h.members, mailedAt: tags.get(h.id)?.mailedAt }));
+    title = `${o.name} - addresses`;
+    pages = addressChecklist(items, {
+      title: o.name,
+      subtitle: [f.who.selectedOptions[0]?.textContent.replace(/\s*\(\d+\)$/, '') ?? '', f.order.value === 'zip' ? 'By ZIP code' : 'By last name'].filter(Boolean),
+      logo: new URL('icon-192.png', window.location.href).href, site: window.location.host,
+    });
+    lastPrinted = households.map((h) => h.id);
+    showAfterPrint('Opened in a new tab with the print window.');
+    await printPages(win, { title, css: pages.css, body: pages.body, prepare: paginateReport });
+    return undefined;
   } else {
     // Addresses, on labels or envelopes; on envelopes from either button, with the return address.
     const chosen = chosenHouseholds(f, { needAddress: true });

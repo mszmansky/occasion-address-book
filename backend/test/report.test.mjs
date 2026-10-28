@@ -27,3 +27,15 @@ test('the report carries the year for its © footer (pages are laid out in the b
   const { body } = addressBookReport([{ labelName: 'A' }], { printed: new Date('2026-10-28T14:00:00Z'), site: 'occasions-address-book.com' });
   assert.match(body, /data-year="2026" data-site="occasions-address-book\.com"/);
 });
+
+test('the hand-addressing checklist numbers each household with a box to tick', async () => {
+  const { addressChecklist } = await import('../../frontend/report.js');
+  const { body } = addressChecklist([
+    { name: 'Mr. and Mrs. John Smith', address: { line1: '123 Maple St', city: 'Troy', state: 'MI', zip: '48083' }, members: [{ firstName: 'John', lastName: 'Smith' }, { firstName: 'Mary', lastName: 'Smith' }], mailedAt: '2026-12-01T12:00:00Z' },
+    { name: 'Kim Lee', address: {} },
+  ], { title: 'Christmas cards 2026', subtitle: ['Everyone on the list', 'By last name'], printed: new Date('2026-10-28T14:00:00Z') });
+  assert.equal((body.match(/<span class="box"><\/span>/g) ?? []).length, 2);
+  assert.deepEqual([...body.matchAll(/<td class="n">(\d+)<\/td>/g)].map((m) => m[1]), ['1', '2']);
+  for (const s of ['Christmas cards 2026', 'Mr. and Mrs. John Smith', '123 Maple St', 'Troy, MI  48083', 'John Smith<br>Mary Smith', 'Mailed Dec 1, 2026', 'No address',
+    '2 households · Everyone on the list · By last name · Printed Oct 28, 2026']) assert.ok(body.includes(s), s);
+});
