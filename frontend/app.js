@@ -2262,7 +2262,8 @@ function designModal(start = null, { fromEdit = false } = {}) {
       ${[['left', 'Left, text beside'], ['center', 'Centered'], ['right', 'Right, text beside'], ['inline', 'In the line']].map(([k, l]) => `<button type="button" class="btn sm" data-img-place="${k}" aria-pressed="false">${l}</button>`).join('')}
       <span class="imgbar-sep"></span>
       <span class="small muted">Size</span>
-      ${[['25%', 'Small'], ['50%', 'Medium'], ['75%', 'Large'], ['100%', 'Full width']].map(([w, l]) => `<button type="button" class="btn sm" data-img-width="${w}">${l}</button>`).join('')}
+      ${[['25%', 'Small'], ['50%', 'Medium'], ['75%', 'Large'], ['100%', 'Full width']].map(([w, l]) => `<button type="button" class="btn sm" data-img-width="${w}" aria-pressed="false" title="${l}: ${w} of the width">${l}</button>`).join('')}
+      <span class="small muted img-size" data-img-size title="The picture's width, as a share of the design's width"></span>
       <span class="imgbar-sep"></span>
       <span class="imgbar-group"><span class="small muted">Border</span>
       <select data-img-border aria-label="Picture border"><option value="none">None</option>${LINE_STYLES.map(([k, l]) => `<option value="${k}">${esc(k === 'rounded' ? 'Rounded corners' : l)}</option>`).join('')}</select>
@@ -2460,12 +2461,58 @@ function wireDesign(editor) {
   }
   imgBorderSel.addEventListener('change', () => { if (picked) setImgBorder(picked, imgBorderSel.value, imgBorderColor.value); });
 
+  // The picture's width as a share of the design's width ("36%"), shown beside the size buttons; the
+  // matching button, if any, is pressed. Drag the picture's handles for any size in between.
+  const imgRoom = () => { const cs = getComputedStyle(editor); return editor.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); };
+  const imgWidthOf = (img) => (/%$/.test(img.style.width) ? `${Math.round(parseFloat(img.style.width))}%` : `${Math.round((img.getBoundingClientRect().width / imgRoom()) * 100)}%`);
+  function showSize(img) {
+    const w = imgWidthOf(img);
+    imgbar.querySelectorAll('[data-img-width]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.imgWidth === w)));
+    imgbar.querySelector('[data-img-size]').textContent = w;
+  }
+  const imgHandles = Object.assign(document.createElement('div'), { className: 'box-handles img-handles', hidden: true });
+  imgHandles.innerHTML = ['w', 'e', 'sw', 'se'].map((h) => `<span class="bh bh-${h}" data-h="${h}" title="Drag to resize"></span>`).join('');
+  canvas.append(imgHandles);
+  function positionImgHandles() {
+    if (!picked || !editor.contains(picked) || canvas.hidden || !canvas.offsetParent) { imgHandles.hidden = true; return; }
+    const c = canvas.getBoundingClientRect();
+    const r = picked.getBoundingClientRect();
+    Object.assign(imgHandles.style, { left: `${r.left - c.left}px`, top: `${r.top - c.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    imgHandles.hidden = false;
+  }
+  let imgDrag = null;
+  imgHandles.addEventListener('pointerdown', (e) => {
+    const h = e.target.dataset.h;
+    if (!h || !picked) return;
+    e.preventDefault();
+    e.target.setPointerCapture(e.pointerId);
+    imgDrag = { h, rect: picked.getBoundingClientRect(), centered: placeOf(picked) === 'center', room: imgRoom() };
+  });
+  imgHandles.addEventListener('pointermove', (e) => {
+    if (!imgDrag || !picked) return;
+    const { h, rect, centered, room } = imgDrag;
+    const w = centered ? 2 * Math.abs(e.clientX - (rect.left + rect.width / 2)) : h.includes('e') ? e.clientX - rect.left : rect.right - e.clientX;
+    picked.style.width = `${Math.max(5, Math.min(100, Math.round((w / room) * 100)))}%`;
+    picked.style.maxWidth = '100%'; picked.style.height = 'auto';
+    picked.removeAttribute('width'); picked.removeAttribute('height');
+    showSize(picked);
+    positionImgHandles();
+  });
+  const endImgDrag = () => { if (imgDrag) { imgDrag = null; record(); positionImgHandles(); } };
+  imgHandles.addEventListener('pointerup', endImgDrag);
+  imgHandles.addEventListener('pointercancel', endImgDrag);
+  editor.addEventListener('input', positionImgHandles);
+  modal.querySelector('.modal-body').addEventListener('scroll', positionImgHandles, { passive: true });
+  window.addEventListener('resize', positionImgHandles);
+  modal.addEventListener('close', () => window.removeEventListener('resize', positionImgHandles), { once: true });
+
   const pick = (img) => {
     editor.querySelectorAll('img.selected').forEach((i) => i.classList.remove('selected'));
     picked = img;
     img?.classList.add('selected');
     imgbar.hidden = !img;
-    if (img) { showImgBorder(img); showPlace(img); }
+    if (img) { showImgBorder(img); showPlace(img); showSize(img); }
+    requestAnimationFrame(positionImgHandles); // after the picture bar shows and moves the design down
   };
   editor.addEventListener('click', (e) => {
     const line = e.target.closest('hr, img');
@@ -2906,11 +2953,12 @@ function wireDesign(editor) {
   imgbar.addEventListener('click', (e) => {
     if (!picked) return;
     const w = e.target.closest('[data-img-width]')?.dataset.imgWidth;
-    if (w) { picked.style.width = w; picked.style.maxWidth = '100%'; picked.style.height = 'auto'; }
+    if (w) { picked.style.width = w; picked.style.maxWidth = '100%'; picked.style.height = 'auto'; picked.removeAttribute('width'); picked.removeAttribute('height'); showSize(picked); }
     const where = e.target.closest('[data-img-place]')?.dataset.imgPlace;
     if (where) { place(picked, where); showPlace(picked); }
     if (e.target.closest('[data-img-remove]')) { picked.remove(); pick(null); }
     record();
+    requestAnimationFrame(positionImgHandles);
   });
 
   // HTML view: edit or paste HTML; switching back shows it (cleaned) in the editor.

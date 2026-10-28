@@ -1255,3 +1255,4 @@ fieldset[hidden] { display: none; }
 .bh-s { left: calc(50% - 6px); bottom: -9px; cursor: ns-resize; }
 .bh-sw { left: -9px; bottom: -9px; cursor: nesw-resize; }
 .bh-se { right: -9px; bottom: -9px; cursor: nwse-resize; }
+.design-imgbar .img-size { min-width: 34px; font-variant-numeric: tabular-nums; }
