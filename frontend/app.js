@@ -1101,8 +1101,16 @@ function shareMenu() {
   </div>`;
 }
 
+// The Designer, opened from Edit occasion, goes back there when it's closed without saving.
+function backToOccasion() {
+  if (modal.querySelector('form')?.dataset.back !== 'occasion' || !state.occ?.occasion) return false;
+  occasionModal(state.occ.occasion);
+  return true;
+}
+
 // Escape closes an open share menu before it closes the dialog.
 modal.addEventListener('cancel', (e) => {
+  if (backToOccasion()) { e.preventDefault(); return; }
   const menu = modal.querySelector('#share-menu-list');
   if (menu && !menu.hidden) { e.preventDefault(); setShareMenu(false); modal.querySelector('[data-action=toggle-share-menu]')?.focus(); }
 });
@@ -1748,10 +1756,10 @@ async function designFromTemplate(id) {
 }
 
 async function openDesigner(templateId) {
-  if (!templateId) return designModal();
+  if (!templateId) return designModal(null, { fromEdit: true });
   toast('Setting up the template…');
   try {
-    return designModal(await designFromTemplate(templateId));
+    return designModal(await designFromTemplate(templateId), { fromEdit: true });
   } catch (e) {
     return toast(e.message, true);
   }
@@ -2183,7 +2191,8 @@ function loadAllFonts() {
 }
 
 // start: a design to begin from instead of the saved one (a template); nothing changes until Save.
-function designModal(start = null) {
+// fromEdit: opened from the Edit occasion screen, so Cancel (or ✕, or Esc) goes back to it.
+function designModal(start = null, { fromEdit = false } = {}) {
   const o = state.occ.occasion;
   const d = { ...DESIGN_DEFAULTS, ...(start ?? o.design ?? {}) };
   const html = start?.html ?? o.design?.html ?? starterHtml(o.invite?.message);
@@ -2261,6 +2270,7 @@ function designModal(start = null) {
     form: 'design', wide: 'xl', base: o.design?.updatedAt ?? '',
     foot: `<div class="left-actions"><button type="button" class="btn btn-preview" data-design-preview aria-pressed="false" title="See it filled in for each household">${EYE_ICON} Preview</button></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Save design</button></div>`,
   });
+  if (fromEdit) modal.querySelector('form').dataset.back = 'occasion';
   try { document.execCommand('styleWithCSS', false, true); } catch { /* older browsers */ }
   const editor = modal.querySelector('[data-design-edit]');
   editor.focus();
@@ -3508,7 +3518,10 @@ document.addEventListener('click', async (e) => {
     case 'toggle-book-menu': setBookMenu(document.getElementById('book-menu-list').hidden); break;
     case 'switch-book': await switchBook(el.dataset.id); break;
     case 'signout': await auth.signOut(); break;
-    case 'close': closeModal(); break;
+    case 'close':
+      if (backToOccasion()) break;
+      closeModal();
+      break;
     case 'view':
       state.view = el.dataset.view;
       state.occasionId = null; state.occ = null;
