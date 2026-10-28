@@ -1256,5 +1256,9 @@ fieldset[hidden] { display: none; }
 .bh-sw { left: -9px; bottom: -9px; cursor: nesw-resize; }
 .bh-se { right: -9px; bottom: -9px; cursor: nwse-resize; }
 .design-imgbar .img-size { min-width: 34px; font-variant-numeric: tabular-nums; }
-.env-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; margin-top: 4px; }
-.env-grid .check { font-size: 14px; }
+/* Settings > Printer: the sizes to offer when printing, in a short scrolling list. */
+.size-list { max-height: 170px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 12px 8px; background: var(--surface); margin-top: -6px; }
+.size-group-name { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 2px; }
+.size-list .check { display: flex; font-size: 14px; padding: 2px 0; }
+.align-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.align-row select { width: auto; max-width: 100%; }

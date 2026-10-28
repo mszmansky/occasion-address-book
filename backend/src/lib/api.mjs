@@ -195,9 +195,10 @@ export const PROFILE_DEFAULTS = {
   print: { labelOffsetX: 0, labelOffsetY: 0, envelopeOffsetX: 0, envelopeOffsetY: 0 },
 };
 
-function parseEnvelopes(v) {
-  if (!Array.isArray(v) || v.length > 40 || !v.every((k) => typeof k === 'string' && /^[a-z0-9]{1,12}$/.test(k))) throw new HttpError(400, 'Envelope sizes are invalid');
-  if (!v.length) throw new HttpError(400, 'Choose at least one envelope size');
+// The label sheets or envelope sizes someone uses (keys of LABEL_SHEETS / ENVELOPES in the app).
+function parseSizes(v, what) {
+  if (!Array.isArray(v) || v.length > 40 || !v.every((k) => typeof k === 'string' && /^[a-z0-9]{1,12}$/.test(k))) throw new HttpError(400, `${what} are invalid`);
+  if (!v.length) throw new HttpError(400, `Choose at least one of the ${what.toLowerCase()}`);
   return [...new Set(v)];
 }
 
@@ -217,7 +218,8 @@ function parseProfile(b, current) {
       envelopeOffsetX: off(p.envelopeOffsetX, 'Envelope offset (across)', cp.envelopeOffsetX),
       envelopeOffsetY: off(p.envelopeOffsetY, 'Envelope offset (down)', cp.envelopeOffsetY),
       // The envelope sizes offered when printing (keys of ENVELOPES in the app's print-core).
-      envelopes: p.envelopes === undefined ? cp.envelopes : parseEnvelopes(p.envelopes),
+      envelopes: p.envelopes === undefined ? cp.envelopes : parseSizes(p.envelopes, 'Envelope sizes'),
+      labels: p.labels === undefined ? cp.labels : parseSizes(p.labels, 'Label sizes'),
     },
   };
 }

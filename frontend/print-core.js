@@ -1,28 +1,33 @@
 // Label and envelope layout. Pure functions over a jsPDF instance, so they run in the browser
 // and in Node tests alike. All measurements are in inches.
 
+// Label sheets (Letter). Each person picks the ones they use (Settings > Printer); 5160 and 5195 to
+// start. Avery's numbers for the same layout are listed together (laser and inkjet versions).
+const avery = (name, group, cols, rows, width, height, left, top, pitchX, pitchY, extra = {}) => ({
+  name, group, page: [8.5, 11], cols, rows, width, height,
+  left, top,          // page margin to the first label
+  pitchX, pitchY,     // distance from one label's corner to the next
+  padX: 0.12, padY: 0.08, maxPt: 11, minPt: 6.5, // printable inset inside each label; text sizes
+  ...extra,
+});
+export const LABEL_GROUPS = ['Address labels', 'Return address labels'];
 export const LABEL_SHEETS = {
-  avery5160: {
-    name: 'Avery 5160 / 8160 address labels (30 per sheet)',
-    page: [8.5, 11],
-    cols: 3, rows: 10,
-    width: 2.625, height: 1,
-    left: 0.1875, top: 0.5,      // page margin to the first label
-    pitchX: 2.75, pitchY: 1,     // distance from one label's corner to the next
-    padX: 0.12, padY: 0.08,      // printable inset inside each label
-    maxPt: 11, minPt: 6.5,
-  },
+  avery5160: avery('Avery 5160 / 8160 address labels (1 × 2⅝ in, 30 per sheet)', 'Address labels', 3, 10, 2.625, 1, 0.1875, 0.5, 2.75, 1),
+  avery5161: avery('Avery 5161 / 8161 address labels (1 × 4 in, 20 per sheet)', 'Address labels', 2, 10, 4, 1, 0.15625, 0.5, 4.1875, 1),
+  avery5162: avery('Avery 5162 / 8162 address labels (1⅓ × 4 in, 14 per sheet)', 'Address labels', 2, 7, 4, 4 / 3, 0.15625, 0.8333, 4.1875, 4 / 3),
+  avery5163: avery('Avery 5163 / 8163 shipping labels (2 × 4 in, 10 per sheet)', 'Address labels', 2, 5, 4, 2, 0.15625, 0.5, 4.1875, 2),
+  avery5164: avery('Avery 5164 / 8164 shipping labels (3⅓ × 4 in, 6 per sheet)', 'Address labels', 2, 3, 4, 10 / 3, 0.15625, 0.5, 4.1875, 10 / 3),
   // Return address labels; 5195, 8195 and 18294 (and others) share this template.
-  avery5195: {
-    name: 'Avery 5195 / 8195 / 18294 return address labels (60 per sheet)',
-    page: [8.5, 11],
-    cols: 4, rows: 15,
-    width: 1.75, height: 2 / 3,
-    left: 0.28, top: 0.5,
-    pitchX: 2.0625, pitchY: 2 / 3,
-    padX: 0.08, padY: 0.05,
-    maxPt: 8.5, minPt: 5.5, wrapPt: 6.5, // small labels: shrink further before wrapping
-  },
+  avery5195: avery('Avery 5195 / 8195 / 18294 return address labels (⅔ × 1¾ in, 60 per sheet)', 'Return address labels', 4, 15, 1.75, 2 / 3, 0.28, 0.5, 2.0625, 2 / 3,
+    { padX: 0.08, padY: 0.05, maxPt: 8.5, minPt: 5.5, wrapPt: 6.5 }), // small labels: shrink further before wrapping
+  avery5167: avery('Avery 5167 / 8167 return address labels (½ × 1¾ in, 80 per sheet)', 'Return address labels', 4, 20, 1.75, 0.5, 0.28, 0.5, 2.0625, 0.5,
+    { padX: 0.06, padY: 0.03, maxPt: 7, minPt: 5, wrapPt: 5.5 }),
+};
+export const DEFAULT_LABELS = ['avery5160', 'avery5195'];
+/** The label sheets someone uses, in the order above (their choice, else 5160 and 5195). */
+export const usedLabels = (keys) => {
+  const set = new Set(Array.isArray(keys) && keys.length ? keys : DEFAULT_LABELS);
+  return Object.keys(LABEL_SHEETS).filter((k) => set.has(k));
 };
 
 // Envelope sizes. Each person picks the ones they use (Settings > Printer); A2 and A7 to start.

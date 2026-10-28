@@ -14,7 +14,7 @@ test('labels fill the sheet from the starting label, onto more sheets as needed'
   assert.equal(s.length, 30); // empty slots aren't drawn without outlines
   assert.deepEqual([s[0][1], s[0][2]], ['0.1875', '1.5']); // label 4 = row 2, column 1
   assert.match(css, /@page \{ size: 8.5in 11in; margin: 0; \}/);
-  assert.match(css, /\.slot \{ position: absolute; width: 2.625in; height: 1in; font-size: 1in; \}/);
+  assert.match(css, /\.slot \{ position: absolute; width: 2.625in; height: 1in; font-size: 1in; display: flex/);
 });
 
 test('return labels: Avery 5195 geometry, printer offsets, outlines on every label', () => {
@@ -62,4 +62,16 @@ test('every envelope size lays out inside its page, the recipient clear of the r
   }
   assert.deepEqual(usedEnvelopes(), ['a2', 'a7']);
   assert.deepEqual(usedEnvelopes(['n10', 'a2', 'nope']), ['a2', 'n10']);
+});
+
+test('every label sheet fits on Letter paper, and big labels cap the text size', async () => {
+  const { LABEL_SHEETS, usedLabels } = await import('../../frontend/print-core.js');
+  for (const [k, s] of Object.entries(LABEL_SHEETS)) {
+    assert.ok(s.left + (s.cols - 1) * s.pitchX + s.width <= 8.5 + 0.001, `${k} fits across`);
+    assert.ok(s.top + (s.rows - 1) * s.pitchY + s.height <= 11 + 0.001, `${k} fits down`);
+    assert.equal(pages(labelSheetsHtml(Array(s.cols * s.rows).fill('<div class="rl">x</div>'), { sheet: k }).body), 1, k);
+  }
+  assert.match(labelSheetsHtml(['<div class="rl">x</div>'], { sheet: 'avery5163' }).css, /height: 2in; font-size: 1.25in/);
+  assert.deepEqual(usedLabels(), ['avery5160', 'avery5195']);
+  assert.deepEqual(usedLabels(['avery5167', 'avery5161', 'x']), ['avery5161', 'avery5167']);
 });

@@ -892,6 +892,8 @@ test('printer settings keep the envelope sizes someone uses', async () => {
   const res = await call('PUT', '/me', { print: { envelopes: ['a2', 'n10', 'n10'] } });
   assert.deepEqual(res.body.profile.print.envelopes, ['a2', 'n10']);
   assert.equal((await call('PUT', '/me', { print: { labelOffsetX: 0.1 } })).body.profile.print.envelopes.length, 2, 'kept when not sent');
-  assert.match((await call('PUT', '/me', { print: { envelopes: [] } })).body.error, /at least one/);
+  assert.match((await call('PUT', '/me', { print: { envelopes: [] } })).body.error, /at least one of the envelope sizes/);
+  assert.deepEqual((await call('PUT', '/me', { print: { labels: ['avery5163'] } })).body.profile.print.labels, ['avery5163']);
+  assert.match((await call('PUT', '/me', { print: { labels: [] } })).body.error, /at least one of the label sizes/);
   assert.equal((await call('PUT', '/me', { print: { envelopes: ['<b>'] } })).status, 400);
 });

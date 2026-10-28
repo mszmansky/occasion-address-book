@@ -42,7 +42,10 @@ export function labelSheetsHtml(items, { sheet = 'avery5160', start = 1, offsetX
   const css = `${BASE_CSS}${LABEL_CSS}
 @page { size: ${s.page[0]}in ${s.page[1]}in; margin: 0; }
 .page { width: ${s.page[0]}in; height: ${s.page[1]}in; }
-.slot { position: absolute; width: ${r(s.width)}in; height: ${r(s.height)}in; font-size: ${r(s.height)}in; }
+/* A design is 2.625 × 1 em: it takes the label's width and as much height as suits it (up to 1¼ in, so
+   big shipping labels don't get giant text), centered down the label. */
+.slot { position: absolute; width: ${r(s.width)}in; height: ${r(s.height)}in; font-size: ${r(Math.min(s.height, 1.25))}in; display: flex; align-items: center; }
+.slot > .rl { width: 100%; flex: none; }
 .slot.outlined::after { content: ''; position: absolute; inset: 0; border: .5pt dashed #9a9a9a; border-radius: .06in; pointer-events: none; }`;
   return { pageSize: s.page, css, body };
 }
