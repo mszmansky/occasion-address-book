@@ -55,6 +55,22 @@ const state = {
   occFilter: 'all', occSearch: '',
 };
 
+// Links in the account emails (the invitation with its temporary password, and "shared their address
+// book") end in #signin=<email>: the app opens straight to Sign in with that email filled in. It's in
+// the # part, which browsers never send to a server, so it stays out of logs; the link is removed
+// from the address bar right away.
+const linkEmail = (() => {
+  const m = /^#signin=(.+)$/.exec(window.location.hash);
+  if (!m) return '';
+  let email = '';
+  try { email = decodeURIComponent(m[1]).trim().toLowerCase(); } catch { /* malformed */ }
+  try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch { /* leave it */ }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return '';
+  state.authEmail = email;
+  state.showLanding = false;
+  return email;
+})();
+
 // ---------- utils ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const val = (v) => (v === undefined || v === null ? '' : esc(v));
@@ -4188,6 +4204,14 @@ auth.onChange((event, session) => {
     return renderAuth();
   }
   if (!wasSignedIn) {
+    // A sign-in link for someone else (say, a person you invited, opened on your computer): sign out
+    // so they can sign in.
+    if (event === 'INITIAL_SESSION' && linkEmail && (session.user?.email ?? '').toLowerCase() !== linkEmail) {
+      state.session = null;
+      state.authEmail = linkEmail;
+      auth.signOut();
+      return renderAuth();
+    }
     // Reopening the app after longer than the inactivity timeout: sign out instead of picking up where it left off.
     if (event === 'INITIAL_SESSION' && staleSession()) {
       state.session = null;

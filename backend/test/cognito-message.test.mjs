@@ -35,3 +35,12 @@ test('the password-changed notice', async () => {
   assert.match(m.html, /Forgot password\?/);
   assert.match(buildPasswordChanged({ email: 'a@b.c', when: new Date('2026-12-25T15:00:00Z'), timeZone: 'Not/AZone' }).text, /December 25, 2026/);
 });
+
+test('the invitation and share emails link straight to Sign in with the email filled in', async () => {
+  const { buildCognitoMessage, buildShareNotice } = await import('../src/lib/email.mjs');
+  const invite = buildCognitoMessage('CustomMessage_AdminCreateUser', { appUrl: 'https://cards.example.com/', codeParameter: '{####}', usernameParameter: '{username}' });
+  assert.match(invite.html, /href="https:\/\/cards\.example\.com\/#signin=\{username\}"/);
+  const share = buildShareNotice({ ownerName: 'Mike', ownerEmail: 'mike@example.com', role: 'edit', invited: true, appUrl: 'https://cards.example.com', to: 'kim+1@example.com' });
+  assert.match(share.html, /href="https:\/\/cards\.example\.com\/#signin=kim%2B1%40example\.com"/);
+  assert.match(share.text, /#signin=kim%2B1%40example\.com/);
+});

@@ -485,7 +485,7 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     ]);
     if (!existing) {
       try {
-        await mailer.send({ to: email, ...buildShareNotice({ ownerName, ownerEmail: user.email, role, invited, appUrl }), fromName: ownerName, replyTo: user.email });
+        await mailer.send({ to: email, ...buildShareNotice({ ownerName, ownerEmail: user.email, role, invited, appUrl, to: email }), fromName: ownerName, replyTo: user.email });
       } catch (e) {
         log.error(e); // the share works either way; they'll see the book when they sign in
       }

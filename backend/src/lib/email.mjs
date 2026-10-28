@@ -174,6 +174,9 @@ ${appUrl}`;
  * in the same style as the app's other emails. Cognito fills in the {####} code and {username} placeholders,
  * so they must appear in the message exactly as given.
  */
+// The app opens a link ending in #signin=<email> at Sign in with the email filled in.
+const signinUrl = (appUrl, email) => `${String(appUrl).replace(/\/$/, '')}/#signin=${email}`;
+
 export function buildCognitoMessage(triggerSource, { appUrl, codeParameter = '{####}', usernameParameter = '{username}' } = {}) {
   const APP = 'Occasions Address Book';
   const code = `<p style="margin:0 0 14px"><span style="display:inline-block;font:700 24px/1.2 'Courier New',Courier,monospace;letter-spacing:4px;background:#faf9f6;border:1px solid #e2dfd8;border-radius:6px;padding:10px 14px">${codeParameter}</span></p>`;
@@ -186,7 +189,7 @@ export function buildCognitoMessage(triggerSource, { appUrl, codeParameter = '{#
         + p(`Sign in with <b>${usernameParameter}</b> and this temporary password:`)
         + code
         + p("You'll choose your own password when you first sign in. The temporary password works for 30 days.")
-        + (appUrl ? button(appUrl, `Open ${APP}`) : ''),
+        + (appUrl ? button(signinUrl(appUrl, usernameParameter), `Sign in to ${APP}`) : ''),
         "If you weren't expecting this invitation, you can ignore this email.");
     case 'CustomMessage_ForgotPassword':
       return make(`Your ${APP} password reset code`, 'Reset your password',
@@ -205,7 +208,7 @@ export function buildCognitoMessage(triggerSource, { appUrl, codeParameter = '{#
 }
 
 /** Tells someone an address book was shared with them (and, if new, that an invitation email is coming). */
-export function buildShareNotice({ ownerName, ownerEmail, role, invited, appUrl }) {
+export function buildShareNotice({ ownerName, ownerEmail, role, invited, appUrl, to = '' }) {
   const APP = 'Occasions Address Book';
   const who = ownerName || ownerEmail;
   const access = role === 'edit'
@@ -219,7 +222,7 @@ export function buildShareNotice({ ownerName, ownerEmail, role, invited, appUrl 
   const html = layout({
     heading: `${who} shared their address book`,
     inner: p(`${esc(who)}${ownerName ? ` (${esc(ownerEmail)})` : ''} shared their ${APP} with you: their addresses and occasions such as holiday cards and parties.`)
-      + p(esc(access)) + p(esc(signIn)) + (appUrl ? button(appUrl, `Open ${APP}`) : ''),
+      + p(esc(access)) + p(esc(signIn)) + (appUrl ? button(to ? signinUrl(appUrl, encodeURIComponent(to)) : appUrl, `Open ${APP}`) : ''),
     footer: "If you weren't expecting this, you can ignore this email.",
   });
   const text = `${who}${ownerName ? ` (${ownerEmail})` : ''} shared their ${APP} with you: their addresses and occasions such as holiday cards and parties.
@@ -227,6 +230,6 @@ export function buildShareNotice({ ownerName, ownerEmail, role, invited, appUrl 
 ${access}
 
 ${signIn}
-${appUrl ?? ''}`;
+${appUrl ? (to ? signinUrl(appUrl, encodeURIComponent(to)) : appUrl) : ''}`;
   return { subject, html, text };
 }
