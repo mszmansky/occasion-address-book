@@ -1858,7 +1858,7 @@ let lastPrinted = [];
 // print dialog. Tips live on the help page.
 const PRINT_MEDIA = {
   invitations: Object.entries(INVITE_MEDIA).map(([k, m]) => [k, m.name]),
-  addresses: [['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name], ['checklist', 'Checklist to address by hand (report)']],
+  addresses: [['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name], ['checklist', 'Occasion Report']],
   return: [['avery5195', LABEL_SHEETS.avery5195.name], ['avery5160', LABEL_SHEETS.avery5160.name], ['a2', ENVELOPES.a2.name], ['a7', ENVELOPES.a7.name]],
 };
 // On envelopes, Addresses and Return addresses are the same print: each envelope gets the recipient
