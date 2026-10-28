@@ -2009,7 +2009,8 @@ function syncPrintForm({ whatChanged = false } = {}) {
   const sheet = LABEL_SHEETS[media];
   show('start', Boolean(sheet));
   if (sheet) f.start.max = String(sheet.cols * sheet.rows);
-  const styled = (what === 'return' && Boolean(sheet)) || (envelope && (what === 'return' || f.withReturn.checked));
+  // Styles only under Return addresses; Addresses on envelopes puts the return address in the plain style.
+  const styled = what === 'return' && (Boolean(sheet) || envelope);
   show('style', styled);
   // Hidden previews can't be measured, so they're fitted once they show.
   if (styled) requestAnimationFrame(() => form.querySelectorAll('.lbl-prev').forEach(fitLabel));
@@ -2158,11 +2159,11 @@ async function runPrint(form) {
   const f = form.elements;
   const what = f.what.value;
   const media = f.media.value;
-  const retStyle = f.retStyle?.value || 'plain';
+  const retStyle = what === 'return' ? f.retStyle?.value || 'plain' : 'plain'; // other designs: from Return addresses
   const envelope = isEnvelope(media);
   // On envelopes, the return address goes in the corner (always, from Return addresses).
   const envReturn = envelope && (what === 'return' || f.withReturn.checked);
-  savePrintPref({ [what]: media, ...(what === 'invitations' ? { orient: f.orient.value } : {}), ...((what === 'return' && LABEL_SHEETS[media]) || envReturn ? { retStyle } : {}) });
+  savePrintPref({ [what]: media, ...(what === 'invitations' ? { orient: f.orient.value } : {}), ...(what === 'return' ? { retStyle } : {}) });
   const win = openPrintTab();
   if (!win) return undefined;
   if (what === 'invitations') return printInvitations(form, win);
