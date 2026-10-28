@@ -1104,14 +1104,18 @@ async function checkAddress(btn) {
 
 // Share one household as a vCard or a CSV: the system share sheet (AirDrop, Mail, Messages…) where the
 // browser has one, plus plain downloads. What's on screen is shared, including edits not yet saved.
-// In a book someone shared with you, the only choice is copying the household into your own book:
-// sharing their addresses with anyone else is the owner's call.
+// In a book someone shared with you: copy the household into your own book, or download it (say, for
+// your contacts app); sending it on through the share sheet is left to the owner.
 function shareMenu(h) {
+  const downloads = `<button type="button" role="menuitem" data-action="hh-share" data-how="download" data-kind="vcf">vCard (.vcf)</button>
+      <button type="button" role="menuitem" data-action="hh-share" data-how="download" data-kind="csv">CSV (.csv)</button>`;
   if (!isOwner()) {
     return `<div class="share-menu">
     <button type="button" class="btn ghost sm icon-only" data-action="toggle-share-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="share-menu-list" title="Share" aria-label="Share">${SHARE_ICON}</button>
     <div class="menu" id="share-menu-list" role="menu" hidden>
       <button type="button" role="menuitem" data-action="hh-copy-mine" data-id="${esc(h.id)}" title="Add a copy of this household to your own address book">Copy to my address book</button>
+      <hr><div class="menu-label">Download</div>
+      ${downloads}
     </div>
   </div>`;
   }
