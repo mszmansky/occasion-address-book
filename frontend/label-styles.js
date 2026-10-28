@@ -496,6 +496,10 @@ const MORE_STYLES = [
   sideArt({ id: 'retro', name: 'Retro groove', group: 'Fun', art: retroArcs, under: band(0.92, '#fff7ed'), at: 'left:0;top:0;width:.92em;height:1em', vb: '0 0 92 100', tx: 1.02, font: 'pac', nc: '#c2410c', ac: '#57534e' }),
 ];
 
+// Artwork shared with the invitation templates (invite-templates.js). Each draws in a 100 × 100 box
+// unless noted; pines (90 × 100) and night are drawn for a background of their own.
+export const ART = { star, wreath, tree, mistletoe, santa, pines: () => pines, night: () => night, snowflake, balloons, cupcake, twinkle, fireworks, blossoms, sunflower, burst };
+
 // ---------- the designs ----------
 // render({ name, address: [lines], initial, last }) → the inside of one label.
 export const LABEL_STYLES = [

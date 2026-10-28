@@ -14,6 +14,7 @@ import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
 import {
   BORDERS, FONTS, FIELDS as DESIGN_FIELDS, DESIGN_DEFAULTS, borderByKey, fieldValues, fontByKey, fontLink, renderDesign, starterHtml,
 } from './design-core.js';
+import { TEMPLATES, TEMPLATE_THEMES, artSize, artSvg, templateById, templateDesign } from './invite-templates.js';
 
 const cfg = window.APP_CONFIG ?? {};
 const root = document.getElementById('root');
@@ -1670,13 +1671,6 @@ function occasionModal(o) {
       <label>Type<select name="kind" data-occ-kind>${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label>Name<input name="name" required maxlength="120" autofocus value="${val(o.name)}" placeholder="Christmas cards ${new Date().getFullYear()}"></label>
     </div>
-    <fieldset data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><legend>When and where</legend>
-      <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
-      <div class="grid-2">
-        <label>Date <span class="muted">(optional)</span><input type="date" name="date" value="${val(o.date)}"></label>
-        <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
-      </div>
-    </fieldset>
     <div class="grid-2 greet-row">
       <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Address Greeting Style<select name="nameStyle">
         ${nameStyleOptions(o.nameStyle)}</select></label>
@@ -1684,8 +1678,18 @@ function occasionModal(o) {
         ${[['informal', 'Informal Greeting'], ['formal', 'Formal Greeting'], ['household', 'Household Greeting'], ['person', "The person's first name"]]
       .map(([k, l]) => `<option value="${k}" ${k === 'person' ? `data-kinds="email" ${kind === 'email' ? '' : 'hidden disabled'}` : ''} ${(o.greetStyle ?? 'informal') === k && !(k === 'person' && kind !== 'email') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     </div>
-    <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design invitation…</button></div>
-    <div data-kinds="email" ${kind === 'email' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit">${BRUSH} Design email…</button></div>
+    <fieldset data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><legend>When and where</legend>
+      <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
+      <div class="grid-2">
+        <label>Date <span class="muted">(optional)</span><input type="date" name="date" value="${val(o.date)}"></label>
+        <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
+      </div>
+    </fieldset>
+    <fieldset class="stack" data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><legend>Design</legend>
+      ${templatePicker(o)}
+      <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit" title="Open the Designer with the current design">${BRUSH} Design invitation…</button></div>
+      <div data-kinds="email" ${kind === 'email' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit" title="Open the Designer with the current design">${BRUSH} Design email…</button></div>
+    </fieldset>
     <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email subject<input name="subject" maxlength="200" value="${val(o.invite?.subject)}" placeholder="You're invited: ${val(o.name) || 'our holiday open house'}"></label>
     <label>Notes<textarea name="notes" rows="2" maxlength="2000">${esc(o.notes ?? '')}</textarea></label>`, {
     form: isNew ? 'occasion-new' : 'occasion-edit',
@@ -1694,9 +1698,67 @@ function occasionModal(o) {
     foot: `<div class="left-actions">${isNew ? '' : '<button type="button" class="btn danger" data-action="delete-occasion">Delete</button>'}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">${isNew ? 'Create' : 'Save'}</button></div>`,
   });
+  loadAllFonts(); // the template previews use the design fonts
 }
 
-// thenDesign: the Design button on this screen saves the occasion first, then opens the design window.
+// ---------- design templates ----------
+// Picked by theme on the Edit occasion screen; a template opens in the Designer, where everything in it
+// can be changed before it's saved.
+const TPL_KEY = 'oab.tplTheme';
+const svgDataUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+function templatePicker(o) {
+  let theme = TEMPLATE_THEMES[0];
+  try { theme = TEMPLATE_THEMES.includes(localStorage.getItem(TPL_KEY)) ? localStorage.getItem(TPL_KEY) : theme; } catch { /* default */ }
+  const values = {
+    greeting: 'Kim and Joe', occasion: o.name || 'Our party', date: longDateOf(o.date) || 'Saturday, December 19, 2026',
+    time: o.time || '7:00 PM', location: o.location || '14 Cherry Lane, Troy', from: fromName() || 'The Szmansky Family',
+  };
+  const card = (t) => `<div class="tpl-card" role="button" tabindex="0" data-action="use-template" data-id="${t.id}" title="Start from the ${esc(t.name)} template">
+      <span class="tpl-prev"><span class="tpl-scale">${renderDesign(templateDesign(t, svgDataUrl(artSvg(t))), values, { padding: '34px' })}</span></span>
+      <span class="tpl-name">${esc(t.name)}</span></div>`;
+  return `<label>Templates<select name="tplTheme" data-tpl-theme>${TEMPLATE_THEMES.map((th) => `<option ${th === theme ? 'selected' : ''}>${esc(th)}</option>`).join('')}</select></label>
+    <div class="tpl-grids">${TEMPLATE_THEMES.map((th) => `<div class="tpl-grid" data-tpl="${esc(th)}" ${th === theme ? '' : 'hidden'}>${TEMPLATES.filter((t) => t.theme === th).map(card).join('')}</div>`).join('')}</div>`;
+}
+const longDateOf = (ymd) => fieldValues({ occasion: { date: ymd } }).date;
+
+function showTemplateTheme(theme) {
+  modal.querySelectorAll('.tpl-grid').forEach((g) => { g.hidden = g.dataset.tpl !== theme; });
+  try { localStorage.setItem(TPL_KEY, theme); } catch { /* not remembered */ }
+}
+
+// Draws an SVG picture as a PNG (mail apps can't show SVG).
+async function svgToPng(svg, w, h) {
+  const img = new Image();
+  img.src = svgDataUrl(svg);
+  await img.decode();
+  const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
+  canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't draw the template's picture"))), 'image/png'));
+}
+
+// The template as a design, its picture uploaded like any other.
+async function designFromTemplate(id) {
+  const t = templateById(id);
+  if (!t) throw new Error('That template is no longer available');
+  const scale = 6;
+  const [w, h] = artSize(t);
+  const url = await uploadPicture(await svgToPng(artSvg(t, scale), w * scale, h * scale), 'image/png');
+  return templateDesign(t, url);
+}
+
+async function openDesigner(templateId) {
+  if (!templateId) return designModal();
+  toast('Setting up the template…');
+  try {
+    return designModal(await designFromTemplate(templateId));
+  } catch (e) {
+    return toast(e.message, true);
+  }
+}
+
+// thenDesign: the Design button on this screen saves the occasion first, then opens the design window
+// (with a template: { template: id }).
 async function saveOccasion(form, { thenDesign = false } = {}) {
   const f = form.elements;
   const dated = f.kind.value !== 'card'; // cards and labels have no date, time or place
@@ -1725,7 +1787,7 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
     if (isNew) { state.occFilter = res.copied ? 'on' : 'all'; state.occSearch = ''; }
     await openOccasion(res.occasion.id);
     render();
-    if (thenDesign) { designModal(); return; }
+    if (thenDesign) { await openDesigner(thenDesign.template); return; }
     toast(isNew ? (res.copied ? `Created with ${plural(res.copied, 'household')} from the earlier list` : 'Created. Tick who it\'s for.') : 'Saved');
   });
 }
@@ -2120,10 +2182,11 @@ function loadAllFonts() {
   loadFont({ html: FONTS.filter((f) => f.web).map((f) => f.stack).join(' '), font: '' });
 }
 
-function designModal() {
+// start: a design to begin from instead of the saved one (a template); nothing changes until Save.
+function designModal(start = null) {
   const o = state.occ.occasion;
-  const d = { ...DESIGN_DEFAULTS, ...(o.design ?? {}) };
-  const html = o.design?.html ?? starterHtml(o.invite?.message);
+  const d = { ...DESIGN_DEFAULTS, ...(start ?? o.design ?? {}) };
+  const html = start?.html ?? o.design?.html ?? starterHtml(o.invite?.message);
   loadAllFonts();
   // One font picker and one text color: with words selected they change those words; with nothing
   // selected they change the whole design's font or text color.
@@ -3576,6 +3639,11 @@ document.addEventListener('click', async (e) => {
     case 'invites': invitesModal(); break;
     case 'design': designModal(); break;
     case 'design-from-edit': await saveOccasion(el.closest('form'), { thenDesign: true }); break;
+    case 'use-template':
+      if (el.dataset.busy) break;
+      el.dataset.busy = '1';
+      try { await saveOccasion(el.closest('form'), { thenDesign: { template: el.dataset.id } }); } finally { delete el.dataset.busy; }
+      break;
     case 'test-invite':
       await withBusy(el, async () => {
         const res = await api(`/occasions/${state.occasionId}/invites`, { method: 'POST', body: { test: true } });
@@ -3587,6 +3655,9 @@ document.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('keydown', (e) => { if (e.target.matches?.('[data-chip-text]')) onGroupKey(e); }, true);
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('.tpl-card')) { e.preventDefault(); e.target.click(); }
+});
 document.addEventListener('mousedown', (e) => {
   // Picking a suggestion: keep focus in the box.
   const opt = e.target.closest('.chip-option');
@@ -3638,6 +3709,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const t = e.target;
   if (t.matches?.('[data-who]')) syncSendRows();
+  if (t.matches?.('[data-tpl-theme]')) showTemplateTheme(t.value);
   if (t.matches?.('[data-occ-kind]')) {
     modal.querySelectorAll('[data-kinds]').forEach((el) => {
       el.hidden = !el.dataset.kinds.split(' ').includes(t.value);
