@@ -79,3 +79,8 @@ test('divider lines survive cleaning', () => {
   const bar = '<hr style="border:0;height:4px;border-radius:2px;background-color:#9f1239;width:50%;margin:16px auto" />';
   assert.equal(cleanDesignHtml(bar), bar);
 });
+
+test('a Designer text box keeps its size, place, fill and border when saved', () => {
+  const box = '<div data-box="rounded" align="center" style="width:60%;padding:12px;margin:12px auto;border:2px solid #9f1239;border-radius:12px;background-color:#fdf2f8;min-height:90px"><p style="margin:0">Hi</p></div>';
+  assert.equal(cleanDesignHtml(box), box);
+});

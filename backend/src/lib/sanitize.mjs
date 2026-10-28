@@ -15,7 +15,7 @@ export const ALLOWED = {
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'hr', 'a', 'img',
     'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col'],
   allowedAttributes: {
-    '*': ['style', 'align', 'dir', 'title'],
+    '*': ['style', 'align', 'dir', 'title', 'data-box'], // data-box: a Designer text box (its border style)
     a: ['href', 'target'],
     img: ['src', 'alt', 'width', 'height'],
     font: ['face', 'size', 'color'],

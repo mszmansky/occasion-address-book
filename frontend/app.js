@@ -2223,6 +2223,7 @@ function designModal(start = null, { fromEdit = false } = {}) {
       <span class="tb-break"></span>
       <select data-design="field" aria-label="Insert a fill-in field" title="Insert a fill-in field"><option value="">Insert field</option>${DESIGN_FIELDS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
       <button type="button" class="tb" data-insert-line title="Insert a line">${LINE_ICON} <span>Line</span></button>
+      <button type="button" class="tb" data-insert-box title="Insert a text box">${TEXTBOX_ICON} <span>Text box</span></button>
       <label class="tb tb-pic" title="Insert a picture">${PICTURE} <span>Picture</span><input type="file" accept="${PICTURE_TYPES.join(',')}" data-design-picture hidden></label>
       <span class="tb-spacer"></span>
       ${colorInput('background', d.background, 'Background', 'Background color')}
@@ -2240,6 +2241,21 @@ function designModal(start = null, { fromEdit = false } = {}) {
       <span class="small muted">Length</span>
       ${[['25%', 'Short'], ['50%', 'Medium'], ['75%', 'Long'], ['100%', 'Full width']].map(([w, l]) => `<button type="button" class="btn sm" data-line-width="${w}" aria-pressed="false">${l}</button>`).join('')}
       <button type="button" class="btn sm danger" data-line-remove>Remove</button>
+    </div>
+    <div class="design-imgbar" data-design-boxbar hidden>
+      <span class="small muted">Text box</span>
+      ${[['left', 'Left'], ['center', 'Center'], ['right', 'Right']].map(([k, l]) => `<button type="button" class="btn sm" data-box-place="${k}" aria-pressed="false" title="Place the box on the ${k === 'center' ? 'center' : k}">${l}</button>`).join('')}
+      <span class="imgbar-sep"></span>
+      ${colorInput('boxFill', '#ffffff', 'Fill', 'Fill color')}
+      <button type="button" class="btn sm" data-box-nofill title="No fill color">No fill</button>
+      <span class="imgbar-sep"></span>
+      <span class="imgbar-group"><span class="small muted">Border</span>
+      <select data-box-border aria-label="Text box border" title="Text box border">${BOX_BORDERS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
+      ${colorInput('boxBorderColor', d.borderColor, 'Color', 'Text box border color', 'data-box-border-color')}</span>
+      <span class="imgbar-sep"></span>
+      <button type="button" class="btn sm" data-box-move="-1" title="Move the box up">Up</button>
+      <button type="button" class="btn sm" data-box-move="1" title="Move the box down">Down</button>
+      <button type="button" class="btn sm danger" data-box-remove title="Remove the text box">Remove</button>
     </div>
     <div class="design-imgbar" data-design-imgbar hidden>
       <span class="small muted">Place</span>
@@ -2290,6 +2306,10 @@ const UPLOAD_ICON = '<svg class="dz-icon" viewBox="0 0 24 24" width="30" height=
 const UNDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3M2.75 6.5h6.5a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const REDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="m10.5 3.5 3 3-3 3M13.25 6.5h-6.5a4 4 0 0 0 0 8H9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ALIGN = (w) => `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="${{ l: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8', c: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8', r: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' }[w]}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const TEXTBOX_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.4"/><path d="M5 5.5h6M8 5.5v5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+// Text box borders (the box's data-box attribute keeps which one).
+const BOX_BORDERS = [['none', 'No border'], ['thin', 'Thin line'], ['thick', 'Thick line'], ['dashed', 'Dashed'], ['dotted', 'Dotted'], ['double', 'Double line'], ['rounded', 'Rounded']];
+const BOX_CSS = { thin: '1px solid', thick: '3px solid', dashed: '2px dashed', dotted: '3px dotted', double: '4px double', rounded: '2px solid' };
 const PICTURE = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="6.25" r="1.25" fill="currentColor"/><path d="m2.5 12 3.8-3.8 2.4 2.4 1.8-1.8L13.5 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 
 function wireDesign(editor) {
@@ -2571,7 +2591,7 @@ function wireDesign(editor) {
     const t = e.target;
     const what = t.dataset.design;
     if (what === 'font') {
-      if (hasSelection() || (own.font && selectBlock())) exec('fontName', fontByKey(t.value).stack); // these words, or this paragraph
+      if (hasSelection() || ((own.font || inBox()) && selectBlock())) exec('fontName', fontByKey(t.value).stack); // these words, this paragraph or text box
       else { canvas.dataset.font = t.value; canvas.style.fontFamily = fontByKey(t.value).stack; }   // the whole design
       record();
       syncToolbar();
@@ -2594,7 +2614,7 @@ function wireDesign(editor) {
     if (t.name === 'lineColor') { if (e.type === 'change') changeLine({ color: t.value }); return; }
     if (t.name === 'imgBorderColor') { if (picked && imgBorderSel.value !== 'none') setImgBorder(picked, imgBorderSel.value, t.value); return; }
     if (t.dataset.design === 'color') {
-      if (hasSelection() || (own.color && selectBlock())) exec('foreColor', t.value);
+      if (hasSelection() || ((own.color || inBox()) && selectBlock())) exec('foreColor', t.value);
       else { canvas.dataset.color = t.value; canvas.style.color = t.value; }
       recordSoon(); // dragging through colors is one step
     }
@@ -2702,7 +2722,7 @@ function wireDesign(editor) {
   const BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, div:not([data-design-edit])';
   // Selects the paragraph the cursor is in, so a change applies to all of it.
   function selectBlock() {
-    const block = caretEl()?.closest(BLOCKS);
+    const block = caretEl()?.closest('[data-box]') ?? caretEl()?.closest(BLOCKS); // a whole text box, or the paragraph
     if (!block || !editor.contains(block)) return false;
     const r = document.createRange();
     r.selectNodeContents(block);
@@ -2735,6 +2755,7 @@ function wireDesign(editor) {
       try { on = document.queryCommandState(b.dataset.cmd); } catch { /* not supported */ }
       b.setAttribute('aria-pressed', String(on));
     }
+    syncBox();
   }
   const onSelection = () => {
     const sel = window.getSelection();
@@ -2745,6 +2766,142 @@ function wireDesign(editor) {
   document.addEventListener('selectionchange', onSelection);
   modal.addEventListener('close', () => document.removeEventListener('selectionchange', onSelection), { once: true });
   bar.addEventListener('click', (e) => { if (e.target.closest('[data-cmd]')) syncToolbar(); });
+
+  // ---- text boxes ----
+  // A box of text, like PowerPoint's, that stays in the flow of the design (so it looks the same in
+  // print and email): drag its edges to size it, place it left, center or right, give it a fill and a
+  // border, and move it up or down. With the cursor in a box, Font, Size and Text color change all of it.
+  const boxbar = modal.querySelector('[data-design-boxbar]');
+  const boxFill = modal.querySelector('[name=boxFill]');
+  const boxBorderSel = boxbar.querySelector('[data-box-border]');
+  const boxBorderColor = modal.querySelector('[name=boxBorderColor]');
+  let box = null;
+  const inBox = () => Boolean(caretEl()?.closest('[data-box]'));
+  const handles = Object.assign(document.createElement('div'), { className: 'box-handles', hidden: true });
+  handles.innerHTML = ['w', 'e', 's', 'sw', 'se'].map((h) => `<span class="bh bh-${h}" data-h="${h}" title="Drag to resize"></span>`).join('');
+  canvas.append(handles);
+  const boxPlaceOf = (b) => (b.style.marginLeft === 'auto' && b.style.marginRight === 'auto' ? 'center' : b.style.marginLeft === 'auto' ? 'right' : 'left');
+  function setBoxPlace(b, place) {
+    b.style.margin = { left: '12px auto 12px 0', center: '12px auto', right: '12px 0 12px auto' }[place];
+    b.setAttribute('align', place);
+  }
+  function setBoxBorder(b, key, color) {
+    b.dataset.box = key;
+    b.style.border = BOX_CSS[key] ? `${BOX_CSS[key]} ${color}` : '';
+    b.style.borderRadius = key === 'rounded' ? '12px' : '';
+  }
+  function positionHandles() {
+    if (!box || !editor.contains(box) || canvas.hidden || !canvas.offsetParent) { handles.hidden = true; return; }
+    const c = canvas.getBoundingClientRect();
+    const r = box.getBoundingClientRect();
+    Object.assign(handles.style, { left: `${r.left - c.left}px`, top: `${r.top - c.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    handles.hidden = false;
+  }
+  function syncBox() {
+    const b = caretEl()?.closest('[data-box]');
+    box = b && editor.contains(b) ? b : null;
+    boxbar.hidden = !box;
+    if (box) {
+      const place = boxPlaceOf(box);
+      boxbar.querySelectorAll('[data-box-place]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.boxPlace === place)));
+      const fill = toHexColor(box.style.backgroundColor);
+      boxFill.value = fill ?? '#ffffff';
+      boxbar.querySelector('[data-color-for=boxFill]').style.background = fill ?? 'transparent';
+      boxBorderSel.value = BOX_BORDERS.some(([k]) => k === box.dataset.box) ? box.dataset.box : 'none';
+      const edge = toHexColor(box.style.borderTopColor) ?? boxBorderColor.value;
+      boxBorderColor.value = edge;
+      boxbar.querySelector('[data-color-for=boxBorderColor]').style.background = edge;
+      boxbar.querySelector('[data-box-border-color]').hidden = boxBorderSel.value === 'none';
+    }
+    positionHandles();
+  }
+  modal.querySelector('[data-insert-box]').addEventListener('click', () => {
+    const el = document.createElement('div');
+    el.dataset.box = 'thin';
+    el.style.width = '60%';
+    el.style.padding = '12px';
+    setBoxPlace(el, 'center');
+    setBoxBorder(el, 'thin', '#9ca3af');
+    el.innerHTML = '<p style="margin:0">Your text here</p>';
+    // After the paragraph the cursor is in (a box can't go inside a paragraph), else at the end.
+    let at = caretEl();
+    while (at && at.parentElement !== editor) at = at.parentElement;
+    if (at) at.after(el); else editor.append(el);
+    const r = document.createRange();
+    r.selectNodeContents(el.querySelector('p'));
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    editor.focus();
+    designRange = r.cloneRange();
+    record();
+    syncToolbar();
+  });
+  boxbar.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); }); // keep the cursor in the box
+  boxbar.addEventListener('click', (e) => {
+    if (!box) return;
+    const place = e.target.closest('[data-box-place]')?.dataset.boxPlace;
+    if (place) setBoxPlace(box, place);
+    if (e.target.closest('[data-box-nofill]')) box.style.backgroundColor = '';
+    const move = Number(e.target.closest('[data-box-move]')?.dataset.boxMove);
+    if (move === -1 && box.previousElementSibling) box.previousElementSibling.before(box);
+    if (move === 1 && box.nextElementSibling) box.nextElementSibling.after(box);
+    if (move) { // moving it takes the cursor out of it: put it back at the end of its text
+      const walk = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+      let text = null;
+      while (walk.nextNode()) text = walk.currentNode;
+      const r = document.createRange();
+      if (text) r.setStart(text, text.length); else { r.selectNodeContents(box); r.collapse(false); }
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      designRange = r.cloneRange();
+    }
+    if (e.target.closest('[data-box-remove]')) { box.remove(); box = null; designRange = null; }
+    if (place || move || e.target.closest('[data-box-nofill], [data-box-remove]')) { record(); syncBox(); }
+  });
+  boxBorderSel.addEventListener('change', () => { if (box) { setBoxBorder(box, boxBorderSel.value, boxBorderColor.value); record(); syncBox(); } });
+  // Colors arrive as "input" while dragging, or only "change" (Safari, and the color window).
+  const onBoxColor = (e) => {
+    if (!box || !['boxFill', 'boxBorderColor'].includes(e.target.name)) return;
+    boxbar.querySelector(`[data-color-for=${e.target.name}]`).style.background = e.target.value;
+    if (e.target.name === 'boxFill') box.style.backgroundColor = e.target.value;
+    else if (boxBorderSel.value !== 'none') setBoxBorder(box, boxBorderSel.value, e.target.value);
+    recordSoon();
+  };
+  boxbar.addEventListener('input', onBoxColor);
+  boxbar.addEventListener('change', onBoxColor);
+  // Resizing: the side handles set the width (both sides together for a centered box), the bottom
+  // ones the height.
+  let drag = null;
+  handles.addEventListener('pointerdown', (e) => {
+    const h = e.target.dataset.h;
+    if (!h || !box) return;
+    e.preventDefault();
+    e.target.setPointerCapture(e.pointerId);
+    const cs = getComputedStyle(box);
+    const ecs = getComputedStyle(editor);
+    drag = {
+      h, rect: box.getBoundingClientRect(), place: boxPlaceOf(box),
+      extra: box.getBoundingClientRect().width - parseFloat(cs.width), // padding and border
+      room: editor.clientWidth - parseFloat(ecs.paddingLeft) - parseFloat(ecs.paddingRight),
+    };
+  });
+  handles.addEventListener('pointermove', (e) => {
+    if (!drag || !box) return;
+    const { h, rect, place, extra, room } = drag;
+    if (h.includes('e') || h.includes('w')) {
+      const w = place === 'center' ? 2 * Math.abs(e.clientX - (rect.left + rect.width / 2))
+        : h.includes('e') ? e.clientX - rect.left : rect.right - e.clientX;
+      const pct = Math.round(((w - extra) / room) * 100);
+      box.style.width = `${Math.max(15, Math.min(Math.floor(((room - extra) / room) * 100), pct))}%`;
+    }
+    if (h.includes('s')) box.style.minHeight = `${Math.max(0, Math.round(e.clientY - rect.top - extra))}px`;
+    positionHandles();
+  });
+  const endDrag = () => { if (drag) { drag = null; record(); syncBox(); } };
+  handles.addEventListener('pointerup', endDrag);
+  handles.addEventListener('pointercancel', endDrag);
+  editor.addEventListener('input', positionHandles);
+  modal.querySelector('.modal-body').addEventListener('scroll', positionHandles, { passive: true });
+  window.addEventListener('resize', positionHandles);
+  modal.addEventListener('close', () => window.removeEventListener('resize', positionHandles), { once: true });
 
   imgbar.addEventListener('click', (e) => {
     if (!picked) return;
