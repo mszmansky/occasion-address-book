@@ -22,3 +22,8 @@ test('the Address book report numbers each household and shows all of its card',
   assert.ok(!addressBookReport([{ labelName: '<b>x</b>' }]).body.includes('<b>x'));
   assert.match(addressBookReport([], { logo: 'https://cards.example.com/icon-192.png' }).body, /<header><img class="logo" src="https:\/\/cards\.example\.com\/icon-192\.png" alt="">/);
 });
+
+test('the report carries the year for its © footer (pages are laid out in the browser)', () => {
+  const { body } = addressBookReport([{ labelName: 'A' }], { printed: new Date('2026-10-28T14:00:00Z'), site: 'occasions-address-book.com' });
+  assert.match(body, /data-year="2026" data-site="occasions-address-book\.com"/);
+});

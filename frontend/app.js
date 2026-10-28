@@ -2149,7 +2149,7 @@ async function printAddressBook() {
   const title = book && !book.own ? `${bookLabel(book)} address book` : 'Address book';
   const filters = [state.search.trim() ? `Search: "${state.search.trim()}"` : '', ...filterChips(state.filters.people).map((c) => c.label)].filter(Boolean);
   // The report opens as its own page, so the logo needs its full address.
-  const { css, body } = addressBookReport(shownHouseholds(), { title, filters, logo: new URL('icon-192.png', window.location.href).href });
+  const { css, body } = addressBookReport(shownHouseholds(), { title, filters, logo: new URL('icon-192.png', window.location.href).href, site: window.location.host });
   return printPages(win, { title, css, body, prepare: paginateReport });
 }
 

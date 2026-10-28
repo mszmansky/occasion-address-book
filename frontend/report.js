@@ -24,7 +24,7 @@ function person(m) {
  * households: in the order to print. title: e.g. "Address book" or "Kim's address book".
  * filters: what's applied, in words (search text and filter chips), shown under the title.
  */
-export function addressBookReport(households, { title = 'Address book', filters = [], printed = new Date(), logo = '' } = {}) {
+export function addressBookReport(households, { title = 'Address book', filters = [], printed = new Date(), logo = '', site = '' } = {}) {
   const rows = households.map((h, i) => {
     const a = h.address ?? {};
     const addr = addressLines('', a).map(esc);
@@ -44,7 +44,7 @@ export function addressBookReport(households, { title = 'Address book', filters 
     </tr>`;
   }).join('');
   const sub = [`${households.length} ${households.length === 1 ? 'household' : 'households'}`, ...filters.map(esc), `Printed ${esc(day(printed.toISOString()))}`].join(' · ');
-  const body = `<div id="report-src" data-title="${esc(title)}"><header>${logo ? `<img class="logo" src="${esc(logo)}" alt="">` : ''}<div><div class="app">Occasions Address Book</div><h1>${esc(title)}</h1><p>${sub}</p></div></header>
+  const body = `<div id="report-src" data-title="${esc(title)}" data-year="${printed.getFullYear()}" data-site="${esc(site)}"><header>${logo ? `<img class="logo" src="${esc(logo)}" alt="">` : ''}<div><div class="app">Occasions Address Book</div><h1>${esc(title)}</h1><p>${sub}</p></div></header>
     <table>
       <colgroup><col class="c-n"><col class="c-h"><col class="c-a"><col class="c-p"><col class="c-c"><col class="c-g"></colgroup>
       <thead><tr><th>#</th><th>Household</th><th>Address</th><th>People</th><th>Phone &amp; email</th><th>Groups &amp; notes</th></tr></thead>
@@ -58,6 +58,7 @@ body { font: 9pt/1.35 Helvetica, Arial, sans-serif; color: #1f2328; }
 #report-src, .sheet { width: 11in; padding: 0.45in 0.4in 0; }
 .sheet { position: relative; height: 8.5in; overflow: hidden; background: #fff; break-after: page; page-break-after: always; }
 .sheet:last-child { break-after: auto; page-break-after: auto; }
+.sheet > footer > span { flex: 1; } .sheet > footer .site { text-align: center; } .sheet > footer .pg { text-align: right; }
 .sheet > footer { position: absolute; left: 0.4in; right: 0.4in; bottom: 0.3in; display: flex; justify-content: space-between; border-top: 1px solid #d0d7de; padding-top: 4pt; font-size: 7.5pt; color: #57606a; }
 @media screen { body { background: #8a8a8a; padding: 16px 0; } .sheet, #report-src { margin: 0 auto 16px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); } }
 header { display: flex; align-items: center; gap: 10pt; margin-bottom: 10pt; border-bottom: 2px solid #9f1239; padding-bottom: 6pt; }
@@ -87,8 +88,8 @@ td.n { color: #57606a; text-align: right; font-variant-numeric: tabular-nums; }
 
 /**
  * Runs in the report's own page (passed to it as text, so it uses nothing from outside): lays the
- * rows onto Letter-landscape pages, repeating the column headings, and puts "Page 1 of 3" at the
- * foot of each. Doing the pages here, rather than leaving it to the browser, gives every browser the
+ * rows onto Letter-landscape pages, repeating the column headings, and puts "© 2026 Occasions
+ * Address Book", the site's address and "Page 1 of 3" at the foot of each. Doing the pages here, rather than leaving it to the browser, gives every browser the
  * same page numbers.
  */
 export function paginateReport(doc) {
@@ -122,13 +123,15 @@ export function paginateReport(doc) {
       page.tbody.append(row);
     }
   }
-  const title = src.dataset.title || '';
+  const year = src.dataset.year || String(new Date().getFullYear());
+  const site = src.dataset.site || '';
   src.remove();
   pages.forEach((sheet, i) => {
     const foot = doc.createElement('footer');
-    foot.innerHTML = '<span></span><span></span>';
-    foot.firstChild.textContent = `Occasions Address Book${title ? ` · ${title}` : ''}`;
-    foot.lastChild.textContent = `Page ${i + 1} of ${pages.length}`;
+    foot.innerHTML = '<span></span><span class="site"></span><span class="pg"></span>';
+    foot.children[0].textContent = `© ${year} Occasions Address Book`;
+    foot.children[1].textContent = site;
+    foot.children[2].textContent = `Page ${i + 1} of ${pages.length}`;
     sheet.append(foot);
   });
 }
