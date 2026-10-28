@@ -2561,12 +2561,16 @@ function wireDesign(editor) {
     const t = e.target;
     const what = t.dataset.design;
     if (what === 'font') {
-      if (hasSelection()) { exec('fontName', fontByKey(t.value).stack); t.value = canvas.dataset.font; } // just these words
-      else { canvas.dataset.font = t.value; canvas.style.fontFamily = fontByKey(t.value).stack; }      // the whole design
+      if (hasSelection() || (own.font && selectBlock())) exec('fontName', fontByKey(t.value).stack); // these words, or this paragraph
+      else { canvas.dataset.font = t.value; canvas.style.fontFamily = fontByKey(t.value).stack; }   // the whole design
       record();
+      syncToolbar();
     }
     if (what === 'border') { applyBorder(); record(); }
-    if (what === 'fontSize' && t.value) { exec('fontSize', t.value); t.value = ''; }
+    if (what === 'fontSize' && /^\d$/.test(t.value)) {
+      if (hasSelection() || selectBlock()) { exec('fontSize', t.value); record(); }
+      syncToolbar();
+    }
     if (what === 'field' && t.value) { exec('insertText', `{{${t.value}}}`); t.value = ''; }
     if (t.matches('[data-design-picture]') && t.files[0]) { const f = t.files[0]; t.value = ''; insertPicture(f, insertNode); }
   });
@@ -2580,7 +2584,7 @@ function wireDesign(editor) {
     if (t.name === 'lineColor') { if (e.type === 'change') changeLine({ color: t.value }); return; }
     if (t.name === 'imgBorderColor') { if (picked && imgBorderSel.value !== 'none') setImgBorder(picked, imgBorderSel.value, t.value); return; }
     if (t.dataset.design === 'color') {
-      if (hasSelection()) exec('foreColor', t.value);
+      if (hasSelection() || (own.color && selectBlock())) exec('foreColor', t.value);
       else { canvas.dataset.color = t.value; canvas.style.color = t.value; }
       recordSoon(); // dragging through colors is one step
     }
@@ -2665,6 +2669,72 @@ function wireDesign(editor) {
   modal.addEventListener('pointerdown', (e) => { if (!pop.hidden && !e.target.closest('[data-color-pop], [data-color-for]')) closePop(); });
   // A color picker takes focus: remember the selection before it opens.
   bar.addEventListener('pointerdown', (e) => { if (e.target.closest('input[type=color], select')) keepRange(); });
+
+  // ---- the toolbar follows the text ----
+  // Click into any part of the design and the toolbar shows that text's font, size, color, bold,
+  // italic, underline, alignment and list. With nothing selected, a new font or color goes to that
+  // paragraph when it has its own (a template's title, say), otherwise to the whole design; a new
+  // size goes to the paragraph.
+  const sizeSel = modal.querySelector('[data-design=fontSize]');
+  const textSwatch = modal.querySelector('[data-color-for=color]');
+  const SIZE_PX = { 2: 13, 3: 16, 4: 18, 5: 24, 6: 32 }; // what the browser draws for each size
+  const firstFamily = (ff) => String(ff ?? '').split(',')[0].replace(/['"]/g, '').trim().toLowerCase();
+  const fontKeyOf = (ff) => FONTS.find((f) => firstFamily(f.stack) === firstFamily(ff))?.key ?? null;
+  const own = { font: false, color: false };
+  const caretEl = () => {
+    const r = designRange && editor.contains(designRange.startContainer) ? designRange : null;
+    if (!r) return null;
+    let n = r.startContainer;
+    if (n.nodeType !== 1) n = n.parentElement;
+    else if (n.childNodes[r.startOffset]?.nodeType === 1) n = n.childNodes[r.startOffset];
+    return n && editor.contains(n) && n !== editor ? n : null;
+  };
+  const BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, div:not([data-design-edit])';
+  // Selects the paragraph the cursor is in, so a change applies to all of it.
+  function selectBlock() {
+    const block = caretEl()?.closest(BLOCKS);
+    if (!block || !editor.contains(block)) return false;
+    const r = document.createRange();
+    r.selectNodeContents(block);
+    designRange = r;
+    return true;
+  }
+  function syncToolbar() {
+    const el = caretEl();
+    if (!el) return;
+    const cs = getComputedStyle(el);
+    const base = getComputedStyle(editor);
+    own.font = firstFamily(cs.fontFamily) !== firstFamily(base.fontFamily);
+    fontSel.value = fontKeyOf(cs.fontFamily) ?? canvas.dataset.font;
+    const px = Math.round(parseFloat(cs.fontSize));
+    const level = Object.keys(SIZE_PX).find((k) => SIZE_PX[k] === px);
+    let current = sizeSel.querySelector('[data-current]');
+    if (level) {
+      current?.remove();
+      sizeSel.value = level;
+    } else {
+      if (!current) { current = new Option('', 'current'); current.dataset.current = ''; sizeSel.add(current, 1); }
+      current.textContent = `${px} px`;
+      sizeSel.value = 'current';
+    }
+    const hex = toHexColor(cs.color);
+    own.color = Boolean(hex) && hex !== toHexColor(base.color);
+    if (hex) { colorIn.value = hex; textSwatch.style.background = hex; }
+    for (const b of bar.querySelectorAll('[data-cmd]')) {
+      let on = false;
+      try { on = document.queryCommandState(b.dataset.cmd); } catch { /* not supported */ }
+      b.setAttribute('aria-pressed', String(on));
+    }
+  }
+  const onSelection = () => {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || !editor.contains(sel.getRangeAt(0).startContainer)) return;
+    keepRange();
+    syncToolbar();
+  };
+  document.addEventListener('selectionchange', onSelection);
+  modal.addEventListener('close', () => document.removeEventListener('selectionchange', onSelection), { once: true });
+  bar.addEventListener('click', (e) => { if (e.target.closest('[data-cmd]')) syncToolbar(); });
 
   imgbar.addEventListener('click', (e) => {
     if (!picked) return;
