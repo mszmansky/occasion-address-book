@@ -20,4 +20,5 @@ test('the Address book report numbers each household and shows all of its card',
   assert.match(css, /@page \{ size: 11in 8.5in/);
   assert.match(css, /overflow-wrap: anywhere/);
   assert.ok(!addressBookReport([{ labelName: '<b>x</b>' }]).body.includes('<b>x'));
+  assert.match(addressBookReport([], { logo: 'https://cards.example.com/icon-192.png' }).body, /<header><img class="logo" src="https:\/\/cards\.example\.com\/icon-192\.png" alt="">/);
 });

@@ -24,7 +24,7 @@ function person(m) {
  * households: in the order to print. title: e.g. "Address book" or "Kim's address book".
  * filters: what's applied, in words (search text and filter chips), shown under the title.
  */
-export function addressBookReport(households, { title = 'Address book', filters = [], printed = new Date() } = {}) {
+export function addressBookReport(households, { title = 'Address book', filters = [], printed = new Date(), logo = '' } = {}) {
   const rows = households.map((h, i) => {
     const a = h.address ?? {};
     const addr = addressLines('', a).map(esc);
@@ -44,7 +44,7 @@ export function addressBookReport(households, { title = 'Address book', filters 
     </tr>`;
   }).join('');
   const sub = [`${households.length} ${households.length === 1 ? 'household' : 'households'}`, ...filters.map(esc), `Printed ${esc(day(printed.toISOString()))}`].join(' · ');
-  const body = `<header><h1>${esc(title)}</h1><p>${sub}</p></header>
+  const body = `<header>${logo ? `<img class="logo" src="${esc(logo)}" alt="">` : ''}<div><div class="app">Occasions Address Book</div><h1>${esc(title)}</h1><p>${sub}</p></div></header>
     <table>
       <colgroup><col class="c-n"><col class="c-h"><col class="c-a"><col class="c-p"><col class="c-c"><col class="c-g"></colgroup>
       <thead><tr><th>#</th><th>Household</th><th>Address</th><th>People</th><th>Phone &amp; email</th><th>Groups &amp; notes</th></tr></thead>
@@ -56,7 +56,9 @@ html, body { margin: 0; }
 body { font: 9pt/1.35 Helvetica, Arial, sans-serif; color: #1f2328; }
 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
 @media screen { body { background: #8a8a8a; padding: 16px 0; } main { width: 11in; margin: 0 auto; background: #fff; padding: 0.45in 0.4in; box-shadow: 0 2px 10px rgba(0,0,0,.35); } }
-header { margin-bottom: 10pt; border-bottom: 2px solid #9f1239; padding-bottom: 6pt; }
+header { display: flex; align-items: center; gap: 10pt; margin-bottom: 10pt; border-bottom: 2px solid #9f1239; padding-bottom: 6pt; }
+header .logo { width: 0.6in; height: 0.6in; border-radius: 0.12in; flex: none; }
+header .app { font-size: 8pt; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #57606a; }
 h1 { font-size: 16pt; margin: 0 0 2pt; color: #9f1239; }
 header p { margin: 0; color: #57606a; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
