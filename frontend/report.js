@@ -34,7 +34,7 @@ export function addressBookReport(households, { title = 'Address book', filters 
     ].filter(Boolean).join(' ');
     const members = (h.members ?? []).map(person).join('');
     const contact = lines([h.phone ? esc(h.phone) : '', ...(h.emails ?? []).map(mail)]);
-    return `<tr>
+    return `<tr${i % 2 ? ' class="alt"' : ''}>
       <td class="n">${i + 1}</td>
       <td><div class="name">${esc(h.labelName)}</div>${label('Formal:', h.formalName)}${label('Informal:', h.greeting)}</td>
       <td>${lines(addr) || '<span class="muted">No address</span>'}${status ? `<div class="status">${status}</div>` : ''}</td>
@@ -44,18 +44,22 @@ export function addressBookReport(households, { title = 'Address book', filters 
     </tr>`;
   }).join('');
   const sub = [`${households.length} ${households.length === 1 ? 'household' : 'households'}`, ...filters.map(esc), `Printed ${esc(day(printed.toISOString()))}`].join(' · ');
-  const body = `<header>${logo ? `<img class="logo" src="${esc(logo)}" alt="">` : ''}<div><div class="app">Occasions Address Book</div><h1>${esc(title)}</h1><p>${sub}</p></div></header>
+  const body = `<div id="report-src" data-title="${esc(title)}"><header>${logo ? `<img class="logo" src="${esc(logo)}" alt="">` : ''}<div><div class="app">Occasions Address Book</div><h1>${esc(title)}</h1><p>${sub}</p></div></header>
     <table>
       <colgroup><col class="c-n"><col class="c-h"><col class="c-a"><col class="c-p"><col class="c-c"><col class="c-g"></colgroup>
       <thead><tr><th>#</th><th>Household</th><th>Address</th><th>People</th><th>Phone &amp; email</th><th>Groups &amp; notes</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="6" class="muted">No households match.</td></tr>'}</tbody>
-    </table>`;
+    </table></div>`;
   const css = `
-@page { size: 11in 8.5in; margin: 0.45in 0.4in; }
+@page { size: 11in 8.5in; margin: 0; }
 html, body { margin: 0; }
 body { font: 9pt/1.35 Helvetica, Arial, sans-serif; color: #1f2328; }
 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
-@media screen { body { background: #8a8a8a; padding: 16px 0; } main { width: 11in; margin: 0 auto; background: #fff; padding: 0.45in 0.4in; box-shadow: 0 2px 10px rgba(0,0,0,.35); } }
+#report-src, .sheet { width: 11in; padding: 0.45in 0.4in 0; }
+.sheet { position: relative; height: 8.5in; overflow: hidden; background: #fff; break-after: page; page-break-after: always; }
+.sheet:last-child { break-after: auto; page-break-after: auto; }
+.sheet > footer { position: absolute; left: 0.4in; right: 0.4in; bottom: 0.3in; display: flex; justify-content: space-between; border-top: 1px solid #d0d7de; padding-top: 4pt; font-size: 7.5pt; color: #57606a; }
+@media screen { body { background: #8a8a8a; padding: 16px 0; } .sheet, #report-src { margin: 0 auto 16px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); } }
 header { display: flex; align-items: center; gap: 10pt; margin-bottom: 10pt; border-bottom: 2px solid #9f1239; padding-bottom: 6pt; }
 header .logo { width: 0.6in; height: 0.6in; border-radius: 0.12in; flex: none; }
 header .app { font-size: 8pt; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #57606a; }
@@ -67,7 +71,7 @@ thead { display: table-header-group; }
 th { text-align: left; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .05em; color: #57606a; border-bottom: 1px solid #8c959f; padding: 3pt 5pt; }
 td { vertical-align: top; padding: 5pt; border-bottom: 1px solid #d0d7de; overflow-wrap: anywhere; word-break: normal; }
 tr { break-inside: avoid; page-break-inside: avoid; }
-tbody tr:nth-child(even) td { background: #f6f8fa; }
+tr.alt td { background: #f6f8fa; }
 td.n { color: #57606a; text-align: right; font-variant-numeric: tabular-nums; }
 .name { font-weight: 700; font-size: 10pt; }
 .k { color: #57606a; }
@@ -78,5 +82,53 @@ td.n { color: #57606a; text-align: right; font-variant-numeric: tabular-nums; }
 .tag { display: inline-block; border: 1px solid #d0d7de; border-radius: 3pt; padding: 0 3pt; font-size: 7.5pt; color: #424a53; background: #fff; }
 .tag.ok { border-color: #8fd19e; color: #1a7f37; }
 .tag.warn { border-color: #e3b341; color: #9a6700; }`;
-  return { css, body: `<main>${body}</main>` };
+  return { css, body };
+}
+
+/**
+ * Runs in the report's own page (passed to it as text, so it uses nothing from outside): lays the
+ * rows onto Letter-landscape pages, repeating the column headings, and puts "Page 1 of 3" at the
+ * foot of each. Doing the pages here, rather than leaving it to the browser, gives every browser the
+ * same page numbers.
+ */
+export function paginateReport(doc) {
+  const src = doc.getElementById('report-src');
+  if (!src) return;
+  const IN = 96;
+  const room = (8.5 - 0.45 - 0.75) * IN; // the page, less the top margin and the footer
+  const table = src.querySelector('table');
+  const header = src.querySelector('header');
+  const rows = [...table.tBodies[0].rows];
+  const pages = [];
+  const newPage = () => {
+    const sheet = doc.createElement('section');
+    sheet.className = 'sheet';
+    const body = doc.createElement('div');
+    if (!pages.length) body.append(header);
+    const t = doc.createElement('table');
+    t.innerHTML = `${table.querySelector('colgroup').outerHTML}${table.tHead.outerHTML}<tbody></tbody>`;
+    body.append(t);
+    sheet.append(body);
+    doc.body.insertBefore(sheet, src);
+    pages.push(sheet);
+    return { body, tbody: t.tBodies[0] };
+  };
+  let page = newPage();
+  for (const row of rows) {
+    page.tbody.append(row);
+    if (page.body.offsetHeight > room && page.tbody.rows.length > 1) {
+      row.remove();
+      page = newPage();
+      page.tbody.append(row);
+    }
+  }
+  const title = src.dataset.title || '';
+  src.remove();
+  pages.forEach((sheet, i) => {
+    const foot = doc.createElement('footer');
+    foot.innerHTML = '<span></span><span></span>';
+    foot.firstChild.textContent = `Occasions Address Book${title ? ` · ${title}` : ''}`;
+    foot.lastChild.textContent = `Page ${i + 1} of ${pages.length}`;
+    sheet.append(foot);
+  });
 }

@@ -9,7 +9,7 @@ import {
 } from './csv-core.js';
 import { LABEL_CSS, LABEL_FONT_LINK, LABEL_STYLES, LABEL_THEMES, fitLabel, labelStyle, loadLabelFonts, renderReturnLabel } from './label-styles.js';
 import { envelopesHtml, labelSheetsHtml } from './print-sheets.js';
-import { addressBookReport } from './report.js';
+import { addressBookReport, paginateReport } from './report.js';
 import { householdToVcard, fileBaseName, parseVcards, contactsToHouseholds } from './vcard-core.js';
 import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
 import {
@@ -2052,7 +2052,8 @@ function showAfterPrint(message) {
 // (where "Save as PDF" makes a PDF). A real page, rather than one written into a blank tab, loads
 // its fonts reliably.
 const fontCss = new Map(); // web-font stylesheet text, fetched once per address
-async function printPages(win, { title, css, body, fontHref = '' }) {
+// prepare: a function run in the new page (as text) once fonts are in, before fitting and printing.
+async function printPages(win, { title, css, body, fontHref = '', prepare = null }) {
   let fonts = '';
   if (fontHref) {
     if (!fontCss.has(fontHref)) fontCss.set(fontHref, await fetch(fontHref).then((r) => (r.ok ? r.text() : '')).catch(() => ''));
@@ -2064,6 +2065,7 @@ async function printPages(win, { title, css, body, fontHref = '' }) {
     await loadFonts(document);
     await Promise.resolve(document.fonts && document.fonts.ready).catch(() => {});
     await Promise.all([...document.images].map((img) => (img.complete ? null : new Promise((r) => { img.onload = r; img.onerror = r; }))));
+    ${prepare ? `(${prepare.toString()})(document);` : ''}
     fit(document.body);
     await new Promise((r) => setTimeout(r, 300)); // fonts that arrived late: fit once more
     fit(document.body);
@@ -2148,7 +2150,7 @@ async function printAddressBook() {
   const filters = [state.search.trim() ? `Search: "${state.search.trim()}"` : '', ...filterChips(state.filters.people).map((c) => c.label)].filter(Boolean);
   // The report opens as its own page, so the logo needs its full address.
   const { css, body } = addressBookReport(shownHouseholds(), { title, filters, logo: new URL('icon-192.png', window.location.href).href });
-  return printPages(win, { title, css, body });
+  return printPages(win, { title, css, body, prepare: paginateReport });
 }
 
 // Everything prints the same way: the pages open in a new tab with the print dialog.
