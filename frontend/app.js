@@ -9,6 +9,7 @@ import {
 } from './csv-core.js';
 import { LABEL_CSS, LABEL_FONT_LINK, LABEL_STYLES, LABEL_THEMES, fitLabel, labelStyle, loadLabelFonts, renderReturnLabel } from './label-styles.js';
 import { envelopesHtml, labelSheetsHtml } from './print-sheets.js';
+import { addressBookReport } from './report.js';
 import { householdToVcard, fileBaseName, parseVcards, contactsToHouseholds } from './vcard-core.js';
 import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
 import {
@@ -93,6 +94,7 @@ const DUPLICATE_ICON = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hid
   + '<rect x="8.6" y="8.8" width="8.4" height="9.2" rx=".9"/><path d="M12.4 12.2h2.6M12.4 14.2h2.6M12.4 16.2h2.6"/>'
   + '<rect x="2.6" y="5.6" width="8.4" height="9.2" rx=".9" fill="var(--surface, #fff)"/><path d="M4.6 8.6h4.4M4.6 10.6h4.4M4.6 12.6h4.4"/>'
   + '<path d="M5.8 4.2C7 1.6 12.6 1.3 14.4 6.4"/><path d="M12.6 5.4l1.9 1.7 1.3-2.2"/></svg>';
+const PRINT_ICON = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 6V1.75h7V6M4.5 11.5H3A1.25 1.25 0 0 1 1.75 10.25V7.25C1.75 6.56 2.31 6 3 6h10c.69 0 1.25.56 1.25 1.25v3c0 .69-.56 1.25-1.25 1.25h-1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4.5 9.25h7v5h-7z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="12" cy="8" r=".75" fill="currentColor"/></svg>';
 const CHECK_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const BRUSH = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M13.6 2.4a1.4 1.4 0 0 0-2 0L6.8 7.2l2 2 4.8-4.8a1.4 1.4 0 0 0 0-2zM6 8.4c-1.4 0-2.4 1-2.4 2.4 0 .9-.5 1.6-1.6 2 .7.6 1.6.8 2.4.8 2 0 3.2-1.3 3.2-3.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg>';
 const CHEVRON = '<svg class="chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -556,6 +558,7 @@ function renderPeople() {
   <div class="page-head">
     <h1>Address book <span class="muted count">${plural(state.households.length, 'household')}</span></h1>
     <div class="actions">
+      <button class="btn icon-only" data-action="print-book" title="Print the households shown" aria-label="Print the households shown">${PRINT_ICON}</button>
       ${canEdit() ? '<button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button>' : ''}
     </div>
   </div>
@@ -719,12 +722,15 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && filterPanelScope && !modal.open && !confirmEl.open) { closeFilterPanel(); document.querySelector('.filter-btn')?.focus(); }
 });
 
+// The households the Address book shows: search and filters applied, by name.
+const shownHouseholds = () => state.households
+  .filter((h) => matchesSearch(h, state.search) && matchesFilter(h, state.filters.people))
+  .sort(byName);
+
 function renderHouseholdList() {
   const el = document.getElementById('hh-list');
   if (!el) return;
-  const list = state.households
-    .filter((h) => matchesSearch(h, state.search) && matchesFilter(h, state.filters.people))
-    .sort(byName);
+  const list = shownHouseholds();
   el.innerHTML = list.map(householdCard).join('') || '<p class="muted">No households match.</p>';
 }
 
@@ -2131,6 +2137,17 @@ async function printInvitations(form, win) {
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }`,
   });
   return undefined;
+}
+
+// The Address book report: the households shown, numbered, with everything on their cards.
+async function printAddressBook() {
+  const win = window.open('', '_blank');
+  if (!win) return toast('Your browser blocked the new tab. Allow pop-ups for this site and try again.', true);
+  const book = currentBook();
+  const title = book && !book.own ? `${bookLabel(book)} address book` : 'Address book';
+  const filters = [state.search.trim() ? `Search: "${state.search.trim()}"` : '', ...filterChips(state.filters.people).map((c) => c.label)].filter(Boolean);
+  const { css, body } = addressBookReport(shownHouseholds(), { title, filters });
+  return printPages(win, { title, css, body });
 }
 
 // Everything prints the same way: the pages open in a new tab with the print dialog.
@@ -3774,6 +3791,7 @@ document.addEventListener('click', async (e) => {
     case 'check-address': await checkAddress(el); break;
     case 'toggle-share-menu': setShareMenu(modal.querySelector('#share-menu-list').hidden); break;
     case 'hh-share': await shareHousehold(el.dataset.how, el.dataset.kind); break;
+    case 'print-book': await printAddressBook(); break;
     case 'hh-copy-mine':
       setShareMenu(false);
       await withBusy(el, async () => {
