@@ -10,17 +10,22 @@ const avery = (name, group, cols, rows, width, height, left, top, pitchX, pitchY
   padX: 0.12, padY: 0.08, maxPt: 11, minPt: 6.5, // printable inset inside each label; text sizes
   ...extra,
 });
-export const LABEL_GROUPS = ['Address labels', 'Return address labels'];
+export const LABEL_GROUPS = ['Address labels', 'Shipping and large labels', 'Return address labels'];
+// Store brands sold as "Avery compatible" use the same Avery numbers.
 export const LABEL_SHEETS = {
-  avery5160: avery('Avery 5160 / 8160 address labels (1 × 2⅝ in, 30 per sheet)', 'Address labels', 3, 10, 2.625, 1, 0.1875, 0.5, 2.75, 1),
-  avery5161: avery('Avery 5161 / 8161 address labels (1 × 4 in, 20 per sheet)', 'Address labels', 2, 10, 4, 1, 0.15625, 0.5, 4.1875, 1),
-  avery5162: avery('Avery 5162 / 8162 address labels (1⅓ × 4 in, 14 per sheet)', 'Address labels', 2, 7, 4, 4 / 3, 0.15625, 0.8333, 4.1875, 4 / 3),
-  avery5163: avery('Avery 5163 / 8163 shipping labels (2 × 4 in, 10 per sheet)', 'Address labels', 2, 5, 4, 2, 0.15625, 0.5, 4.1875, 2),
-  avery5164: avery('Avery 5164 / 8164 shipping labels (3⅓ × 4 in, 6 per sheet)', 'Address labels', 2, 3, 4, 10 / 3, 0.15625, 0.5, 4.1875, 10 / 3),
+  avery5160: avery('Avery 5160 / 5260 / 8160 / 18160 / 18660 address labels (1 × 2⅝ in, 30 per sheet)', 'Address labels', 3, 10, 2.625, 1, 0.1875, 0.5, 2.75, 1),
+  avery5161: avery('Avery 5161 / 5261 / 8161 address labels (1 × 4 in, 20 per sheet)', 'Address labels', 2, 10, 4, 1, 0.15625, 0.5, 4.1875, 1),
+  avery5162: avery('Avery 5162 / 5262 / 8162 address labels (1⅓ × 4 in, 14 per sheet)', 'Address labels', 2, 7, 4, 4 / 3, 0.15625, 0.8333, 4.1875, 4 / 3),
+  avery5197: avery('Avery 5197 / 8197 address labels (1½ × 4 in, 12 per sheet)', 'Address labels', 2, 6, 4, 1.5, 0.15625, 0.75, 4.1875, 1.5),
+  avery5163: avery('Avery 5163 / 5263 / 8163 / 18163 shipping labels (2 × 4 in, 10 per sheet)', 'Shipping and large labels', 2, 5, 4, 2, 0.15625, 0.5, 4.1875, 2),
+  avery5164: avery('Avery 5164 / 5264 / 8164 shipping labels (3⅓ × 4 in, 6 per sheet)', 'Shipping and large labels', 2, 3, 4, 10 / 3, 0.15625, 0.5, 4.1875, 10 / 3),
+  avery5168: avery('Avery 5168 / 8168 shipping labels (3½ × 5 in, 4 per sheet)', 'Shipping and large labels', 2, 2, 3.5, 5, 0.5, 0.5, 4, 5),
+  avery5126: avery('Avery 5126 / 8126 half-sheet labels (5½ × 8½ in, 2 per sheet)', 'Shipping and large labels', 1, 2, 8.5, 5.5, 0, 0, 8.5, 5.5, { padX: 0.4, padY: 0.3 }),
+  avery5165: avery('Avery 5165 / 8165 full-sheet labels (8½ × 11 in, 1 per sheet)', 'Shipping and large labels', 1, 1, 8.5, 11, 0, 0, 8.5, 11, { padX: 0.5, padY: 0.5 }),
   // Return address labels; 5195, 8195 and 18294 (and others) share this template.
-  avery5195: avery('Avery 5195 / 8195 / 18294 return address labels (⅔ × 1¾ in, 60 per sheet)', 'Return address labels', 4, 15, 1.75, 2 / 3, 0.28, 0.5, 2.0625, 2 / 3,
+  avery5195: avery('Avery 5195 / 6240 / 8195 / 18294 return address labels (⅔ × 1¾ in, 60 per sheet)', 'Return address labels', 4, 15, 1.75, 2 / 3, 0.28, 0.5, 2.0625, 2 / 3,
     { padX: 0.08, padY: 0.05, maxPt: 8.5, minPt: 5.5, wrapPt: 6.5 }), // small labels: shrink further before wrapping
-  avery5167: avery('Avery 5167 / 8167 return address labels (½ × 1¾ in, 80 per sheet)', 'Return address labels', 4, 20, 1.75, 0.5, 0.28, 0.5, 2.0625, 0.5,
+  avery5167: avery('Avery 5167 / 5267 / 8167 / 18167 return address labels (½ × 1¾ in, 80 per sheet)', 'Return address labels', 4, 20, 1.75, 0.5, 0.28, 0.5, 2.0625, 0.5,
     { padX: 0.06, padY: 0.03, maxPt: 7, minPt: 5, wrapPt: 5.5 }),
 };
 export const DEFAULT_LABELS = ['avery5160', 'avery5195'];

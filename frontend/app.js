@@ -1863,8 +1863,8 @@ const myEnvelopes = () => usedEnvelopes(state.me?.profile?.print?.envelopes).map
 const myLabels = (group) => usedLabels(state.me?.profile?.print?.labels).filter((k) => LABEL_SHEETS[k].group === group).map((k) => [k, LABEL_SHEETS[k].name]);
 const PRINT_MEDIA = {
   get invitations() { return Object.entries(INVITE_MEDIA).map(([k, m]) => [k, m.name]); },
-  get addresses() { return [...myLabels('Address labels'), ...myEnvelopes(), ['checklist', 'Occasion Report']]; },
-  get return() { return [...myLabels('Return address labels'), ...myLabels('Address labels'), ...myEnvelopes()]; },
+  get addresses() { return [...myLabels('Address labels'), ...myLabels('Shipping and large labels'), ...myEnvelopes(), ['checklist', 'Occasion Report']]; },
+  get return() { return [...myLabels('Return address labels'), ...myLabels('Address labels'), ...myLabels('Shipping and large labels'), ...myEnvelopes()]; },
 };
 // On envelopes, Addresses and Return addresses are the same print: each envelope gets the recipient
 // and the return address (in the chosen design) together.
@@ -3604,10 +3604,12 @@ function printerTab() {
         <button type="button" class="btn sm" data-action="align-test" data-what="${what}">Alignment page</button></div>`;
   openModal('Settings', `
     ${settingsTabs('printer')}
-    <p style="margin:0">If printing lands off, move it in inches: positive moves right or down, negative left or up (0.06 is about 1/16 in).
-      Print an alignment page on plain paper and hold it against a label sheet or envelope to check.</p>
+    <div class="small stack" style="gap:6px">
+      <p style="margin:0 0 6px"><b>Sizes</b>: tick the label sheets and envelopes you keep on hand. Only the ticked ones are offered under <b>Print on</b> when you print. Store brands marked "Avery compatible" use the same Avery numbers.</p>
+      <p style="margin:0"><b>Across</b> and <b>Down</b>: if printing lands a little off, move it in inches. Positive moves right or down, negative left or up (0.06 is about 1/16 in). Print an <b>Alignment page</b> on plain paper for the size picked beside it and hold it against a sheet or envelope to check.</p>
+    </div>
     <fieldset class="stack"><legend>Labels</legend>
-      ${sizeList(LABEL_SHEETS, LABEL_GROUPS, usedLab, 'useLabel', / (return address|address) labels/)}
+      ${sizeList(LABEL_SHEETS, LABEL_GROUPS, usedLab, 'useLabel', / (return address|address|shipping|half-sheet|full-sheet) labels/)}
       <div class="grid-2">${off('labelOffsetX', 'Across', pr.labelOffsetX)}${off('labelOffsetY', 'Down', pr.labelOffsetY)}</div>
       ${alignRow('alignLabel', usedLab, LABEL_SHEETS, 'labels', 'Label sheet')}
     </fieldset>
