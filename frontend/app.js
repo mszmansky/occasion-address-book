@@ -1104,7 +1104,17 @@ async function checkAddress(btn) {
 
 // Share one household as a vCard or a CSV: the system share sheet (AirDrop, Mail, Messages…) where the
 // browser has one, plus plain downloads. What's on screen is shared, including edits not yet saved.
-function shareMenu() {
+// In a book someone shared with you, the only choice is copying the household into your own book:
+// sharing their addresses with anyone else is the owner's call.
+function shareMenu(h) {
+  if (!isOwner()) {
+    return `<div class="share-menu">
+    <button type="button" class="btn ghost sm icon-only" data-action="toggle-share-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="share-menu-list" title="Share" aria-label="Share">${SHARE_ICON}</button>
+    <div class="menu" id="share-menu-list" role="menu" hidden>
+      <button type="button" role="menuitem" data-action="hh-copy-mine" data-id="${esc(h.id)}" title="Add a copy of this household to your own address book">Copy to my address book</button>
+    </div>
+  </div>`;
+  }
   const canShareSheet = typeof navigator.share === 'function';
   const items = (verb) => `<button type="button" role="menuitem" data-action="hh-share" data-how="${verb}" data-kind="vcf">vCard (.vcf)</button>
       <button type="button" role="menuitem" data-action="hh-share" data-how="${verb}" data-kind="csv">CSV (.csv)</button>`;
@@ -1208,7 +1218,7 @@ function householdModal(h) {
     form: isNew ? 'household-new' : `household-${h.id}`,
     base: isNew ? '' : h.updatedAt ?? '',
     wide: true,
-    head: isNew ? '' : shareMenu(),
+    head: isNew ? '' : shareMenu(h),
     foot: `<div class="left-actions">${isNew ? '' : `<button type="button" class="btn danger" data-action="delete-household" data-id="${esc(h.id)}">Delete</button>
       <button type="button" class="btn" data-action="request-address" data-id="${esc(h.id)}" ${allEmails(h).length ? '' : 'disabled title="Add an email address first"'}>${MAIL} Confirm address</button>`}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button>${NEXT_BTN}<button class="btn primary">Save</button></div>`,
@@ -3761,6 +3771,13 @@ document.addEventListener('click', async (e) => {
     case 'check-address': await checkAddress(el); break;
     case 'toggle-share-menu': setShareMenu(modal.querySelector('#share-menu-list').hidden); break;
     case 'hh-share': await shareHousehold(el.dataset.how, el.dataset.kind); break;
+    case 'hh-copy-mine':
+      setShareMenu(false);
+      await withBusy(el, async () => {
+        const res = await api(`/households/${encodeURIComponent(id)}/copy-to-mine`, { method: 'POST' });
+        toast(`Copied ${res.household.labelName} to your address book`);
+      });
+      break;
     case 'hh-next': {
       const at = HOUSEHOLD_TABS.findIndex(([t]) => t === modal.querySelector('[data-action=hh-tab][aria-selected=true]')?.dataset.tab);
       showHouseholdTab(HOUSEHOLD_TABS[Math.min(at + 1, HOUSEHOLD_TABS.length - 1)][0]);

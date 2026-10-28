@@ -573,6 +573,24 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     return { household: publicHousehold(item) };
   }, { write: true });
 
+  // Someone a book is shared with (edit or view only) can copy one of its households into their own
+  // book. The copy is theirs: no occasion lists, address requests or replies come with it.
+  route('POST', '/households/:id/copy-to-mine', async ({ user, params }) => {
+    if (user.book.role === 'owner') throw new HttpError(400, 'This household is already in your address book');
+    const src = await mustGet(user, `HH#${params.id}`, 'Household');
+    const mine = userPk(user.sub);
+    const key = (h) => [h.labelName, h.address?.line1, h.address?.zip].map((x) => String(x ?? '').trim().toLowerCase()).join('|');
+    if ((await repo.query(mine, 'HH#')).some((h) => key(h) === key(src))) throw new HttpError(409, `${src.labelName} is already in your address book`);
+    const id = newId();
+    const item = {
+      PK: mine, SK: `HH#${id}`, id, ...parseHousehold(publicHousehold(src)),
+      ...(src.addressVerifiedAt ? { addressVerifiedAt: src.addressVerifiedAt } : {}),
+      createdAt: nowIso(), updatedAt: nowIso(),
+    };
+    await repo.put(item);
+    return { household: publicHousehold(item) };
+  });
+
   route('POST', '/households/import', async ({ user, body }) => {
     const list = body.households;
     if (!Array.isArray(list) || !list.length) throw new HttpError(400, 'Nothing to import');

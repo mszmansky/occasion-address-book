@@ -859,3 +859,26 @@ test('admins set the inactivity timeout everyone gets', async () => {
   assert.match((await call('PUT', '/admin/settings', { idleMinutes: 2 }, ADMIN)).body.error, /between 5 and 480/);
   assert.match((await call('PUT', '/admin/settings', { idleMinutes: 12.5 }, ADMIN)).body.error, /whole number/);
 });
+
+test('sharing: anyone a book is shared with can copy a household into their own book', async () => {
+  const { call } = await setup();
+  const KIMC = { sub: 'user-kim', email: 'kim@example.com' };
+  const h = (await call('POST', '/households', { ...smiths, notes: 'Gate code 1234', groups: ['Family'] })).body.household;
+  const occ = (await call('POST', '/occasions', { name: 'Cards', kind: 'card' })).body.occasion;
+  await call('PUT', `/occasions/${occ.id}/tags`, { add: [h.id] });
+  await call('POST', '/shares', { email: 'kim@example.com', role: 'view' });
+  // View only is enough: it writes only to Kim's own book.
+  const res = await call('POST', `/households/${h.id}/copy-to-mine`, undefined, as(KIMC, 'user-1'));
+  assert.equal(res.status, 200);
+  const mine = (await call('GET', '/households', undefined, as(KIMC))).body.households;
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].labelName, 'The Smith Family');
+  assert.equal(mine[0].notes, 'Gate code 1234');
+  assert.notEqual(mine[0].id, h.id);
+  assert.equal((await call('GET', '/households')).body.households.length, 1, "the owner's book is unchanged");
+  const again = await call('POST', `/households/${h.id}/copy-to-mine`, undefined, as(KIMC, 'user-1'));
+  assert.equal(again.status, 409);
+  assert.match(again.body.error, /already in your address book/);
+  assert.equal((await call('POST', `/households/${h.id}/copy-to-mine`)).status, 400, 'the owner has it already');
+  assert.equal((await call('POST', `/households/${h.id}/copy-to-mine`, undefined, as({ sub: 'user-joe', email: 'joe@example.com' }, 'user-1'))).status, 403, 'not shared with Joe');
+});
