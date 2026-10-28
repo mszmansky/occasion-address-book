@@ -1600,6 +1600,7 @@ function renderOccasion() {
   <div class="stats">
     <div><b>${onList.length}</b><span>on the list</span></div>
     ${kind === 'email' ? `<div><b>${invited}</b><span>emailed</span></div>
+    ${rsvpStats()}
     ${onList.length - withEmail ? `<div class="warn"><b>${onList.length - withEmail}</b><span>no email</span></div>` : ''}`
     : `<div><b>${mailed}</b><span>mailed</span></div>
     ${noAddr ? `<div class="warn"><b>${noAddr}</b><span>missing an address</span></div>` : ''}`}
@@ -1662,6 +1663,24 @@ function peopleCell(h, t) {
   return `<div class="people-checks">${people.map((m) => `<label class="check" title="${esc(m.email)}"><input type="checkbox" data-action="tag-person" data-id="${esc(h.id)}" data-person="${esc(m.id)}" ${on.has(m.id) ? 'checked' : ''} ${canEdit() ? '' : 'disabled'}> ${esc(personName(m))}</label>`).join('')}</div>`;
 }
 
+// RSVP answers from emailed invitations: Yes / Maybe / No, with how many are coming.
+const RSVP_WORD = { yes: 'Yes', maybe: 'Maybe', no: 'No' };
+const RSVP_PILL = { yes: 'ok', maybe: 'due-soon', no: 'unknown' };
+function rsvpPill(r) {
+  if (!r?.answer) return '';
+  const title = [`Answered ${fmtDate(r.at, { month: 'short', day: 'numeric' })}`, r.note && `Note: ${r.note}`].filter(Boolean).join(' · ');
+  return `<span class="pill ${RSVP_PILL[r.answer]}" title="${esc(title)}">${RSVP_WORD[r.answer]}${r.answer !== 'no' && r.count ? ` · ${r.count}` : ''}</span>`;
+}
+function rsvpStats() {
+  const tags = [...tagMap().values()].filter((t) => t.rsvp?.answer);
+  if (!tags.length) return '';
+  const n = (a) => tags.filter((t) => t.rsvp.answer === a);
+  const heads = (a) => n(a).reduce((sum, t) => sum + (t.rsvp.count || 1), 0);
+  return `<div><b>${heads('yes')}</b><span>coming (${n('yes').length} yes)</span></div>
+    ${n('maybe').length ? `<div><b>${n('maybe').length}</b><span>maybe</span></div>` : ''}
+    ${n('no').length ? `<div><b>${n('no').length}</b><span>can't come</span></div>` : ''}`;
+}
+
 function renderRecipientRows() {
   const el = document.getElementById('rcpt-rows');
   if (!el) return;
@@ -1672,7 +1691,7 @@ function renderRecipientRows() {
     const t = tags.get(h.id);
     const email = allEmails(h).length;
     const emailKind = isEmailKind(state.occ?.occasion);
-    const emailCell = !t ? '' : t.invitedAt ? `<span class="pill ok" title="${esc((t.invitedTo ?? []).join(', '))}">Sent ${fmtDate(t.invitedAt, { month: 'short', day: 'numeric' })}</span>`
+    const emailCell = !t ? '' : t.invitedAt ? `<span class="pill ok" title="${esc((t.invitedTo ?? []).join(', '))}">Sent ${fmtDate(t.invitedAt, { month: 'short', day: 'numeric' })}</span>${t.rsvp ? ` ${rsvpPill(t.rsvp)}` : ''}`
       : t.inviteError ? `<span class="pill overdue" title="${esc(t.inviteError)}">Failed</span>`
         : email ? '<span class="muted small">Not sent</span>' : '<span class="muted small">No email</span>';
     return `<tr class="${t ? 'on' : ''}">

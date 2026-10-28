@@ -897,3 +897,57 @@ test('printer settings keep the envelope sizes someone uses', async () => {
   assert.match((await call('PUT', '/me', { print: { labels: [] } })).body.error, /at least one of the label sizes/);
   assert.equal((await call('PUT', '/me', { print: { envelopes: ['<b>'] } })).status, 400);
 });
+
+test('emails: each household gets RSVP buttons and a calendar invite; answers land on the list and notify the sender', async () => {
+  const { call, mailer, repo } = await setup();
+  await call('PUT', '/me', { firstName: 'Mike', lastName: 'Szmansky' });
+  await call('GET', '/me?tz=America/Detroit');
+  const h = (await call('POST', '/households', smiths)).body.household;
+  const o = (await call('POST', '/occasions', { name: 'Holiday Party', kind: 'email', date: '2026-12-19', time: '7:00 PM', location: '14 Cherry Lane' })).body.occasion;
+  await call('PUT', `/occasions/${o.id}/design`, { html: '<p>Dear {{greeting}}</p>' });
+  await call('PUT', `/occasions/${o.id}/tags`, { add: [h.id] });
+  await call('POST', `/occasions/${o.id}/invites`, { householdIds: [h.id] });
+  const sent = mailer.sent.at(-1);
+  const token = /rsvp\.html#t=([\w-]+)/.exec(sent.html)[1];
+  for (const a of ['yes', 'maybe', 'no']) assert.ok(sent.html.includes(`rsvp.html#t=${token}&amp;a=${a}`), a);
+  assert.match(sent.html, /Add to calendar/);
+  assert.match(sent.text, /RSVP: https:\/\/cards\.example\.com\/rsvp\.html#t=/);
+  assert.match(sent.calendar, /DTSTART:20261220T000000Z/);
+  assert.match(sent.calendar, /ORGANIZER;CN="Mike Szmansky":mailto:mike@example\.com/);
+  assert.match(sent.calendar.replace(/\r\n /g, ''), /ATTENDEE;CN="[^"]+";ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:/);
+
+  // The guest's page: no sign-in.
+  let r = await call('GET', `/public/rsvp/${token}`, undefined, { token: null });
+  assert.deepEqual([r.body.occasion, r.body.date, r.body.time, r.body.household, r.body.fromName, r.body.calendar, r.body.rsvp], ['Holiday Party', 'Saturday, December 19, 2026', '7:00 PM', 'The Smith Family', 'Mike Szmansky', true, null]);
+  assert.match((await call('POST', `/public/rsvp/${token}`, { answer: 'sure' }, { token: null })).body.error, /Yes, Maybe or No/);
+  r = await call('POST', `/public/rsvp/${token}`, { answer: 'yes', count: 3, note: 'Bringing pie' }, { token: null });
+  assert.equal(r.body.saved, true);
+  const tag = (await call('GET', `/occasions/${o.id}`)).body.tags[0];
+  assert.deepEqual([tag.rsvp.answer, tag.rsvp.count, tag.rsvp.note], ['yes', 3, 'Bringing pie']);
+  const notice = mailer.sent.at(-1);
+  assert.deepEqual([notice.to, notice.subject], ['mike@example.com', 'RSVP from The Smith Family: Yes (3 people)']);
+  // Changing their mind replaces the answer; No has no head count.
+  await call('POST', `/public/rsvp/${token}`, { answer: 'no', count: 3 }, { token: null });
+  assert.deepEqual((await call('GET', `/occasions/${o.id}`)).body.tags[0].rsvp.answer, 'no');
+  assert.equal((await call('GET', `/occasions/${o.id}`)).body.tags[0].rsvp.count, undefined);
+
+  // "Add to calendar" downloads the invite.
+  const api = (await setup()).call; // a separate app can't see it
+  assert.equal((await api('GET', `/public/rsvp/${token}`, undefined, { token: null })).status, 404);
+  assert.equal((await call('GET', '/public/rsvp/not-a-real-token-at-all', undefined, { token: null })).status, 404);
+  assert.ok(await repo.get(`RSVP#${(await import('node:crypto')).createHash('sha256').update(token).digest('hex')}`, 'RSVP'));
+});
+
+test('emails: a test email has working RSVP buttons that save nothing; no date means no calendar invite', async () => {
+  const { call, mailer } = await setup();
+  const o = (await call('POST', '/occasions', { name: 'Someday', kind: 'email' })).body.occasion;
+  await call('PUT', `/occasions/${o.id}/design`, { html: '<p>Hi</p>' });
+  await call('POST', `/occasions/${o.id}/invites`, { test: true });
+  const sent = mailer.sent.at(-1);
+  assert.equal(sent.calendar, undefined);
+  assert.doesNotMatch(sent.html, /Add to calendar/);
+  const token = /rsvp\.html#t=([\w-]+)/.exec(sent.html)[1];
+  assert.equal((await call('GET', `/public/rsvp/${token}`, undefined, { token: null })).body.test, true);
+  const r = await call('POST', `/public/rsvp/${token}`, { answer: 'yes', count: 2 }, { token: null });
+  assert.deepEqual([r.body.saved, r.body.test], [false, true]);
+});

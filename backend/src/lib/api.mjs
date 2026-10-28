@@ -5,9 +5,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { HttpError } from './auth.mjs';
 import { userPk } from './repo.mjs';
-import { buildAddressReceived, buildAddressRequest, buildInvite, buildPasswordChanged, buildShareNotice } from './email.mjs';
+import { buildAddressReceived, buildAddressRequest, buildInvite, buildPasswordChanged, buildRsvpNotice, buildShareNotice } from './email.mjs';
+import { buildIcs } from './ics.mjs';
 import { cleanDesignHtml } from './sanitize.mjs';
-import { BORDERS, FONTS } from './design-core.mjs';
+import { BORDERS, FONTS, longDate } from './design-core.mjs';
 
 export const LINK_DAYS = 30;          // address-update links expire after this many days
 export const TRASH_DAYS = 30;         // deleted households and occasions stay in the Trash this long
@@ -23,6 +24,8 @@ const addressKey = (a = {}) => (a.country && !US_COUNTRY.test(a.country.trim()) 
   : tokenHash(['line1', 'line2', 'city', 'state', 'zip'].map((k) => String(a[k] ?? '').trim().replace(/\s+/g, ' ').toLowerCase()).join('|')));
 const VERIFIED_DAYS = 7; // a confirmed check counts if the household is saved with that address within this time
 const tokenPk = (t) => `TOKEN#${tokenHash(t)}`;
+const rsvpPk = (t) => `RSVP#${tokenHash(t)}`; // RSVP link for one household's invitation
+const RSVP_DAYS = 400;
 
 // ---------- validation helpers ----------
 function str(v, field, { max = 200, required = false } = {}) {
@@ -936,18 +939,38 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     return { uploadUrl: await media.signUpload(key, { type: body.type, size }), url: `${String(appUrl).replace(/\/$/, '')}/${key}` };
   }, { write: true });
 
-  route('POST', '/occasions/:id/invites', async ({ user, params, body }) => {
+  route('POST', '/occasions/:id/invites', async ({ user, params, body, apiBase }) => {
     const o = await mustGet(user, `OCC#${params.id}`, 'Occasion');
     if (!o.design?.html && !o.invite?.message) throw new HttpError(400, 'Design the email first');
     const profile = await getProfile(user);
     const fromName = senderName(profile);
 
+    // Each household's email gets its own RSVP link (Yes / Maybe / No and "Add to calendar") and, when
+    // the occasion has a date, a calendar invitation whose replies go to the sender's own email.
+    const rsvpFor = async (h, to, { test = false } = {}) => {
+      const token = randomBytes(24).toString('base64url');
+      await repo.put({
+        PK: rsvpPk(token), SK: 'RSVP', sub: user.book.ownerSub, occasionId: o.id, householdId: h.id, senderEmail: user.email, fromName,
+        test: test || undefined, createdAt: nowIso(), ttl: Math.floor(now().getTime() / 1000) + RSVP_DAYS * 86_400,
+      });
+      const url = `${String(appUrl).replace(/\/$/, '')}/rsvp.html#t=${token}`;
+      const people = h.members ?? [];
+      const calendar = buildIcs({
+        occasion: o, uid: `${o.id}-${h.id ?? 'test'}@occasions-address-book`, organizer: { name: fromName, email: user.email }, timeZone: profile.timeZone, now: now(),
+        attendees: to.map((email) => { const m = people.find((x) => x.email?.toLowerCase() === email); return { email, name: m ? fullName(m) : h.labelName }; }),
+        description: `Invitation from ${fromName || user.email}. RSVP: ${url}`, url,
+      });
+      return { rsvp: { url, icsUrl: calendar ? `${apiBase}/public/rsvp/${token}/invite.ics` : '' }, calendar: calendar || undefined };
+    };
+
     if (body.test) {
       const sample = (await repo.query(bk(user), `TAG#${params.id}#`))[0];
       const h = sample ? await repo.get(bk(user), `HH#${sample.householdId}`) : null;
-      const msg = buildInvite({ occasion: o, household: h ?? { labelName: fullName(profile) || 'Friend' }, fromName, test: true });
+      const household = h ?? { labelName: fullName(profile) || 'Friend' };
+      const { rsvp, calendar } = await rsvpFor(household, [user.email], { test: true });
+      const msg = buildInvite({ occasion: o, household, fromName, test: true, rsvp });
       try {
-        await mailer.send({ to: user.email, ...msg, fromName, replyTo: user.email });
+        await mailer.send({ to: user.email, ...msg, calendar, fromName, replyTo: user.email });
       } catch (e) {
         log.error(e);
         throw new HttpError(502, sesHint(e, 'The test email could not be sent.'));
@@ -976,7 +999,8 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
       try {
         if (i) await pause(120); // stay under SES's per-second send rate
         const greeting = typeof greetings[hid] === 'string' && greetings[hid].trim() ? greetings[hid].trim().slice(0, 160) : undefined;
-        await mailer.send({ to, ...buildInvite({ occasion: o, household: h, fromName, greeting }), fromName, replyTo: user.email });
+        const { rsvp, calendar } = await rsvpFor(h, to);
+        await mailer.send({ to, ...buildInvite({ occasion: o, household: h, fromName, greeting, rsvp }), calendar, fromName, replyTo: user.email });
         const { inviteError, ...t } = tag;
         await repo.put({ ...t, invitedAt: nowIso(), invitedTo: to });
         results.push({ householdId: hid, status: 'sent', to });
@@ -989,6 +1013,60 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     }
     return { results };
   }, { write: true });
+
+  // ---------- public: RSVP link ----------
+  // From the invitation email: rsvp.html#t=<token>. The token stands for one household's invitation;
+  // the answer is kept on that household's place on the occasion's list.
+  async function rsvpContext(token) {
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) throw new HttpError(404, "This link isn't valid.");
+    const r = await repo.get(rsvpPk(token), 'RSVP');
+    if (!r) throw new HttpError(404, 'This invitation link has expired.');
+    const o = await repo.get(userPk(r.sub), `OCC#${r.occasionId}`);
+    if (!o) throw new HttpError(404, 'This invitation is no longer active.');
+    const h = r.householdId ? await repo.get(userPk(r.sub), `HH#${r.householdId}`) : null;
+    const tag = r.householdId ? await repo.get(userPk(r.sub), `TAG#${r.occasionId}#${r.householdId}`) : null;
+    if (!r.test && (!h || !tag)) throw new HttpError(404, 'This invitation is no longer active.');
+    return { r, o, h, tag };
+  }
+
+  route('GET', '/public/rsvp/:token', async ({ params }) => {
+    const { r, o, h, tag } = await rsvpContext(params.token);
+    return {
+      occasion: o.name, date: longDate(o.date), time: o.time ?? '', location: o.location ?? '', fromName: r.fromName || '',
+      household: h?.labelName ?? '', people: h?.members?.length || 1, test: r.test || undefined, calendar: Boolean(o.date), rsvp: tag?.rsvp ?? null,
+    };
+  }, { open: true });
+
+  route('POST', '/public/rsvp/:token', async ({ params, body }) => {
+    const { r, o, h, tag } = await rsvpContext(params.token);
+    if (!['yes', 'maybe', 'no'].includes(body.answer)) throw new HttpError(400, 'Choose Yes, Maybe or No');
+    const count = body.answer === 'no' ? undefined : num(body.count, 'How many', { min: 1, max: 50 });
+    if (count !== undefined && !Number.isInteger(count)) throw new HttpError(400, 'How many must be a whole number');
+    const note = str(body.note, 'Note', { max: 500 });
+    const rsvp = { answer: body.answer, count: count || undefined, note: note || undefined, at: nowIso() };
+    if (r.test) return { saved: false, test: true, rsvp };
+    await repo.put({ ...tag, rsvp });
+    try {
+      await mailer.send({ to: r.senderEmail, ...buildRsvpNotice({ occasionName: o.name, householdName: h.labelName, ...rsvp, appUrl }) });
+    } catch (e) {
+      log.error(e); // the answer is saved either way
+    }
+    return { saved: true, rsvp };
+  }, { open: true });
+
+  // "Add to calendar": the invitation as a calendar file.
+  route('GET', '/public/rsvp/:token/invite.ics', async ({ params }) => {
+    const { r, o, h, tag } = await rsvpContext(params.token);
+    const owner = (await repo.get(userPk(r.sub), 'PROFILE')) ?? {};
+    const url = `${String(appUrl).replace(/\/$/, '')}/rsvp.html#t=${params.token}`;
+    const to = tag?.invitedTo ?? [];
+    const ics = buildIcs({
+      occasion: o, uid: `${o.id}-${h?.id ?? 'test'}@occasions-address-book`, organizer: { name: r.fromName, email: r.senderEmail }, timeZone: owner.timeZone, now: now(),
+      attendees: to.map((email) => ({ email, name: h?.labelName })), description: `Invitation from ${r.fromName || r.senderEmail}. RSVP: ${url}`, url,
+    });
+    if (!ics) throw new HttpError(404, 'This invitation has no date yet.');
+    return { __raw: { statusCode: 200, headers: { 'content-type': 'text/calendar; charset=utf-8', 'content-disposition': 'attachment; filename="invite.ics"', 'cache-control': 'no-store' }, body: ics } };
+  }, { open: true });
 
   // ---------- public: address-update link ----------
   async function linkContext(token) {
@@ -1161,7 +1239,11 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
         }
         if (!body || typeof body !== 'object') throw new HttpError(400, 'Request body must be a JSON object');
       }
-      return respond(200, await match.fn({ user, params, body, query: event.queryStringParameters ?? {} }));
+      const domain = event.requestContext?.domainName;
+      const apiBase = domain && !/^localhost/.test(domain) ? `https://${domain}` : `${String(appUrl).replace(/\/$/, '')}/api`;
+      const out = await match.fn({ user, params, body, query: event.queryStringParameters ?? {}, apiBase });
+      if (out?.__raw) return out.__raw; // a file, not JSON
+      return respond(200, out);
     } catch (err) {
       if (err instanceof HttpError) return respond(err.status, { error: err.message, ...(err.code ? { code: err.code } : {}), ...(err.extra ?? {}) });
       log.error(err);

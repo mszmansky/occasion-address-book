@@ -125,6 +125,8 @@ The API Lambda verifies each Cognito ID token against the user pool's JWKS befor
 | `template.yaml` | AWS SAM template: table, API, Lambda, S3 + CloudFront |
 | `backend/src/lib/api.mjs` | REST API routes and validation |
 | `backend/src/lib/email.mjs` | Invitation, address-check and reply emails |
+| `backend/src/lib/ics.mjs` | Calendar invitations (.ics) for emailed invitations: reads the typed time, 3-hour events in the sender's time zone (unit tested) |
+| `frontend/rsvp.html` | Public RSVP page (Yes / Maybe / No, how many, note, Add to calendar) |
 | `backend/src/lib/auth.mjs`, `repo.mjs`, `mailer.mjs` | Cognito token check, DynamoDB access, SES (shared with Vehicle Maintenance) |
 | `backend/src/handlers/cognito-message.mjs` | Cognito's invitation, password-reset and email-change emails |
 | `frontend/auth.js` | Cognito sign-in from the browser (shared with Vehicle Maintenance) |
@@ -154,6 +156,7 @@ PK = USER#<Cognito user id (sub)>
   SK = TAG#<occasionId>#<hhId>   household on an occasion's list (mailedAt, invitedAt)
   SK = VERIFIED#<sha256(address)>  an address a check confirmed (marks the household verified when saved with it), removed by TTL after 7 days
   SK = TRASH#<household|occasion>#<id>  a deleted item and its occasion-list rows, removed by TTL after 30 days
+PK = RSVP#<sha256(token)>, SK = RSVP     one household's RSVP link for an emailed invitation (answer kept on its TAG row as rsvp), removed by TTL after 400 days
 PK = APP#SETTINGS, SK = SETTINGS        app-wide settings from Admin › Settings (idleMinutes)
 PK = ACCOUNT#<sub>, SK = OFF            account disabled or deleted by an admin (checked on every request)
 PK = TOKEN#<sha256(token)>, SK = TOKEN    address-check link, removed by TTL after 30 days

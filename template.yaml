@@ -360,7 +360,7 @@ Resources:
               Resource: !GetAtt UserPool.Arn
         - Statement:
             - Effect: Allow
-              Action: ses:SendEmail
+              Action: [ses:SendEmail, ses:SendRawEmail] # invitations with a calendar invite are sent as raw MIME
               Resource:
                 - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*
                 - !If

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>RSVP</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+</head>
+<body>
+  <main class="auth"><div class="auth-card" id="card"><p class="muted">Loading…</p></div></main>
+  <script type="module">
+    // Opened from an emailed invitation's Yes / Maybe / No buttons: rsvp.html#t=<token>&a=yes. The token
+    // is the only credential; it stays in the URL fragment so it never reaches server logs.
+    const card = document.getElementById('card');
+    const cfg = window.APP_CONFIG ?? {};
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const token = hash.get('t') ?? '';
+    const picked = ['yes', 'maybe', 'no'].includes(hash.get('a')) ? hash.get('a') : '';
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    const api = String(cfg.apiUrl ?? '').replace(/\/$/, '');
+    const endpoint = `${api}/public/rsvp/${encodeURIComponent(token)}`;
+    const WORD = { yes: 'Yes', maybe: 'Maybe', no: 'No' };
+    const fail = (msg) => { card.innerHTML = `<h1>Sorry</h1><p class="muted">${esc(msg)}</p>`; };
+    const day = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    async function call(method, body) {
+      const res = await fetch(endpoint, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? 'Something went wrong. Please try again.');
+      return json;
+    }
+
+    const calendarLink = (d) => (d.calendar ? `<a class="btn" href="${esc(`${endpoint}/invite.ics`)}" download="invite.ics">Add to calendar</a>` : '');
+
+    function done(d, r, test) {
+      const from = d.fromName || 'They';
+      card.innerHTML = `<h1>${r.answer === 'no' ? 'Thanks for letting us know' : 'Thank you!'}</h1>
+        <p>You answered <b>${WORD[r.answer]}</b>${r.answer !== 'no' && r.count ? ` for ${r.count} ${r.count === 1 ? 'person' : 'people'}` : ''}. ${test ? 'This was a test, so nothing was saved.' : `${esc(from)} will see it.`}</p>
+        ${r.answer !== 'no' ? `<div class="row-gap">${calendarLink(d)}</div>` : ''}
+        <p class="small muted">To change your answer, open the link in the invitation again.</p>`;
+    }
+
+    async function start() {
+      if (!token) return fail('This link is incomplete. Open it again from the invitation email.');
+      let d;
+      try { d = await call('GET'); } catch (e) { return fail(e.message); }
+      const from = d.fromName || 'Your host';
+      const prev = d.rsvp;
+      const answer = picked || prev?.answer || '';
+      const when = [d.date, d.time].filter(Boolean).join(' at ');
+      card.innerHTML = `
+        <div class="brand"><span>${esc(from)} invites ${esc(d.household || 'you')}</span></div>
+        <h1>${esc(d.occasion)}</h1>
+        ${when || d.location ? `<div class="pending-box" style="margin-top:4px">${when ? `<div><b>${esc(when)}</b></div>` : ''}${d.location ? `<div style="white-space:pre-line">${esc(d.location)}</div>` : ''}</div>` : ''}
+        ${d.test ? '<p class="notice small" style="margin:0">This is a test invitation: your answer won\'t be saved.</p>' : ''}
+        ${prev ? `<p class="small muted" style="margin:0">You answered <b>${WORD[prev.answer]}</b> on ${esc(day(prev.at))}. You can change it here.</p>` : ''}
+        <form id="form" class="stack" style="margin-top:6px">
+          <div><div class="label-like">Will you be there?</div>
+            <div class="seg fp-seg" role="radiogroup" aria-label="Will you be there?">
+              ${['yes', 'maybe', 'no'].map((a) => `<label><input type="radio" name="answer" value="${a}" ${answer === a ? 'checked' : ''}><span>${WORD[a]}</span></label>`).join('')}
+            </div></div>
+          <label data-count>How many of you are coming?<input name="count" type="number" min="1" max="50" value="${esc(prev?.count ?? d.people ?? 1)}" style="max-width:110px"></label>
+          <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2" maxlength="500" placeholder="e.g. We'll bring dessert!">${esc(prev?.note ?? '')}</textarea></label>
+          <p class="error" id="err" hidden></p>
+          <button class="btn primary" type="submit">Send my answer</button>
+          ${d.calendar ? `<div class="row-gap">${calendarLink(d)}</div>` : ''}
+        </form>`;
+      const form = document.getElementById('form');
+      const err = document.getElementById('err');
+      const sync = () => { form.querySelector('[data-count]').hidden = form.elements.answer.value === 'no'; };
+      form.addEventListener('change', sync);
+      sync();
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = form.elements;
+        if (!f.answer.value) { err.textContent = 'Choose Yes, Maybe or No.'; err.hidden = false; return; }
+        const btn = form.querySelector('button[type=submit]');
+        btn.disabled = true; err.hidden = true;
+        try {
+          const res = await call('POST', { answer: f.answer.value, count: f.answer.value === 'no' ? undefined : Number(f.count.value || 1), note: f.note.value.trim() });
+          done(d, res.rsvp, res.test);
+        } catch (x) { err.textContent = x.message; err.hidden = false; btn.disabled = false; }
+      });
+    }
+    start();
+  </script>
+</body>
+</html>

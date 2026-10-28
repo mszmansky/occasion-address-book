@@ -38,11 +38,24 @@ const button = (url, label) => `<p style="margin:22px 0"><a href="${esc(url)}" s
  * @param {object} p.household  { labelName }
  * @param {string} p.fromName   who it's from, e.g. "Mike Szmansky"
  */
-export function buildInvite({ occasion, household, fromName, greeting: chosen, test = false }) {
+// RSVP buttons (Yes / Maybe / No) and "Add to calendar", under the invitation. rsvp: { url (the RSVP
+// page for this household), icsUrl (its calendar file) }.
+function rsvpBlock(rsvp) {
+  if (!rsvp?.url) return { html: '', text: '' };
+  const btn = (a, label, bg) => `<a href="${esc(`${rsvp.url}&a=${a}`)}" style="display:inline-block;margin:4px;background:${bg};color:#ffffff;text-decoration:none;font:600 15px Arial,sans-serif;padding:10px 20px;border-radius:8px">${label}</a>`;
+  const html = `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:18px 0 4px"><tr><td align="center" style="font:600 16px Arial,sans-serif;color:#1d2125;padding-bottom:6px">Will you be there?</td></tr>
+<tr><td align="center">${btn('yes', 'Yes', '#2f7d4f')}${btn('maybe', 'Maybe', '#8a6d1d')}${btn('no', 'No', '#868e96')}</td></tr>
+${rsvp.icsUrl ? `<tr><td align="center" style="padding-top:10px;font:14px Arial,sans-serif"><a href="${esc(rsvp.icsUrl)}" style="color:#9f1239">Add to calendar</a></td></tr>` : ''}</table>`;
+  const text = `Will you be there? RSVP: ${rsvp.url}${rsvp.icsUrl ? `\nAdd to calendar: ${rsvp.icsUrl}` : ''}`;
+  return { html, text };
+}
+
+export function buildInvite({ occasion, household, fromName, greeting: chosen, test = false, rsvp = null }) {
   const inv = occasion.invite ?? {};
   const subject = `${test ? '[Test] ' : ''}${inv.subject || `You're invited: ${occasion.name}`}`;
   const greeting = chosen || household?.greeting || household?.labelName || '';
-  if (occasion.design?.html) return designedEmail({ occasion, greeting, fromName, subject });
+  const r = rsvpBlock(rsvp);
+  if (occasion.design?.html) return designedEmail({ occasion, greeting, fromName, subject, rsvp: r });
   const details = [
     occasion.date && ['When', [fmtDate(occasion.date), occasion.time].filter(Boolean).join(' at ')],
     occasion.location && ['Where', occasion.location],
@@ -57,7 +70,8 @@ export function buildInvite({ occasion, household, fromName, greeting: chosen, t
     inner: `${greeting ? `<p style="margin:0 0 14px">Dear ${esc(greeting)},</p>` : ''}
       ${paragraphs(inv.message)}
       ${detailHtml}
-      ${fromName ? `<p style="margin:0 0 14px">— ${esc(fromName)}</p>` : ''}`,
+      ${fromName ? `<p style="margin:0 0 14px">— ${esc(fromName)}</p>` : ''}
+      ${r.html}`,
     footer: `Reply to this email to respond${fromName ? ` to ${esc(fromName)}` : ''}.`,
   });
 
@@ -72,6 +86,8 @@ export function buildInvite({ occasion, household, fromName, greeting: chosen, t
     details.length ? '' : null,
     fromName && `— ${fromName}`,
     '',
+    r.text || null,
+    r.text ? '' : null,
     'Reply to this email to respond.',
   ].filter((l) => l !== null && l !== undefined && l !== false).join('\n');
 
@@ -80,7 +96,7 @@ export function buildInvite({ occasion, household, fromName, greeting: chosen, t
 
 // A designed email: the design itself, centered, with a one-line footer. Web fonts are linked for
 // mail apps that load them (Apple Mail); others use each font's fallback.
-function designedEmail({ occasion, greeting, fromName, subject }) {
+function designedEmail({ occasion, greeting, fromName, subject, rsvp = { html: '', text: '' } }) {
   const values = fieldValues({ occasion, greeting, fromName });
   const link = fontLink(occasion.design);
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -91,9 +107,10 @@ ${link ? `<link href="${esc(link)}" rel="stylesheet">` : ''}
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px"><tr><td>
 ${renderDesign(occasion.design, values)}
 </td></tr>
+${rsvp.html ? `<tr><td style="background:#ffffff;padding:6px 12px 14px">${rsvp.html}</td></tr>` : ''}
 <tr><td style="padding:14px 4px;font:12.5px/1.5 Arial,sans-serif;color:#868e96;text-align:center">Reply to this email to respond${fromName ? ` to ${esc(fromName)}` : ''}.</td></tr>
 </table></td></tr></table></body></html>`;
-  const text = `${designText(occasion.design.html, values)}\n\nReply to this email to respond.`;
+  const text = `${designText(occasion.design.html, values)}\n\n${rsvp.text ? `${rsvp.text}\n\n` : ''}Reply to this email to respond.`;
   return { subject, html, text };
 }
 
@@ -231,5 +248,23 @@ ${access}
 
 ${signIn}
 ${appUrl ? (to ? signinUrl(appUrl, encodeURIComponent(to)) : appUrl) : ''}`;
+  return { subject, html, text };
+}
+
+/** Tells the person who sent the invitation that a guest answered. */
+export function buildRsvpNotice({ occasionName, householdName, answer, count, note, appUrl }) {
+  const APP = 'Occasions Address Book';
+  const word = { yes: 'Yes', maybe: 'Maybe', no: 'No' }[answer] ?? answer;
+  const coming = answer !== 'no' && count ? ` (${count} ${count === 1 ? 'person' : 'people'})` : '';
+  const subject = `RSVP from ${householdName}: ${word}${coming}`;
+  const p = (t) => `<p style="margin:0 0 14px">${t}</p>`;
+  const html = layout({
+    heading: `${esc(householdName)} answered ${esc(word)}`,
+    inner: p(`For <b>${esc(occasionName)}</b>: <b>${esc(word)}</b>${esc(coming)}.`)
+      + (note ? p(`Their note: “${esc(note)}”`) : '')
+      + (appUrl ? button(appUrl, `Open ${APP}`) : ''),
+    footer: 'Every answer shows on the occasion in the app.',
+  });
+  const text = `${householdName} answered ${word}${coming} for ${occasionName}.${note ? `\n\nTheir note: "${note}"` : ''}\n\n${appUrl ?? ''}`;
   return { subject, html, text };
 }
