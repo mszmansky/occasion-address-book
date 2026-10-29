@@ -329,7 +329,8 @@ function renderAuth() {
     signin: field.email + field.password
       + `<label class="check"><input type="checkbox" name="remember" ${rememberedEmail() ? 'checked' : ''}> Remember my email on this device</label>`,
     mfa: field.code,
-    newpassword: field.newPassword,
+    newpassword: '<div class="grid-2"><label>First name<input name="firstName" maxlength="60" autocomplete="given-name" required></label>'
+      + '<label>Last name<input name="lastName" maxlength="60" autocomplete="family-name" required></label></div>' + field.newPassword,
     reset: field.email,
     resetcode: field.code + field.newPassword,
   }[m];
@@ -378,6 +379,9 @@ async function submitAuth(form) {
     } else if (mode === 'mfa') {
       if (go(await auth.answerMfa(d.code.replace(/\s/g, '')))) return;
     } else if (mode === 'newpassword') {
+      const [firstName, lastName] = [d.firstName.trim(), d.lastName.trim()];
+      if (!firstName || !lastName) throw new Error('Enter your first and last name.');
+      state.newName = { firstName, lastName }; // saved to your profile once you're signed in
       if (go(await auth.setNewPassword(form.elements.password.value))) return;
     } else if (mode === 'reset') {
       state.authEmail = d.email;
@@ -410,6 +414,10 @@ async function loadAll() {
     try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* unknown */ }
     const [me, hh, occ] = await Promise.all([api(`/me${tz ? `?tz=${encodeURIComponent(tz)}` : ''}`), api('/households'), api('/occasions')]);
     state.me = me;
+    if (state.newName) { // from Choose your password, the first time you sign in
+      try { state.me = await api('/me', { method: 'PUT', body: state.newName }); } catch (e) { toast(e.message, true); }
+      state.newName = null;
+    }
     if (me.settings?.idleMinutes) { try { localStorage.setItem(IDLE_KEY, String(me.settings.idleMinutes)); } catch { /* this visit only */ } }
     state.households = hh.households;
     state.occasions = occ.occasions;
