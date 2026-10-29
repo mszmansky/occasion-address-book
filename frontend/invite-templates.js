@@ -118,7 +118,7 @@ const ARTWORK = {
   clock: { draw: clock, width: '32%' },
   cap: { draw: gradCap, width: '40%' },
   diploma: { draw: diploma, width: '40%' },
-  caps: { draw: capsToss, width: '40%' },
+  caps: { file: 'art/caps.jpg', width: '50%' },
   carriage: { draw: carriage, width: '34%' },
   rings: { draw: rings, width: '34%' },
   blossoms: { draw: ART.blossoms, width: '34%' },
