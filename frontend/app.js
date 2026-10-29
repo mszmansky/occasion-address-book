@@ -1889,7 +1889,10 @@ async function openDesigner(templateId) {
   if (!templateId) return designModal(null, { fromEdit: true });
   if (!templateId.startsWith(`${CUSTOM}:`)) toast('Setting up the template…');
   try {
-    return designModal(await designFromTemplate(templateId), { fromEdit: true });
+    const design = await designFromTemplate(templateId);
+    // A template changed in the Designer is saved as your own: "Custom Champagne".
+    if (templateById(templateId)) design.name = `Custom ${design.name}`;
+    return designModal(design, { fromEdit: true });
   } catch (e) {
     return toast(e.message, true);
   }
