@@ -1775,6 +1775,9 @@ function occasionModal(o) {
 const TPL_KEY = 'oab.tplTheme';
 const CUSTOM = 'custom';
 const CUSTOM_MAX = 3;
+// The Blank card in the custom list: opens an empty page in the Designer.
+const BLANK = 'blank';
+const BLANK_DESIGN = { ...DESIGN_DEFAULTS, html: '<p><br></p>' };
 const svgDataUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 const designKind = (kind) => (kind === 'invite' ? 'invite' : 'email');
 const kindWord = (kind) => (designKind(kind) === 'invite' ? 'Invitations' : 'Emails');
@@ -1827,8 +1830,8 @@ async function fillCustomGrid(form) {
   const values = previewValues({ ...o, name: form.elements.namedItem('name').value });
   // Current: the one clicked on this screen, else the occasion's own.
   const cur = form.dataset.template || currentKey(o);
-  grid.innerHTML = list.map((d) => designCard(`${CUSTOM}:${d.id}`, d.name, d.design, values, { current: cur === `${CUSTOM}:${d.id}`, removable: true })).join('')
-    || '<p class="muted small" style="margin:0">None saved yet.</p>';
+  grid.innerHTML = designCard(BLANK, 'Blank', BLANK_DESIGN, values, { current: cur === BLANK })
+    + list.map((d) => designCard(`${CUSTOM}:${d.id}`, d.name, d.design, values, { current: cur === `${CUSTOM}:${d.id}`, removable: true })).join('');
   if (form.dataset.template) markCurrent(form, form.dataset.template);
 }
 
@@ -1859,6 +1862,7 @@ async function svgToPng(svg, w, h) {
 // The picked template or custom design as a design for the occasion: a template's picture is
 // uploaded like any other; a custom design is used as saved. Either keeps its name and where it's from.
 async function designFromTemplate(id) {
+  if (id === BLANK) return { ...BLANK_DESIGN, name: '' };
   if (id.startsWith(`${CUSTOM}:`)) {
     const d = (await loadCustomDesigns()).find((x) => x.id === id.slice(CUSTOM.length + 1));
     if (!d) throw new Error('That custom design is no longer available');
@@ -1879,7 +1883,7 @@ async function designFromTemplate(id) {
   }
   return { ...templateDesign(t, url), name: t.name, template: t.id };
 }
-const pickedName = (id) => (id.startsWith(`${CUSTOM}:`) ? customDesigns?.find((x) => x.id === id.slice(CUSTOM.length + 1))?.name ?? 'custom design' : templateById(id)?.name ?? 'template');
+const pickedName = (id) => (id === BLANK ? 'Blank' : id.startsWith(`${CUSTOM}:`) ? customDesigns?.find((x) => x.id === id.slice(CUSTOM.length + 1))?.name ?? 'custom design' : templateById(id)?.name ?? 'template');
 
 async function openDesigner(templateId) {
   if (!templateId) return designModal(null, { fromEdit: true });
@@ -1907,7 +1911,9 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
   const isNew = form.dataset.form === 'occasion-new';
   // A template picked on this screen becomes the design on Save (or opens in the Designer from the
   // Design button). An email needs one or a saved design.
-  const template = ['invite', 'email'].includes(body.kind) ? form.dataset.template || '' : '';
+  const picked = ['invite', 'email'].includes(body.kind) ? form.dataset.template || '' : '';
+  // Blank only opens an empty page in the Designer; Save on its own doesn't put an empty design on the occasion.
+  const template = picked === BLANK ? '' : picked;
   const hasDesign = !isNew && Boolean(state.occ?.occasion?.design?.html);
   if (!thenDesign && body.kind === 'email' && !template && !hasDesign) return modalError('An email template needs to be selected or a design saved');
   await withBusy(form.querySelector('.btn.primary'), async () => {
@@ -1926,7 +1932,7 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
     if (isNew) { state.occFilter = res.copied ? 'on' : 'all'; state.occSearch = ''; }
     await openOccasion(res.occasion.id);
     render();
-    if (thenDesign) { await openDesigner(thenDesign.template ?? (template || undefined), { fromEdit: true }); return; }
+    if (thenDesign) { await openDesigner(thenDesign.template ?? (picked || undefined), { fromEdit: true }); return; }
     if (template) {
       try {
         const design = await designFromTemplate(template);

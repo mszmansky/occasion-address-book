@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TEMPLATES, TEMPLATE_THEMES, templateDesign, artSvg, templateById } from '../../frontend/invite-templates.js';
+import { existsSync } from 'node:fs';
+import { TEMPLATES, TEMPLATE_THEMES, templateDesign, artFile, artSvg, templateById } from '../../frontend/invite-templates.js';
 import { FONTS, BORDERS, fontLink, renderDesign } from '../../frontend/design-core.js';
 import { cleanDesignHtml } from '../src/lib/sanitize.mjs';
 
@@ -22,7 +23,9 @@ test('every theme has templates, each a normal design', () => {
     assert.deepEqual(styles(clean), styles(d.html), t.id);
     assert.deepEqual(tags(clean), tags(d.html), t.id);
     assert.ok(fontLink(d).includes('fonts.googleapis.com'), `${t.id} loads its title font`);
-    assert.match(artSvg(t, 3), /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" viewBox="0 0 \d+ \d+" width="\d+" height="\d+">/, t.id);
+    // The picture: an image file in frontend/art, or a drawing.
+    if (artFile(t)) assert.ok(existsSync(new URL(`../../frontend/${artFile(t)}`, import.meta.url)), `${t.id} picture file`);
+    else assert.match(artSvg(t, 3), /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" viewBox="0 0 \d+ \d+" width="\d+" height="\d+">/, t.id);
     assert.ok(renderDesign(d, { greeting: 'Kim & Joe', from: 'Mike' }).includes('Kim &amp; Joe'), t.id);
   }
   assert.equal(templateById('nope'), null);
