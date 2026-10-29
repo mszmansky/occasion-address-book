@@ -185,11 +185,22 @@ export function parseDesign(b) {
   if (b.font !== undefined && !FONTS.some((f) => f.key === b.font)) throw new HttpError(400, 'Unknown font');
   if (b.border !== undefined && !BORDERS.some((x) => x.key === b.border)) throw new HttpError(400, 'Unknown border');
   if (b.borderColor !== undefined && b.borderColor !== '' && !HEX.test(b.borderColor)) throw new HttpError(400, 'Border color must look like #ffffff');
+  // Where it came from, so the Edit occasion screen can show it: its name, and the template or custom design.
+  const name = str(b.name, 'Design name', { max: 60 });
+  const template = typeof b.template === 'string' && /^[a-z0-9-]{1,40}$/.test(b.template) ? b.template : undefined;
+  const customId = typeof b.customId === 'string' && /^[a-z0-9]{1,40}$/.test(b.customId) ? b.customId : undefined;
   return {
     html, background: b.background || undefined, color: b.color || undefined, font: b.font || undefined,
     border: b.border && b.border !== 'none' ? b.border : undefined, borderColor: b.border && b.border !== 'none' ? b.borderColor || undefined : undefined,
+    name: name || undefined, template, customId,
   };
 }
+
+// Custom designs: each person keeps up to CUSTOM_MAX named designs of their own for emails, and as
+// many for invitations, to start occasions from. Saving a design in the Designer saves it here by its
+// name: the same name replaces it, a new name takes another place.
+export const CUSTOM_MAX = 3;
+const DESIGN_KINDS = { email: 'email', invite: 'invitation' };
 
 export const PROFILE_DEFAULTS = {
   firstName: '', lastName: '', emailFromName: '',
@@ -925,6 +936,38 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
     await repo.put(item);
     return { occasion: occOut(item) };
   }, { write: true });
+
+  // ---------- custom designs (the person's own) ----------
+  const customOut = ({ PK, SK, ...d }) => d;
+  const listCustom = async (user, kind) => (await repo.query(pk(user), kind ? `DESIGN#${kind}#` : 'DESIGN#')).map(customOut)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  route('GET', '/designs', async ({ user }) => ({ designs: await listCustom(user), max: CUSTOM_MAX }));
+
+  route('POST', '/designs', async ({ user, body }) => {
+    const kind = body.kind;
+    if (!DESIGN_KINDS[kind]) throw new HttpError(400, 'Kind must be email or invite');
+    const name = str(body.name, 'Design name', { max: 60, required: true });
+    const { name: _n, template: _t, customId: _c, ...design } = parseDesign(body.design ?? {});
+    const mine = await listCustom(user, kind);
+    const same = mine.find((d) => d.name.toLowerCase() === name.toLowerCase());
+    if (!same && mine.length >= CUSTOM_MAX) {
+      const err = new HttpError(409, `You already have ${CUSTOM_MAX} custom ${DESIGN_KINDS[kind]} designs (${mine.map((d) => d.name).join(', ')}). Save it under one of those names to replace it, or delete one on the Edit occasion screen.`, 'designs_full');
+      err.extra = { names: mine.map((d) => d.name) };
+      throw err;
+    }
+    const id = same?.id ?? newId();
+    const item = { PK: pk(user), SK: `DESIGN#${kind}#${id}`, id, kind, name, design, createdAt: same?.createdAt ?? nowIso(), updatedAt: nowIso() };
+    await repo.put(item);
+    return { design: customOut(item), designs: await listCustom(user) };
+  });
+
+  route('DELETE', '/designs/:id', async ({ user, params }) => {
+    const row = (await repo.query(pk(user), 'DESIGN#')).find((d) => d.id === params.id);
+    if (!row) throw new HttpError(404, 'Design not found');
+    await repo.del(row.PK, row.SK);
+    return { designs: await listCustom(user) };
+  });
 
   // Pictures for designs. They're public (guests' mail apps load them), under unguessable names.
   const MEDIA_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };

@@ -1762,27 +1762,70 @@ function occasionModal(o) {
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">${isNew ? 'Create' : 'Save'}</button></div>`,
   });
   loadAllFonts(); // the template previews use the design fonts
+  fillCustomGrid(modal.querySelector('form'));
 }
 
-// ---------- design templates ----------
-// Picked by theme on the Edit occasion screen; a template opens in the Designer, where everything in it
-// can be changed before it's saved.
+// ---------- design templates and custom designs ----------
+// On the Edit occasion screen, the Design section's list ("Emails" or "Invitations", by Type) has
+// the template themes and "Custom Emails / Invitations": the person's own named designs, up to
+// CUSTOM_MAX of each, saved from the Designer. Clicking one picks it; Save puts it on the occasion.
 const TPL_KEY = 'oab.tplTheme';
+const CUSTOM = 'custom';
+const CUSTOM_MAX = 3;
 const svgDataUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+const designKind = (kind) => (kind === 'invite' ? 'invite' : 'email');
+const kindWord = (kind) => (designKind(kind) === 'invite' ? 'Invitations' : 'Emails');
+
+let customDesigns = null; // the person's custom designs, once loaded
+async function loadCustomDesigns(force = false) {
+  if (!customDesigns || force) customDesigns = (await api('/designs')).designs;
+  return customDesigns;
+}
+
+const previewValues = (o) => ({
+  greeting: 'Kim and Joe', occasion: o.name || 'Our party', date: longDateOf(o.date) || 'Saturday, December 19, 2026',
+  time: o.time || '7:00 PM', location: o.location || '14 Cherry Lane, Troy', from: fromName() || 'The Szmansky Family',
+});
+// The design an occasion has now, to mark its card "Current".
+const currentKey = (o) => (o?.design?.customId ? `${CUSTOM}:${o.design.customId}` : o?.design?.template || '');
+function designCard(id, name, design, values, { current = false, removable = false } = {}) {
+  return `<div class="tpl-card" role="button" tabindex="0" aria-pressed="false" data-action="use-template" data-id="${esc(id)}" title="Use ${esc(name)}">
+      ${current ? '<span class="tpl-current">Current</span>' : ''}
+      ${removable ? `<span class="tpl-del" role="button" tabindex="0" data-action="delete-custom-design" data-id="${esc(id.slice(CUSTOM.length + 1))}" data-name="${esc(name)}" title="Delete ${esc(name)}" aria-label="Delete ${esc(name)}">${X_ICON}</span>` : ''}
+      <span class="tpl-prev"><span class="tpl-scale">${renderDesign(design, values, { padding: '34px' })}</span></span>
+      <span class="tpl-name">${esc(name)}</span></div>`;
+}
 
 function templatePicker(o) {
+  const kind = kindOf(o);
+  const cur = currentKey(o);
   let theme = TEMPLATE_THEMES[0];
-  try { theme = TEMPLATE_THEMES.includes(localStorage.getItem(TPL_KEY)) ? localStorage.getItem(TPL_KEY) : theme; } catch { /* default */ }
-  const values = {
-    greeting: 'Kim and Joe', occasion: o.name || 'Our party', date: longDateOf(o.date) || 'Saturday, December 19, 2026',
-    time: o.time || '7:00 PM', location: o.location || '14 Cherry Lane, Troy', from: fromName() || 'The Szmansky Family',
-  };
-  const card = (t) => `<div class="tpl-card" role="button" tabindex="0" aria-pressed="false" data-action="use-template" data-id="${t.id}" title="Use the ${esc(t.name)} template">
-      <span class="tpl-prev"><span class="tpl-scale">${renderDesign(templateDesign(t, svgDataUrl(artSvg(t))), values, { padding: '34px' })}</span></span>
-      <span class="tpl-name">${esc(t.name)}</span></div>`;
-  return `<label>Templates<select name="tplTheme" data-tpl-theme>${TEMPLATE_THEMES.map((th) => `<option ${th === theme ? 'selected' : ''}>${esc(th)}</option>`).join('')}</select></label>
-    <div class="tpl-grids">${TEMPLATE_THEMES.map((th) => `<div class="tpl-grid" data-tpl="${esc(th)}" ${th === theme ? '' : 'hidden'}>${TEMPLATES.filter((t) => t.theme === th).map(card).join('')}</div>`).join('')}</div>`;
+  try { const saved = localStorage.getItem(TPL_KEY); if (saved === CUSTOM || TEMPLATE_THEMES.includes(saved)) theme = saved; } catch { /* default */ }
+  if (cur) theme = cur.startsWith(`${CUSTOM}:`) ? CUSTOM : templateById(cur)?.theme ?? theme; // open where the current design is
+  const values = previewValues(o);
+  return `<label><span data-design-list-label>${kindWord(kind)}</span><select name="tplTheme" data-tpl-theme>${TEMPLATE_THEMES.map((th) => `<option ${th === theme ? 'selected' : ''}>${esc(th)}</option>`).join('')}
+      <option value="${CUSTOM}" data-custom-option ${theme === CUSTOM ? 'selected' : ''}>Custom ${kindWord(kind)}</option></select></label>
+    <div class="tpl-grids">${TEMPLATE_THEMES.map((th) => `<div class="tpl-grid" data-tpl="${esc(th)}" ${th === theme ? '' : 'hidden'}>${TEMPLATES.filter((t) => t.theme === th)
+    .map((t) => designCard(t.id, t.name, templateDesign(t, svgDataUrl(artSvg(t))), values, { current: cur === t.id })).join('')}</div>`).join('')}
+      <div class="tpl-grid" data-tpl="${CUSTOM}" data-custom-grid ${theme === CUSTOM ? '' : 'hidden'}><p class="muted small" style="margin:0">Loading…</p></div></div>`;
 }
+
+// Fills the Custom list for the occasion's Type (after loading, after a delete, when Type changes).
+async function fillCustomGrid(form) {
+  const grid = form?.querySelector('[data-custom-grid]');
+  if (!grid) return;
+  const kind = designKind(form.elements.kind.value);
+  form.querySelector('[data-design-list-label]').textContent = kindWord(kind);
+  form.querySelector('[data-custom-option]').textContent = `Custom ${kindWord(kind)}`;
+  let list;
+  try { list = (await loadCustomDesigns()).filter((d) => d.kind === kind); } catch (e) { grid.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+  const o = state.occ?.occasion && form.dataset.form === 'occasion-edit' ? state.occ.occasion : {};
+  const values = previewValues({ ...o, name: form.elements.namedItem('name').value });
+  grid.innerHTML = list.map((d) => designCard(`${CUSTOM}:${d.id}`, d.name, d.design, values, { current: o.design?.customId === d.id, removable: true })).join('')
+    || '<p class="muted small" style="margin:0">None saved yet.</p>';
+  if (form.dataset.template) grid.querySelector(`[data-id="${CSS.escape(form.dataset.template)}"]`)?.setAttribute('aria-pressed', 'true');
+}
+
 const longDateOf = (ymd) => fieldValues({ occasion: { date: ymd } }).date;
 
 function showTemplateTheme(theme) {
@@ -1800,19 +1843,26 @@ async function svgToPng(svg, w, h) {
   return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't draw the template's picture"))), 'image/png'));
 }
 
-// The template as a design, its picture uploaded like any other.
+// The picked template or custom design as a design for the occasion: a template's picture is
+// uploaded like any other; a custom design is used as saved. Either keeps its name and where it's from.
 async function designFromTemplate(id) {
+  if (id.startsWith(`${CUSTOM}:`)) {
+    const d = (await loadCustomDesigns()).find((x) => x.id === id.slice(CUSTOM.length + 1));
+    if (!d) throw new Error('That custom design is no longer available');
+    return { ...d.design, name: d.name, customId: d.id };
+  }
   const t = templateById(id);
   if (!t) throw new Error('That template is no longer available');
   const scale = 6;
   const [w, h] = artSize(t);
   const url = await uploadPicture(await svgToPng(artSvg(t, scale), w * scale, h * scale), 'image/png');
-  return templateDesign(t, url);
+  return { ...templateDesign(t, url), name: t.name, template: t.id };
 }
+const pickedName = (id) => (id.startsWith(`${CUSTOM}:`) ? customDesigns?.find((x) => x.id === id.slice(CUSTOM.length + 1))?.name ?? 'custom design' : templateById(id)?.name ?? 'template');
 
 async function openDesigner(templateId) {
   if (!templateId) return designModal(null, { fromEdit: true });
-  toast('Setting up the template…');
+  if (!templateId.startsWith(`${CUSTOM}:`)) toast('Setting up the template…');
   try {
     return designModal(await designFromTemplate(templateId), { fromEdit: true });
   } catch (e) {
@@ -1839,7 +1889,8 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
   const template = ['invite', 'email'].includes(body.kind) ? form.dataset.template || '' : '';
   const hasDesign = !isNew && Boolean(state.occ?.occasion?.design?.html);
   if (!thenDesign && body.kind === 'email' && !template && !hasDesign) return modalError('An email template needs to be selected or a design saved');
-  if (!thenDesign && template && hasDesign && !await askConfirm({ title: `Use the ${templateById(template).name} template?`, text: 'It replaces the current design.', ok: 'Use template' })) return undefined;
+  if (!thenDesign && template && hasDesign && template !== currentKey(state.occ.occasion)
+    && !await askConfirm({ title: `Use ${pickedName(template)}?`, text: 'It replaces the current design.', ok: 'Use it' })) return undefined;
   await withBusy(form.querySelector('.btn.primary'), async () => {
     let res;
     try {
@@ -1862,7 +1913,7 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
         const design = await designFromTemplate(template);
         state.occ.occasion = (await api(`/occasions/${state.occasionId}/design`, { method: 'PUT', body: { ...design, baseUpdatedAt: state.occ.occasion.design?.updatedAt ?? null } })).occasion;
         render();
-        toast(`${isNew ? 'Created' : 'Saved'} with the ${templateById(template).name} template`);
+        toast(`${isNew ? 'Created' : 'Saved'} with ${pickedName(template)}`);
       } catch (e) {
         toast(`Saved, but the template couldn't be added: ${e.message}`, true);
       }
@@ -2312,7 +2363,9 @@ function designModal(start = null, { fromEdit = false } = {}) {
   // One font picker and one text color: with words selected they change those words; with nothing
   // selected they change the whole design's font or text color.
   const colorInput = (name, value, label, title, extra = '') => `<span class="tb-swatch" ${extra}><span class="tb-label">${label}</span><button type="button" class="tb-color" data-color-for="${name}" title="${title}" aria-label="${title}" aria-haspopup="dialog" style="background:${esc(value)}"></button><input type="color" name="${name}" value="${esc(value)}" data-design="${name}" class="native-color" tabindex="-1" aria-hidden="true"></span>`;
+  const designName = start?.name ?? o.design?.name ?? '';
   openModal(kindOf(o) === 'email' ? 'Email Designer' : 'Invitation Designer', `
+    <label class="design-namebar">Name<input name="designName" maxlength="60" value="${val(designName)}" autocomplete="off"></label>
     <div class="design-toolbar" role="toolbar" aria-label="Formatting">
       <span class="tb-group">
         <button type="button" class="tb" data-history="undo" title="Undo (⌘Z)" aria-label="Undo" disabled>${UNDO_ICON}</button>
@@ -3205,7 +3258,10 @@ async function saveDesign(form) {
   const editor = form.querySelector('[data-design-edit]');
   const src = form.querySelector('[data-design-src]');
   if (!src.hidden) editor.innerHTML = (await cleanForEditor(src.value));
+  const name = form.elements.designName.value.trim();
+  if (!name) { form.elements.designName.focus(); return modalError('Give the design a name'); }
   const body = {
+    name,
     html: designHtml(editor),
     background: form.querySelector('[name=background]').value,
     color: form.querySelector('[data-design-canvas]').dataset.color,
@@ -3214,8 +3270,15 @@ async function saveDesign(form) {
     borderColor: form.querySelector('[name=borderColor]').value,
   };
   const done = (occasion) => { state.occ.occasion = occasion; closeModal(); toast('Design saved'); render(); };
-  const put = (base) => api(`/occasions/${state.occasionId}/design`, { method: 'PUT', body: { ...body, baseUpdatedAt: base } });
+  // Saved as one of your custom designs by its name (the same name replaces it; a new name takes
+  // another place, up to CUSTOM_MAX), and as the occasion's design.
+  let customId;
+  const put = (base) => api(`/occasions/${state.occasionId}/design`, { method: 'PUT', body: { ...body, customId, baseUpdatedAt: base } });
   await withBusy(form.querySelector('.btn.primary'), async () => {
+    const { name: _n, ...design } = body;
+    const res = await api('/designs', { method: 'POST', body: { kind: designKind(kindOf(state.occ.occasion)), name, design } });
+    customId = res.design.id;
+    customDesigns = res.designs;
     try {
       return done((await put(form.dataset.base || null)).occasion);
     } catch (err) {
@@ -4094,6 +4157,17 @@ document.addEventListener('click', async (e) => {
     case 'invites': invitesModal(); break;
     case 'design': designModal(); break;
     case 'design-from-edit': await saveOccasion(el.closest('form'), { thenDesign: true }); break;
+    case 'delete-custom-design': {
+      e.stopPropagation();
+      if (!await askConfirm({ title: `Delete ${el.dataset.name}?`, text: 'Occasions already using it keep their design.', ok: 'Delete', danger: true })) break;
+      try {
+        customDesigns = (await api(`/designs/${encodeURIComponent(el.dataset.id)}`, { method: 'DELETE' })).designs;
+        const form = modal.querySelector('form');
+        if (form?.dataset.template === `${CUSTOM}:${el.dataset.id}`) delete form.dataset.template;
+        fillCustomGrid(form);
+      } catch (err) { toast(err.message, true); }
+      break;
+    }
     case 'use-template': { // picks it (or unpicks it); Save puts it on the occasion
       const form = el.closest('form');
       const on = form.dataset.template !== el.dataset.id;
@@ -4168,6 +4242,7 @@ document.addEventListener('change', (e) => {
   const t = e.target;
   if (t.matches?.('[data-who]')) syncSendRows();
   if (t.matches?.('[data-tpl-theme]')) showTemplateTheme(t.value);
+  if (t.matches?.('[data-occ-kind]') && t.form?.querySelector('[data-custom-grid]')) { delete t.form.dataset.template; t.form.querySelectorAll('.tpl-card').forEach((c) => c.setAttribute('aria-pressed', 'false')); fillCustomGrid(t.form); }
   if (t.matches?.('[data-occ-kind]')) {
     modal.querySelectorAll('[data-kinds]').forEach((el) => {
       el.hidden = !el.dataset.kinds.split(' ').includes(t.value);

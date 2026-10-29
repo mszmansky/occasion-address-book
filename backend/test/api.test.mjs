@@ -959,3 +959,30 @@ test('the sign-in trigger never blocks a sign-in', async () => {
   const event = { request: { userAttributes: { sub: 'user-kim' } } };
   assert.equal(await handler(event), event, 'without a table it does nothing and lets the sign-in through');
 });
+
+test('custom designs: up to 3 named designs per kind; the same name replaces; they are each person’s own', async () => {
+  const { call } = await setup();
+  const KIMC = { claims: { sub: 'user-kim', email: 'kim@example.com' } };
+  const d = (html) => ({ html, background: '#ffffff', font: 'georgia' });
+  for (const n of ['Party', 'Dinner', 'Brunch']) assert.equal((await call('POST', '/designs', { kind: 'email', name: n, design: d(`<p>${n}</p>`) })).status, 200);
+  let r = await call('POST', '/designs', { kind: 'email', name: 'Picnic', design: d('<p>x</p>') });
+  assert.equal(r.status, 409);
+  assert.equal(r.body.code, 'designs_full');
+  assert.deepEqual([...r.body.names].sort(), ['Brunch', 'Dinner', 'Party']);
+  r = await call('POST', '/designs', { kind: 'email', name: 'party', design: d('<p>New party</p>') }); // replaces "Party"
+  assert.equal(r.status, 200);
+  assert.equal(r.body.designs.filter((x) => x.kind === 'email').length, 3);
+  assert.equal(r.body.designs.find((x) => x.name === 'party').design.html, '<p>New party</p>');
+  assert.equal((await call('POST', '/designs', { kind: 'invite', name: 'Picnic', design: d('<p>x</p>') })).status, 200, 'invitations have their own 3');
+  assert.match((await call('POST', '/designs', { kind: 'email', name: '', design: d('x') })).body.error, /Design name is required/);
+  assert.equal((await call('POST', '/designs', { kind: 'email', name: 'X', design: d('<script>alert(1)</script><p>ok</p>') })).status, 409);
+  assert.deepEqual((await call('GET', '/designs', undefined, KIMC)).body.designs, [], "Kim doesn't see Mike's");
+  const dinner = (await call('GET', '/designs')).body.designs.find((x) => x.name === 'Dinner');
+  r = await call('DELETE', `/designs/${dinner.id}`);
+  assert.deepEqual(r.body.designs.filter((x) => x.kind === 'email').map((x) => x.name).sort(), ['Brunch', 'party']);
+  assert.equal((await call('DELETE', `/designs/${dinner.id}`)).status, 404);
+  // An occasion's design remembers its name and where it came from.
+  const o = (await call('POST', '/occasions', { name: 'P', kind: 'email' })).body.occasion;
+  const saved = (await call('PUT', `/occasions/${o.id}/design`, { ...d('<p>hi</p>'), name: 'Brunch', customId: 'abc123' })).body.occasion.design;
+  assert.deepEqual([saved.name, saved.customId], ['Brunch', 'abc123']);
+});
