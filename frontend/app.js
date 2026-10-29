@@ -3269,7 +3269,14 @@ async function saveDesign(form) {
     border: form.querySelector('[data-design=border]').value,
     borderColor: form.querySelector('[name=borderColor]').value,
   };
-  const done = (occasion) => { state.occ.occasion = occasion; closeModal(); toast('Design saved'); render(); };
+  // Opened from Edit occasion: back there once it's saved; otherwise the window closes.
+  const back = form.dataset.back === 'occasion';
+  const done = (occasion) => {
+    state.occ.occasion = occasion;
+    render();
+    if (back) occasionModal(occasion); else closeModal();
+    toast(`Saved "${name}"`);
+  };
   // Saved as one of your custom designs by its name (the same name replaces it; a new name takes
   // another place, up to CUSTOM_MAX), and as the occasion's design.
   let customId;
