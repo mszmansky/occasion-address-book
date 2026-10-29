@@ -1777,7 +1777,7 @@ function templatePicker(o) {
     greeting: 'Kim and Joe', occasion: o.name || 'Our party', date: longDateOf(o.date) || 'Saturday, December 19, 2026',
     time: o.time || '7:00 PM', location: o.location || '14 Cherry Lane, Troy', from: fromName() || 'The Szmansky Family',
   };
-  const card = (t) => `<div class="tpl-card" role="button" tabindex="0" data-action="use-template" data-id="${t.id}" title="Start from the ${esc(t.name)} template">
+  const card = (t) => `<div class="tpl-card" role="button" tabindex="0" aria-pressed="false" data-action="use-template" data-id="${t.id}" title="Use the ${esc(t.name)} template">
       <span class="tpl-prev"><span class="tpl-scale">${renderDesign(templateDesign(t, svgDataUrl(artSvg(t))), values, { padding: '34px' })}</span></span>
       <span class="tpl-name">${esc(t.name)}</span></div>`;
   return `<label>Templates<select name="tplTheme" data-tpl-theme>${TEMPLATE_THEMES.map((th) => `<option ${th === theme ? 'selected' : ''}>${esc(th)}</option>`).join('')}</select></label>
@@ -1834,6 +1834,12 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
   };
   if (!body.name) return modalError('Give the occasion a name.');
   const isNew = form.dataset.form === 'occasion-new';
+  // A template picked on this screen becomes the design on Save (or opens in the Designer from the
+  // Design button). An email needs one or a saved design.
+  const template = ['invite', 'email'].includes(body.kind) ? form.dataset.template || '' : '';
+  const hasDesign = !isNew && Boolean(state.occ?.occasion?.design?.html);
+  if (!thenDesign && body.kind === 'email' && !template && !hasDesign) return modalError('An email template needs to be selected or a design saved');
+  if (!thenDesign && template && hasDesign && !await askConfirm({ title: `Use the ${templateById(template).name} template?`, text: 'It replaces the current design.', ok: 'Use template' })) return undefined;
   await withBusy(form.querySelector('.btn.primary'), async () => {
     let res;
     try {
@@ -1850,7 +1856,18 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
     if (isNew) { state.occFilter = res.copied ? 'on' : 'all'; state.occSearch = ''; }
     await openOccasion(res.occasion.id);
     render();
-    if (thenDesign) { await openDesigner(thenDesign.template); return; }
+    if (thenDesign) { await openDesigner(thenDesign.template ?? (template || undefined), { fromEdit: true }); return; }
+    if (template) {
+      try {
+        const design = await designFromTemplate(template);
+        state.occ.occasion = (await api(`/occasions/${state.occasionId}/design`, { method: 'PUT', body: { ...design, baseUpdatedAt: state.occ.occasion.design?.updatedAt ?? null } })).occasion;
+        render();
+        toast(`${isNew ? 'Created' : 'Saved'} with the ${templateById(template).name} template`);
+      } catch (e) {
+        toast(`Saved, but the template couldn't be added: ${e.message}`, true);
+      }
+      return;
+    }
     toast(isNew ? (res.copied ? `Created with ${plural(res.copied, 'household')} from the earlier list` : 'Created. Tick who it\'s for.') : 'Saved');
   });
 }
@@ -4077,11 +4094,14 @@ document.addEventListener('click', async (e) => {
     case 'invites': invitesModal(); break;
     case 'design': designModal(); break;
     case 'design-from-edit': await saveOccasion(el.closest('form'), { thenDesign: true }); break;
-    case 'use-template':
-      if (el.dataset.busy) break;
-      el.dataset.busy = '1';
-      try { await saveOccasion(el.closest('form'), { thenDesign: { template: el.dataset.id } }); } finally { delete el.dataset.busy; }
+    case 'use-template': { // picks it (or unpicks it); Save puts it on the occasion
+      const form = el.closest('form');
+      const on = form.dataset.template !== el.dataset.id;
+      form.dataset.template = on ? el.dataset.id : '';
+      form.querySelectorAll('.tpl-card').forEach((c) => c.setAttribute('aria-pressed', String(on && c === el)));
+      modalError('');
       break;
+    }
     case 'test-invite':
       await withBusy(el, async () => {
         const res = await api(`/occasions/${state.occasionId}/invites`, { method: 'POST', body: { test: true } });
