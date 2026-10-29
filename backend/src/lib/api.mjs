@@ -104,12 +104,11 @@ function parseMembers(list) {
     const lastName = str(m.lastName, `Person ${i + 1} last name`, { max: 60 });
     const em = email(m.email, `${firstName ?? `Person ${i + 1}`}'s email`);
     const phone = str(m.phone, `${firstName ?? `Person ${i + 1}`}'s phone`, { max: 30 });
-    const relationship = str(m.relationship, `${firstName ?? `Person ${i + 1}`}'s relationship`, { max: 40 });
     if (!firstName && !lastName && !em && !phone) continue; // blank row
     if (!firstName && !lastName) throw new HttpError(400, `Give person ${i + 1} a name`);
     out.push({
       id: typeof m.id === 'string' && /^[a-z0-9]{1,40}$/.test(m.id) ? m.id : newId(),
-      firstName, lastName, email: em, phone, relationship,
+      firstName, lastName, email: em, phone,
       primary: m.primary === true || m.primary === 'true' || undefined,
     });
   }

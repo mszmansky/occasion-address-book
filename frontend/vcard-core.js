@@ -3,7 +3,7 @@
 // One card per person, each with the household's mailing address, so Contacts on a Mac or iPhone,
 // Google Contacts and Outlook import every person. A household with no named people becomes one
 // card named after its Household Greeting. Everything else on the household card comes too: the
-// greetings, the person's relationship, the household phone, groups (CATEGORIES) and notes, written
+// greetings, the household phone, groups (CATEGORIES) and notes, written
 // out in each card's note for people to read, and as X-OAB- fields so this app reads it all back.
 
 import { peopleWithHouseholdContact } from './csv-core.js';
@@ -27,7 +27,7 @@ export function foldLine(line) {
   return out.join('\r\n ');
 }
 
-function card({ first = '', last = '', fullName, email, phone, homePhone, address, household = {}, relationship = '', primary = false }) {
+function card({ first = '', last = '', fullName, email, phone, homePhone, address, household = {}, primary = false }) {
   const a = address ?? {};
   const h = household;
   const lines = ['BEGIN:VCARD', 'VERSION:3.0',
@@ -42,7 +42,6 @@ function card({ first = '', last = '', fullName, email, phone, homePhone, addres
     h.labelName && `Household: ${h.labelName}`,
     h.formalName && `Formal greeting: ${h.formalName}`,
     h.greeting && `Informal greeting: ${h.greeting}`,
-    relationship && `Relationship: ${relationship}`,
     groups.length && `Groups: ${groups.join(', ')}`,
     h.notes && `Notes: ${h.notes}`,
   ].filter(Boolean).join('\n');
@@ -51,7 +50,6 @@ function card({ first = '', last = '', fullName, email, phone, homePhone, addres
   if (h.labelName) lines.push(`X-OAB-HOUSEHOLD:${escText(h.labelName)}`);
   if (h.formalName) lines.push(`X-OAB-FORMAL:${escText(h.formalName)}`);
   if (h.greeting) lines.push(`X-OAB-INFORMAL:${escText(h.greeting)}`);
-  if (relationship) lines.push(`X-OAB-RELATIONSHIP:${escText(relationship)}`);
   if (primary) lines.push('X-OAB-DEFAULT-CONTACT:1');
   if (h.notes) lines.push(`X-OAB-NOTES:${escText(h.notes)}`);
   if (['line1', 'line2', 'city', 'state', 'zip', 'country'].some((k) => String(a[k] ?? '').trim())) {
@@ -69,7 +67,7 @@ export function householdToVcard(h) {
   const cards = named.length
     ? people.map((m) => {
       const full = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email || h.labelName;
-      return card({ first: m.firstName, last: m.lastName, fullName: full, email: m.email, phone: m.phone, homePhone: h.phone, address: h.address, household: h, relationship: m.relationship, primary: m.primary });
+      return card({ first: m.firstName, last: m.lastName, fullName: full, email: m.email, phone: m.phone, homePhone: h.phone, address: h.address, household: h, primary: m.primary });
     })
     : [card({ last: h.labelName, fullName: h.labelName, email: people[0]?.email, phone: people[0]?.phone, homePhone: h.phone, address: h.address, household: h })];
   return `${cards.join('\r\n')}\r\n`;
@@ -150,7 +148,7 @@ export function parseVcards(text) {
           email: email.trim().toLowerCase(), phone: tel.trim(),
           homePhone: (c.tels.find((x) => x.types.includes('home')) && c.tels.find((x) => x.types.includes('home')).value.trim() !== tel.trim()) ? c.tels.find((x) => x.types.includes('home')).value.trim() : '',
           note: c.note || '', categories: c.categories ?? [],
-          household: c.x.HOUSEHOLD || '', formalName: c.x.FORMAL || '', greeting: c.x.INFORMAL || '', relationship: c.x.RELATIONSHIP || '',
+          household: c.x.HOUSEHOLD || '', formalName: c.x.FORMAL || '', greeting: c.x.INFORMAL || '',
           primary: c.x['DEFAULT-CONTACT'] === '1', notes: c.x.NOTES || '',
           address: adr ? (() => {
             const lines2 = [adr[1], adr[2]].filter(Boolean).join('\n').split(/\n/).map((x) => x.trim()).filter(Boolean);
@@ -194,7 +192,7 @@ export function contactsToHouseholds(contacts, { phoneFormat = (p) => p } = {}) 
     const first = company ? '' : c.firstName || (!c.lastName && c.fullName ? c.fullName.split(/\s+/).slice(0, -1).join(' ') : '');
     const last = company ? '' : c.lastName || (!c.firstName && c.fullName ? c.fullName.split(/\s+/).at(-1) : '');
     if (!first && !last && !c.org && !c.email) continue;
-    const person = { firstName: first, lastName: last, email: c.email || undefined, phone: c.phone ? phoneFormat(c.phone) : undefined, relationship: c.relationship || undefined, primary: c.primary || undefined };
+    const person = { firstName: first, lastName: last, email: c.email || undefined, phone: c.phone ? phoneFormat(c.phone) : undefined, primary: c.primary || undefined };
     const a = c.address;
     const addr = a ? { ...a, country: US.test(a.country) ? '' : a.country } : {};
     // Cards this app wrote say which household they belong to; others are grouped by address.

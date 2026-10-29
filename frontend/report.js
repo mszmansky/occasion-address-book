@@ -16,7 +16,7 @@ const label = (k, v) => (v ? `<div><span class="k">${k}</span> ${esc(v)}</div>` 
 
 function person(m) {
   const name = [m.firstName, m.lastName].filter(Boolean).join(' ');
-  return `<div class="person"><div><b>${esc(name)}</b>${m.relationship ? ` <span class="muted">· ${esc(m.relationship)}</span>` : ''}${m.primary ? ' <span class="tag">Default contact</span>' : ''}</div>`
+  return `<div class="person"><div><b>${esc(name)}</b>${m.primary ? ' <span class="tag">Default contact</span>' : ''}</div>`
     + `${m.email ? `<div>${mail(m.email)}</div>` : ''}${m.phone ? `<div>${esc(m.phone)}</div>` : ''}</div>`;
 }
 
