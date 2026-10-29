@@ -106,7 +106,7 @@ const fireworksBig = () => burst(30, 34, 26, '#ef4444') + burst(68, 30, 22, '#fd
 const ARTWORK = {
   wreath: { draw: ART.wreath, width: '36%' },
   tree: { draw: ART.tree, width: '36%' },
-  santa: { file: 'art/santa.jpg', width: '34%' },
+  santa: { file: 'art/santa.png', width: '34%' },
   pines: { draw: snowScene, box: [90, 100], width: '30%' },
   night: { draw: nightScene, box: [90, 100], width: '30%' },
   mistletoe: { draw: ART.mistletoe, width: '34%' },
