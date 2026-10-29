@@ -1809,7 +1809,7 @@ async function loadCustomDesigns(force = false) {
 
 const previewValues = (o) => ({
   greeting: 'Kim and Joe', occasion: o.name || 'Our party', date: longDateOf(o.date) || 'Saturday, December 19, 2026',
-  time: o.time || '7:00 PM', location: o.location || '14 Cherry Lane, Troy', subject: o.subject ?? '', from: fromName() || 'The Szmansky Family',
+  time: o.time || '7:00 PM', location: o.location || '14 Cherry Lane, Troy', subject: o.subject || 'Emma', from: fromName() || 'The Szmansky Family',
 });
 // The design an occasion has now, to mark its card "Current".
 const currentKey = (o) => (o?.design?.customId ? `${CUSTOM}:${o.design.customId}` : o?.design?.template || '');
