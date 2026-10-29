@@ -3057,11 +3057,10 @@ function wireDesign(editor) {
   }
   modal.querySelector('[data-insert-box]').addEventListener('click', () => {
     const el = document.createElement('div');
-    el.dataset.box = 'thin';
     el.style.width = '60%';
     el.style.padding = '12px';
     setBoxPlace(el, 'center');
-    setBoxBorder(el, 'thin', '#9ca3af');
+    setBoxBorder(el, 'none', '#9ca3af');
     el.innerHTML = '<p style="margin:0">Your text here</p>';
     // After the paragraph the cursor is in (a box can't go inside a paragraph), else at the end.
     let at = caretEl();
