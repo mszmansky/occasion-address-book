@@ -124,7 +124,7 @@ const ARTWORK = {
   blossoms: { draw: ART.blossoms, width: '34%' },
   lights: { draw: stringLights, box: [300, 70], width: '100%' },
   sunflower: { draw: ART.sunflower, width: '32%' },
-  dinner: { draw: dinner, width: '38%' },
+  dinner: { file: 'art/dinner.jpg', width: '56%' },
 };
 
 // ---------- the templates ----------
