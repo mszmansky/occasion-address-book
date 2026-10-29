@@ -3757,7 +3757,7 @@ function selShareMenu() {
     <button type="button" class="btn icon-only" data-action="toggle-sel-share" aria-haspopup="menu" aria-expanded="false" aria-controls="sel-share-list" title="Share the selected households" aria-label="Share the selected households" ${state.selected.size ? '' : 'disabled'}>${SHARE_ICON}</button>
     <div class="menu" id="sel-share-list" role="menu" hidden>
       <div class="menu-label">Share</div>
-      <button type="button" role="menuitem" data-action="send-households">Occasions Address Book</button>
+      <button type="button" role="menuitem" data-action="send-households">Occasions Address Book User</button>
       ${canShareSheet ? items('share') : ''}
       <hr><div class="menu-label">Download</div>
       ${items('download')}
