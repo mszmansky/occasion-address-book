@@ -1279,5 +1279,8 @@ input[type=password]::-ms-reveal, input[type=password]::-ms-clear { display: non
 .design-namebar input { max-width: 320px; font-weight: 400; }
 .tpl-card { position: relative; }
 .tpl-current { position: absolute; top: 4px; left: 4px; z-index: 1; font-size: 11px; font-weight: 600; color: #fff; background: var(--accent); border-radius: 4px; padding: 1px 6px; }
+/* The picked one (Save will use it): a "Selected" badge, under "Current" when it's both. */
+.tpl-card[aria-pressed=true]::after { content: 'Selected'; position: absolute; top: 4px; left: 4px; z-index: 1; font-size: 11px; font-weight: 600; color: var(--surface); background: var(--ink); border-radius: 4px; padding: 1px 6px; }
+.tpl-card[aria-pressed=true]:has(.tpl-current)::after { top: 26px; }
 .tpl-del { position: absolute; top: 2px; right: 2px; z-index: 1; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--ink-3); background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
 .tpl-del:hover, .tpl-del:focus-visible { color: var(--overdue); }

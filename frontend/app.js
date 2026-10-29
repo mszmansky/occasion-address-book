@@ -1762,7 +1762,10 @@ function occasionModal(o) {
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">${isNew ? 'Create' : 'Save'}</button></div>`,
   });
   loadAllFonts(); // the template previews use the design fonts
-  fillCustomGrid(modal.querySelector('form'));
+  // The list opens at the occasion's current design: scroll down to it (custom ones once they've loaded).
+  const showCurrent = () => modal.querySelector('.tpl-grid:not([hidden]) .tpl-current')?.closest('.tpl-card')?.scrollIntoView({ block: 'center' });
+  requestAnimationFrame(showCurrent);
+  fillCustomGrid(modal.querySelector('form')).then(() => { if (currentKey(o).startsWith(`${CUSTOM}:`)) showCurrent(); });
 }
 
 // ---------- design templates and custom designs ----------
