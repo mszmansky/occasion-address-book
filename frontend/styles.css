@@ -1241,8 +1241,6 @@ fieldset[hidden] { display: none; }
 .tpl-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; }
 .tpl-card:hover, .tpl-card:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); outline: none; }
 .tpl-card[data-busy] { opacity: .6; cursor: progress; }
-.tpl-card[aria-pressed=true] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
-.tpl-card[aria-pressed=true] .tpl-name { color: var(--accent); font-weight: 600; }
 .tpl-prev { position: relative; width: 122px; height: 158px; overflow: hidden; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.18); pointer-events: none; }
 .tpl-scale { position: absolute; left: 0; top: 0; width: 408px; height: 528px; transform: scale(.299); transform-origin: 0 0; }
 .tpl-scale > .design { height: 100%; box-sizing: border-box; overflow: hidden; }

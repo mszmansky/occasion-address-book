@@ -1825,12 +1825,21 @@ async function fillCustomGrid(form) {
   try { list = (await loadCustomDesigns()).filter((d) => d.kind === kind); } catch (e) { grid.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
   const o = state.occ?.occasion && form.dataset.form === 'occasion-edit' ? state.occ.occasion : {};
   const values = previewValues({ ...o, name: form.elements.namedItem('name').value });
-  grid.innerHTML = list.map((d) => designCard(`${CUSTOM}:${d.id}`, d.name, d.design, values, { current: o.design?.customId === d.id, removable: true })).join('')
+  // Current: the one clicked on this screen, else the occasion's own.
+  const cur = form.dataset.template || currentKey(o);
+  grid.innerHTML = list.map((d) => designCard(`${CUSTOM}:${d.id}`, d.name, d.design, values, { current: cur === `${CUSTOM}:${d.id}`, removable: true })).join('')
     || '<p class="muted small" style="margin:0">None saved yet.</p>';
-  if (form.dataset.template) grid.querySelector(`[data-id="${CSS.escape(form.dataset.template)}"]`)?.setAttribute('aria-pressed', 'true');
+  if (form.dataset.template) markCurrent(form, form.dataset.template);
 }
 
 const longDateOf = (ymd) => fieldValues({ occasion: { date: ymd } }).date;
+
+// Moves the Current badge to the design with this id (wherever it is in the lists).
+function markCurrent(form, id) {
+  form.querySelectorAll('.tpl-current').forEach((b) => b.remove());
+  form.querySelectorAll('.tpl-card').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.id === id)));
+  form.querySelector(`.tpl-card[data-id="${CSS.escape(id)}"]`)?.insertAdjacentHTML('afterbegin', '<span class="tpl-current">Current</span>');
+}
 
 function showTemplateTheme(theme) {
   modal.querySelectorAll('.tpl-grid').forEach((g) => { g.hidden = g.dataset.tpl !== theme; });
@@ -1893,8 +1902,6 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
   const template = ['invite', 'email'].includes(body.kind) ? form.dataset.template || '' : '';
   const hasDesign = !isNew && Boolean(state.occ?.occasion?.design?.html);
   if (!thenDesign && body.kind === 'email' && !template && !hasDesign) return modalError('An email template needs to be selected or a design saved');
-  if (!thenDesign && template && hasDesign && template !== currentKey(state.occ.occasion)
-    && !await askConfirm({ title: `Use ${pickedName(template)}?`, text: 'It replaces the current design.', ok: 'Use it' })) return undefined;
   await withBusy(form.querySelector('.btn.primary'), async () => {
     let res;
     try {
@@ -4179,11 +4186,11 @@ document.addEventListener('click', async (e) => {
       } catch (err) { toast(err.message, true); }
       break;
     }
-    case 'use-template': { // picks it (or unpicks it); Save puts it on the occasion
+    case 'use-template': { // one click makes it Current; Save puts it on the occasion (Cancel doesn't)
       const form = el.closest('form');
-      const on = form.dataset.template !== el.dataset.id;
-      form.dataset.template = on ? el.dataset.id : '';
-      form.querySelectorAll('.tpl-card').forEach((c) => c.setAttribute('aria-pressed', String(on && c === el)));
+      const saved = form.dataset.form === 'occasion-edit' ? currentKey(state.occ?.occasion) : '';
+      form.dataset.template = el.dataset.id === saved ? '' : el.dataset.id;
+      markCurrent(form, el.dataset.id);
       modalError('');
       break;
     }
@@ -4253,7 +4260,11 @@ document.addEventListener('change', (e) => {
   const t = e.target;
   if (t.matches?.('[data-who]')) syncSendRows();
   if (t.matches?.('[data-tpl-theme]')) showTemplateTheme(t.value);
-  if (t.matches?.('[data-occ-kind]') && t.form?.querySelector('[data-custom-grid]')) { delete t.form.dataset.template; t.form.querySelectorAll('.tpl-card').forEach((c) => c.setAttribute('aria-pressed', 'false')); fillCustomGrid(t.form); }
+  if (t.matches?.('[data-occ-kind]') && t.form?.querySelector('[data-custom-grid]')) {
+    delete t.form.dataset.template;
+    markCurrent(t.form, t.form.dataset.form === 'occasion-edit' ? currentKey(state.occ?.occasion) : '');
+    fillCustomGrid(t.form);
+  }
   if (t.matches?.('[data-occ-kind]')) {
     modal.querySelectorAll('[data-kinds]').forEach((el) => {
       el.hidden = !el.dataset.kinds.split(' ').includes(t.value);
