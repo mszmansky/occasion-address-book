@@ -68,7 +68,7 @@
               ${['yes', 'maybe', 'no'].map((a) => `<label><input type="radio" name="answer" value="${a}" ${answer === a ? 'checked' : ''}><span>${WORD[a]}</span></label>`).join('')}
             </div></div>
           <label data-count>How many of you are coming?<input name="count" type="number" min="1" max="50" value="${esc(prev?.count ?? d.people ?? 1)}" style="max-width:110px"></label>
-          <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2" maxlength="500" placeholder="e.g. We'll bring dessert!">${esc(prev?.note ?? '')}</textarea></label>
+          <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2" maxlength="500">${esc(prev?.note ?? '')}</textarea></label>
           <p class="error" id="err" hidden></p>
           <button class="btn primary" type="submit">Send my answer</button>
           ${d.calendar ? `<div class="row-gap">${calendarLink(d)}</div>` : ''}

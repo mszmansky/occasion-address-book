@@ -658,7 +658,7 @@ function toggleFilterPanel(scope) {
       <section><div class="fp-head"><h3>Groups</h3>${o.groups.length > 1 ? radios('groupMode', f.groupMode, [['any', 'Any'], ['all', 'All']]) : ''}</div>${checklist('groups', o.groups, f.groups)}</section>
       <section><h3>City</h3>${checklist('cities', o.cities, f.cities, { search: true })}</section>
       <section><h3>State</h3>${checklist('states', o.states, f.states, { search: true })}</section>
-      <section><h3>ZIP starts with</h3><input type="text" class="fp-zip" data-f="zip" value="${val(f.zip)}" inputmode="numeric" maxlength="10" placeholder="e.g. 480"></section>
+      <section><h3>ZIP starts with</h3><input type="text" class="fp-zip" data-f="zip" value="${val(f.zip)}" inputmode="numeric" maxlength="10"></section>
       <section><h3>Email</h3>${radios('email', f.email, [['', 'Any'], ['yes', 'Has email'], ['no', 'No email']])}</section>
       <section><h3>Mailing address</h3>${radios('address', f.address, [['', 'Any'], ['complete', 'Has one'], ['missing', 'Missing']])}
         <label class="check fp-under"><input type="checkbox" data-f="verified" ${f.verified ? 'checked' : ''}> Verified</label></section>
@@ -916,7 +916,7 @@ const groupChip = (g) => `<span class="chip-tag" data-chip="${esc(g)}"><span>${e
 function groupChipsField(groups) {
   return `<div class="chip-input" data-chips>
     ${groups.map(groupChip).join('')}
-    <input type="text" class="chip-text" data-chip-text maxlength="40" autocomplete="off" placeholder="${groups.length ? 'Add group' : 'Family, Neighbors, Work…'}"
+    <input type="text" class="chip-text" data-chip-text maxlength="40" autocomplete="off" placeholder="Add group"
       role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="group-suggest" aria-labelledby="groups-label">
     <div class="chip-suggest" id="group-suggest" role="listbox" hidden></div>
   </div>`;
@@ -1200,10 +1200,10 @@ function householdModal(h) {
     ${householdTabs(start, { people: people.filter((m) => m.firstName || m.lastName || m.email).length, pending: !!p })}
     <div class="hh-panels">
     ${panel('greetings', `
-      <label>Household Greeting${REQUIRED}<input name="labelName" required aria-required="true" maxlength="120" value="${val(h.labelName)}" placeholder="The Smith Family"></label>
+      <label>Household Greeting${REQUIRED}<input name="labelName" required aria-required="true" maxlength="120" value="${val(h.labelName)}"></label>
       <div class="grid-2">
-        <label>Formal Greeting<input name="formalName" maxlength="160" value="${val(h.formalName || suggestedFormal)}" ${!h.formalName && suggestedFormal ? 'data-auto="1"' : ''} placeholder="Mr. and Mrs. John Smith"></label>
-        <label>Informal Greeting<input name="greeting" maxlength="120" value="${val(h.greeting)}" placeholder="John and Mary"></label>
+        <label>Formal Greeting<input name="formalName" maxlength="160" value="${val(h.formalName || suggestedFormal)}" ${!h.formalName && suggestedFormal ? 'data-auto="1"' : ''}></label>
+        <label>Informal Greeting<input name="greeting" maxlength="120" value="${val(h.greeting)}"></label>
       </div>`)}
     ${panel('address', `
       ${pendingBox}
@@ -1309,7 +1309,7 @@ function requestAddressModal(h) {
   const days = state.me?.linkDays ?? 30;
   openModal('Ask them to confirm their address', `
     <p style="margin:0">We'll email <b>${esc(allEmails(h).join(', '))}</b> a private link to confirm or correct the address for <b>${esc(h.labelName)}</b>. What they send comes back here for you to review; nothing changes until you accept it. The link works for ${days} days.</p>
-    <label>Personal note <span class="muted">(optional)</span><textarea name="message" rows="3" maxlength="2000" placeholder="Getting ready for Christmas cards — is this still the right address?"></textarea></label>
+    <label>Personal note <span class="muted">(optional)</span><textarea name="message" rows="3" maxlength="2000"></textarea></label>
     <p class="hint">Emails come from ${esc(fromName())} and replies go to ${esc(state.session.user.email)}.</p>`, {
     form: `addrreq-${h.id}`,
     foot: `<div></div><div class="right"><button type="button" class="btn" data-action="edit-household" data-id="${esc(h.id)}">Back</button><button class="btn primary">Send</button></div>`,
@@ -1732,7 +1732,7 @@ function occasionModal(o) {
   openModal(isNew ? 'New occasion' : 'Edit occasion', `
     <div class="occ-head">
       <label>Type<select name="kind" data-occ-kind>${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      <label>Name<input name="name" required maxlength="120" autofocus value="${val(o.name)}" placeholder="Christmas cards ${new Date().getFullYear()}"></label>
+      <label>Name<input name="name" required maxlength="120" autofocus value="${val(o.name)}"></label>
     </div>
     <div class="grid-2 greet-row">
       <label data-kinds="card invite" ${kind === 'email' ? 'hidden' : ''}>Address Greeting Style<select name="nameStyle">
@@ -1745,7 +1745,7 @@ function occasionModal(o) {
       <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
       <div class="grid-2">
         <label>Date <span class="muted">(optional)</span><input type="date" name="date" value="${val(o.date)}"></label>
-        <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}" placeholder="7:00 PM"></label>
+        <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}"></label>
       </div>
     </fieldset>
     <fieldset class="stack" data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><legend>Design</legend>
@@ -1753,7 +1753,7 @@ function occasionModal(o) {
       <div data-kinds="invite" ${kind === 'invite' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit" title="Open the Designer with the current design">${BRUSH} Design invitation…</button></div>
       <div data-kinds="email" ${kind === 'email' ? '' : 'hidden'}><button type="button" class="btn" data-action="design-from-edit" title="Open the Designer with the current design">${BRUSH} Design email…</button></div>
     </fieldset>
-    <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email subject<input name="subject" maxlength="200" value="${val(o.invite?.subject)}" placeholder="You're invited: ${val(o.name) || 'our holiday open house'}"></label>
+    <label data-kinds="email" ${kind === 'email' ? '' : 'hidden'}>Email subject<input name="subject" maxlength="200" value="${val(o.invite?.subject)}"></label>
     <label>Notes<textarea name="notes" rows="2" maxlength="2000">${esc(o.notes ?? '')}</textarea></label>`, {
     form: isNew ? 'occasion-new' : 'occasion-edit',
     base: isNew ? '' : o.updatedAt ?? '',
@@ -3482,7 +3482,7 @@ function profileTab() {
       <label>First name<input name="firstName" maxlength="60" value="${val(p.firstName)}" autocomplete="given-name"></label>
       <label>Last name<input name="lastName" maxlength="60" value="${val(p.lastName)}" autocomplete="family-name"></label>
     </div>
-    <label>Emails come from <span class="muted">(optional; default is your name)</span><input name="emailFromName" maxlength="80" value="${val(p.emailFromName)}" placeholder="The Szmansky Family"></label>
+    <label>Emails come from <span class="muted">(optional; default is your name)</span><input name="emailFromName" maxlength="80" value="${val(p.emailFromName)}"></label>
     <div>
       <div class="label-like">Sign-in email</div>
       <div class="email-row"><span>${esc(email)}</span><button type="button" class="icon-btn" data-action="show-email-change" aria-expanded="${state.pendingEmail ? 'true' : 'false'}" title="Change email" aria-label="Change email">${PENCIL}</button></div>
@@ -3551,7 +3551,7 @@ function returnAddressTab() {
   openModal('Settings', `
     ${settingsTabs('return')}
     <p style="margin:0">Printed in the corner of envelopes, and on return-address labels.</p>
-    <label>Name<input name="returnName" maxlength="120" value="${val(p.returnName)}" placeholder="${val([p.firstName, p.lastName].filter(Boolean).join(' ') || 'The Szmansky Family')}"></label>
+    <label>Name<input name="returnName" maxlength="120" value="${val(p.returnName)}"></label>
     ${addressFields(p.returnAddress, 'r_')}`, { form: 'settings-return', foot: saveFoot('Save return address') });
 }
 
@@ -3569,7 +3569,7 @@ async function sharingTab() {
     <div data-share-list class="share-list"><p class="muted small" style="margin:0">Loading…</p></div>
     <fieldset class="stack"><legend>Share with someone</legend>
       <div class="share-add">
-        <label>Email<input type="email" name="shareEmail" autocomplete="off" placeholder="partner@example.com"></label>
+        <label>Email<input type="email" name="shareEmail" autocomplete="off"></label>
         <label>Access${roleSelect('name="shareRole"', 'edit')}</label>
       </div>
       <p class="hint">If they don't have an account yet, they'll get an invitation email with a temporary password. The share stays with their account, so it keeps working if they change their email.</p>
@@ -3699,7 +3699,7 @@ function emailChangeBody(pending) {
         <button type="button" class="btn sm" data-action="send-email-change" data-email="${esc(pending)}">Send a new code</button>
         <button type="button" class="btn sm ghost" data-action="cancel-email-change">Cancel</button></div>`;
   }
-  return `<label>New email address<input type="email" name="newEmail" autocomplete="email" placeholder="you@example.com"></label>
+  return `<label>New email address<input type="email" name="newEmail" autocomplete="email"></label>
     <div><button type="button" class="btn sm" data-action="send-email-change">Email me a code</button></div>
     <div class="hint">We'll email a 6-digit code to the new address. Your email changes once you enter it; until then, keep signing in with your current one.</div>`;
 }
@@ -3742,7 +3742,7 @@ async function renderMfaSection() {
         <li>Open an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, Authy…) and scan this code.
           <div class="mfa-qr"><img src="${esc(mfaEnrollment.qr)}" alt="QR code for your authenticator app" width="180" height="180"></div></li>
         <li>Can't scan it? Enter this key instead: <span class="mono mfa-secret">${esc(mfaEnrollment.secret)}</span></li>
-        <li><label>Enter the 6-digit code it shows<input type="text" data-mfa-code inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="mono code-input" placeholder="123456"></label></li>
+        <li><label>Enter the 6-digit code it shows<input type="text" data-mfa-code inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="mono code-input"></label></li>
       </ol>
       <div class="mfa-buttons"><button type="button" class="btn" data-action="mfa-cancel">Cancel</button><button type="button" class="btn primary" data-action="mfa-verify">Verify and turn on</button></div>`;
     box.querySelector('[data-mfa-code]').focus();

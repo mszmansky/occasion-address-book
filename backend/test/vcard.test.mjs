@@ -23,7 +23,41 @@ test('one card per person, each with the household address', () => {
   assert.match(cards[1], /FN:Mary Smith/);
   for (const c of cards) assert.match(c, /ADR;TYPE=HOME:;;12 Oak St\\nApt 4;Troy;MI;48083;\r\n/);
   assert.ok(v.endsWith('END:VCARD\r\n'));
-  assert.doesNotMatch(v, /private|Family/); // notes and groups stay in the app
+  // Everything else on the card comes too: in the note for people, and as X-OAB- fields for this app.
+  assert.match(cards[0], /CATEGORIES:Family\r\n/);
+  assert.match(cards[0], /NOTE:Household: The Smith Family\\nGroups: Family\\nNotes: private\r\n/);
+  assert.match(cards[0], /X-OAB-HOUSEHOLD:The Smith Family\r\n/);
+  assert.match(cards[0], /X-OAB-NOTES:private\r\n/);
+});
+
+test('a vCard from this app brings the whole household back', async () => {
+  const { parseVcards, contactsToHouseholds } = await import('../../frontend/vcard-core.js');
+  const h = {
+    labelName: 'The Smith Family', formalName: 'Mr. and Mrs. John Smith', greeting: 'John and Mary', phone: '(248) 555-0100',
+    address: { line1: '12 Oak St', line2: 'Apt 4', city: 'Troy', state: 'MI', zip: '48083' },
+    members: [
+      { firstName: 'John', lastName: 'Smith', email: 'john@example.com', phone: '(248) 555-0101', relationship: 'Dad' },
+      { firstName: 'Mary', lastName: 'Smith', email: 'mary@example.com', relationship: 'Mom', primary: true },
+      { firstName: 'Liz', lastName: 'Jones', relationship: 'Grandma' },
+    ],
+    groups: ['Family', 'Christmas, cards'], notes: 'Gate code 1234\nDog: Max',
+  };
+  const v = householdToVcard(h);
+  assert.match(v.replace(/\r\n /g, ''), /NOTE:Household: The Smith Family\\nFormal greeting: Mr. and Mrs. John Smith\\nInformal greeting: John and Mary\\nRelationship: Dad/);
+  assert.match(v, /TEL;TYPE=HOME:\(248\) 555-0100/);
+  const [back] = contactsToHouseholds(parseVcards(v));
+  assert.equal(back.labelName, 'The Smith Family', 'kept, though Liz has another last name');
+  assert.equal(back.formalName, 'Mr. and Mrs. John Smith');
+  assert.equal(back.greeting, 'John and Mary');
+  assert.equal(back.phone, '(248) 555-0100');
+  assert.deepEqual(back.groups, ['Family', 'Christmas, cards']);
+  assert.equal(back.notes, 'Gate code 1234\nDog: Max');
+  assert.deepEqual(back.members.map((m) => [m.firstName, m.lastName, m.email, m.phone, m.relationship, m.primary]), [
+    ['John', 'Smith', 'john@example.com', '(248) 555-0101', 'Dad', false],
+    ['Mary', 'Smith', 'mary@example.com', undefined, 'Mom', true],
+    ['Liz', 'Jones', undefined, undefined, 'Grandma', false],
+  ]);
+  assert.deepEqual(back.address, { ...h.address, country: '' });
 });
 
 test('a household with no named people is one card named after the greeting', () => {
@@ -78,7 +112,9 @@ test('reads an Apple Contacts export and groups people at the same address', asy
   ].join('\r\n');
   const contacts = parseVcards(vcf);
   assert.equal(contacts.length, 4);
-  assert.deepEqual(contacts[0], {
+  const { homePhone, note, categories, household, formalName, greeting, relationship, primary, notes, ...plain } = contacts[0];
+  assert.deepEqual([homePhone, note, categories, household, primary], ['', '', [], '', false]);
+  assert.deepEqual(plain, {
     firstName: 'John', lastName: 'Smith', fullName: 'John Smith', org: '', email: 'john@example.com', phone: '2485550101',
     address: { line1: '123 Maple Street', line2: 'Apt 4', city: 'Willow Bend', state: 'MI', zip: '49002', country: 'United States' },
   });

@@ -61,7 +61,7 @@
             <label>ZIP<input name="zip" autocomplete="postal-code" maxlength="20" value="${esc(a.zip)}"></label>
           </div>
           <label>Country <span class="muted">(if not the US)</span><input name="country" autocomplete="country-name" maxlength="60" value="${esc(a.country)}"></label>
-          <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2" maxlength="500" placeholder="e.g. We moved in June!"></textarea></label>
+          <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2" maxlength="500"></textarea></label>
           <p class="error" id="err" hidden></p>
           <button class="btn primary" type="submit">Send my address</button>
           ${has ? '<p class="small" style="margin:0;text-align:center"><button type="button" class="link" id="back">Never mind, the address above is right</button></p>' : ''}

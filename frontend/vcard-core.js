@@ -2,7 +2,9 @@
 //
 // One card per person, each with the household's mailing address, so Contacts on a Mac or iPhone,
 // Google Contacts and Outlook import every person. A household with no named people becomes one
-// card named after its Household Greeting.
+// card named after its Household Greeting. Everything else on the household card comes too: the
+// greetings, the person's relationship, the household phone, groups (CATEGORIES) and notes, written
+// out in each card's note for people to read, and as X-OAB- fields so this app reads it all back.
 
 import { peopleWithHouseholdContact } from './csv-core.js';
 
@@ -25,13 +27,33 @@ export function foldLine(line) {
   return out.join('\r\n ');
 }
 
-function card({ first = '', last = '', fullName, email, phone, address }) {
+function card({ first = '', last = '', fullName, email, phone, homePhone, address, household = {}, relationship = '', primary = false }) {
   const a = address ?? {};
+  const h = household;
   const lines = ['BEGIN:VCARD', 'VERSION:3.0',
     `N:${escText(last)};${escText(first)};;;`,
     `FN:${escText(fullName)}`];
   if (email) lines.push(`EMAIL;TYPE=INTERNET:${escText(email)}`);
   if (phone) lines.push(`TEL;TYPE=CELL:${escText(phone)}`);
+  if (homePhone && homePhone !== phone) lines.push(`TEL;TYPE=HOME:${escText(homePhone)}`);
+  const groups = (h.groups ?? []).filter(Boolean);
+  if (groups.length) lines.push(`CATEGORIES:${groups.map(escText).join(',')}`);
+  const note = [
+    h.labelName && `Household: ${h.labelName}`,
+    h.formalName && `Formal greeting: ${h.formalName}`,
+    h.greeting && `Informal greeting: ${h.greeting}`,
+    relationship && `Relationship: ${relationship}`,
+    groups.length && `Groups: ${groups.join(', ')}`,
+    h.notes && `Notes: ${h.notes}`,
+  ].filter(Boolean).join('\n');
+  if (note) lines.push(`NOTE:${escText(note)}`);
+  // For this app to read back exactly (other apps keep or ignore these).
+  if (h.labelName) lines.push(`X-OAB-HOUSEHOLD:${escText(h.labelName)}`);
+  if (h.formalName) lines.push(`X-OAB-FORMAL:${escText(h.formalName)}`);
+  if (h.greeting) lines.push(`X-OAB-INFORMAL:${escText(h.greeting)}`);
+  if (relationship) lines.push(`X-OAB-RELATIONSHIP:${escText(relationship)}`);
+  if (primary) lines.push('X-OAB-DEFAULT-CONTACT:1');
+  if (h.notes) lines.push(`X-OAB-NOTES:${escText(h.notes)}`);
   if (['line1', 'line2', 'city', 'state', 'zip', 'country'].some((k) => String(a[k] ?? '').trim())) {
     const street = [a.line1, a.line2].map((s) => String(s ?? '').trim()).filter(Boolean).join('\n');
     lines.push(`ADR;TYPE=HOME:;;${[street, a.city, a.state, a.zip, a.country].map(escText).join(';')}`);
@@ -41,14 +63,15 @@ function card({ first = '', last = '', fullName, email, phone, address }) {
 }
 
 export function householdToVcard(h) {
-  const people = peopleWithHouseholdContact(h).filter((m) => m.firstName || m.lastName || m.email || m.phone);
+  // The household phone goes on every card as its HOME number, not onto one person.
+  const people = peopleWithHouseholdContact({ ...h, phone: undefined }).filter((m) => m.firstName || m.lastName || m.email || m.phone);
   const named = people.filter((m) => m.firstName || m.lastName);
   const cards = named.length
     ? people.map((m) => {
       const full = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email || h.labelName;
-      return card({ first: m.firstName, last: m.lastName, fullName: full, email: m.email, phone: m.phone, address: h.address });
+      return card({ first: m.firstName, last: m.lastName, fullName: full, email: m.email, phone: m.phone, homePhone: h.phone, address: h.address, household: h, relationship: m.relationship, primary: m.primary });
     })
-    : [card({ last: h.labelName, fullName: h.labelName, email: people[0]?.email, phone: people[0]?.phone, address: h.address })];
+    : [card({ last: h.labelName, fullName: h.labelName, email: people[0]?.email, phone: people[0]?.phone, homePhone: h.phone, address: h.address, household: h })];
   return `${cards.join('\r\n')}\r\n`;
 }
 
@@ -114,15 +137,21 @@ export function parseVcards(text) {
   const best = (list) => (list.find((x) => x.types.includes('pref')) ?? list.find((x) => x.types.includes('home')) ?? list[0]);
   for (const line of lines) {
     const t = line.trim();
-    if (/^BEGIN:VCARD$/i.test(t)) { c = { emails: [], tels: [], adrs: [] }; continue; }
+    if (/^BEGIN:VCARD$/i.test(t)) { c = { emails: [], tels: [], adrs: [], x: {} }; continue; }
     if (/^END:VCARD$/i.test(t)) {
       if (c) {
         const email = c.emails.length ? best(c.emails).value : '';
-        const tel = c.tels.length ? (c.tels.find((x) => x.types.includes('cell') || x.types.includes('mobile')) ?? best(c.tels)).value : '';
+        // From this app, a HOME phone is the household's; the person's own is the other one.
+        const own = c.x.HOUSEHOLD ? c.tels.filter((x) => !x.types.includes('home')) : c.tels;
+        const tel = own.length ? (own.find((x) => x.types.includes('cell') || x.types.includes('mobile')) ?? best(own)).value : '';
         const adr = c.adrs.length ? best(c.adrs).parts : null;
         contacts.push({
           firstName: c.n?.[1] || '', lastName: c.n?.[0] || '', fullName: c.fn || '', org: c.org || '',
           email: email.trim().toLowerCase(), phone: tel.trim(),
+          homePhone: (c.tels.find((x) => x.types.includes('home')) && c.tels.find((x) => x.types.includes('home')).value.trim() !== tel.trim()) ? c.tels.find((x) => x.types.includes('home')).value.trim() : '',
+          note: c.note || '', categories: c.categories ?? [],
+          household: c.x.HOUSEHOLD || '', formalName: c.x.FORMAL || '', greeting: c.x.INFORMAL || '', relationship: c.x.RELATIONSHIP || '',
+          primary: c.x['DEFAULT-CONTACT'] === '1', notes: c.x.NOTES || '',
           address: adr ? (() => {
             const lines2 = [adr[1], adr[2]].filter(Boolean).join('\n').split(/\n/).map((x) => x.trim()).filter(Boolean);
             return { line1: lines2[0] || '', line2: lines2.slice(1).join(', '), city: adr[3] || '', state: adr[4] || '', zip: adr[5] || '', country: adr[6] || '' };
@@ -141,6 +170,9 @@ export function parseVcards(text) {
     else if (r.name === 'EMAIL' && r.value.trim()) c.emails.push({ types: r.types, value: unescapeText(r.value) });
     else if (r.name === 'TEL' && r.value.trim()) c.tels.push({ types: r.types, value: unescapeText(r.value).replace(/^tel:/i, '') });
     else if (r.name === 'ADR') c.adrs.push({ types: r.types, parts: parts(r.value) });
+    else if (r.name === 'NOTE') c.note = unescapeText(r.value).trim();
+    else if (r.name === 'CATEGORIES') c.categories = r.value.split(/(?<!\\),/).map((x) => unescapeText(x).trim()).filter(Boolean);
+    else if (r.name.startsWith('X-OAB-')) c.x[r.name.slice(6)] = unescapeText(r.value).trim();
   }
   return contacts;
 }
@@ -162,11 +194,13 @@ export function contactsToHouseholds(contacts, { phoneFormat = (p) => p } = {}) 
     const first = company ? '' : c.firstName || (!c.lastName && c.fullName ? c.fullName.split(/\s+/).slice(0, -1).join(' ') : '');
     const last = company ? '' : c.lastName || (!c.firstName && c.fullName ? c.fullName.split(/\s+/).at(-1) : '');
     if (!first && !last && !c.org && !c.email) continue;
-    const person = { firstName: first, lastName: last, email: c.email || undefined, phone: c.phone ? phoneFormat(c.phone) : undefined };
+    const person = { firstName: first, lastName: last, email: c.email || undefined, phone: c.phone ? phoneFormat(c.phone) : undefined, relationship: c.relationship || undefined, primary: c.primary || undefined };
     const a = c.address;
     const addr = a ? { ...a, country: US.test(a.country) ? '' : a.country } : {};
-    const k = a?.line1 && (a.zip || a.city) ? `${key(a.line1)}|${key(a.zip) || key(a.city)}` : null;
-    const entry = { person, org: c.org, address: addr };
+    // Cards this app wrote say which household they belong to; others are grouped by address.
+    const k = c.household ? `oab|${key(c.household)}|${a ? `${key(a.line1)}|${key(a.zip)}` : ''}`
+      : a?.line1 && (a.zip || a.city) ? `${key(a.line1)}|${key(a.zip) || key(a.city)}` : null;
+    const entry = { person, org: c.org, address: addr, c };
     if (k) { if (!groups.has(k)) groups.set(k, []); groups.get(k).push(entry); } else loose.push([entry]);
   }
   return [...groups.values(), ...loose].map((entries) => {
@@ -179,12 +213,21 @@ export function contactsToHouseholds(contacts, { phoneFormat = (p) => p } = {}) 
     else if (people.length === 1) labelName = [people[0].firstName, people[0].lastName].filter(Boolean).join(' ');
     else labelName = people.map((p) => [p.firstName, p.lastName].filter(Boolean).join(' ')).join(' and ');
     const withAddress = entries.find((e) => e.address.line1) ?? entries[0];
+    const from = entries.find((e) => e.c.household)?.c; // written by this app: its own details
+    const groups = [...new Set(entries.flatMap((e) => e.c.categories ?? []))].slice(0, 20);
+    // Notes: this app's own, else the contacts' notes.
+    const notes = from ? from.notes : [...new Set(entries.map((e) => e.c.note).filter(Boolean))].join('\n\n');
+    const homePhone = entries.map((e) => e.c.homePhone).find(Boolean);
+    const anyPrimary = people.some((p) => p.primary);
     return {
-      labelName: labelName.slice(0, 120),
-      greeting: joinFirst(firsts).slice(0, 120) || undefined,
+      labelName: (from?.household || labelName).slice(0, 120),
+      formalName: from?.formalName ? from.formalName.slice(0, 160) : undefined,
+      greeting: (from?.greeting || joinFirst(firsts)).slice(0, 120) || undefined,
       address: withAddress.address,
-      members: people.map((p, i) => ({ ...p, primary: i === 0 && Boolean(p.email) })),
-      groups: [],
+      phone: homePhone ? phoneFormat(homePhone) : undefined,
+      members: people.map((p, i) => ({ ...p, primary: anyPrimary ? Boolean(p.primary) : i === 0 && Boolean(p.email) })),
+      groups,
+      notes: notes ? notes.slice(0, 2000) : undefined,
     };
   });
 }
