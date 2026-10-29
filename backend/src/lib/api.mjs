@@ -162,6 +162,7 @@ function parseOccasion(b) {
     date: date(b.date, 'Date'),
     time: str(b.time, 'Time', { max: 40 }),
     location: str(b.location, 'Location', { max: 300 }),
+    subject: str(b.subject, 'Subject', { max: 120 }),
     nameStyle,
     greetStyle: GREET_STYLES.includes(b.greetStyle) ? b.greetStyle : 'informal',
     notes: str(b.notes, 'Notes', { max: 2000 }),

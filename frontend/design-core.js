@@ -30,6 +30,7 @@ export const FIELDS = [
   ['date', 'Date'],
   ['time', 'Time'],
   ['location', 'Location'],
+  ['subject', 'Subject'],
   ['from', 'Your name'],
 ];
 
@@ -74,7 +75,7 @@ export function longDate(ymd) {
 
 /** The values for the fill-in fields of one invitation. */
 export function fieldValues({ occasion = {}, greeting = '', fromName = '' } = {}) {
-  return { greeting, occasion: occasion.name ?? '', date: longDate(occasion.date), time: occasion.time ?? '', location: occasion.location ?? '', from: fromName };
+  return { greeting, occasion: occasion.name ?? '', date: longDate(occasion.date), time: occasion.time ?? '', location: occasion.location ?? '', subject: occasion.subject ?? '', from: fromName };
 }
 
 /** Replaces {{greeting}} and the other fields with their (escaped) values; line breaks become <br>. */

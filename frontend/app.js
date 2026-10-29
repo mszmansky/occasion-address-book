@@ -1741,8 +1741,11 @@ function occasionModal(o) {
         ${[['informal', 'Informal Greeting'], ['formal', 'Formal Greeting'], ['household', 'Household Greeting'], ['person', "The person's first name"]]
       .map(([k, l]) => `<option value="${k}" ${k === 'person' ? `data-kinds="email" ${kind === 'email' ? '' : 'hidden disabled'}` : ''} ${(o.greetStyle ?? 'informal') === k && !(k === 'person' && kind !== 'email') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     </div>
-    <fieldset data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><legend>When and where</legend>
-      <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
+    <fieldset data-kinds="invite email" ${kind === 'card' ? 'hidden' : ''}><legend>When, Where and Who</legend>
+      <div class="grid-2">
+        <label>Location <span class="muted">(optional)</span><input name="location" maxlength="300" value="${val(o.location)}"></label>
+        <label>Subject <span class="muted">(optional)</span><input name="honoree" maxlength="120" value="${val(o.subject)}"></label>
+      </div>
       <div class="grid-2">
         <label>Date <span class="muted">(optional)</span><input type="date" name="date" value="${val(o.date)}"></label>
         <label>Time <span class="muted">(optional)</span><input name="time" maxlength="40" value="${val(o.time)}"></label>
@@ -1806,7 +1809,7 @@ async function loadCustomDesigns(force = false) {
 
 const previewValues = (o) => ({
   greeting: 'Kim and Joe', occasion: o.name || 'Our party', date: longDateOf(o.date) || 'Saturday, December 19, 2026',
-  time: o.time || '7:00 PM', location: o.location || '14 Cherry Lane, Troy', from: fromName() || 'The Szmansky Family',
+  time: o.time || '7:00 PM', location: o.location || '14 Cherry Lane, Troy', subject: o.subject ?? '', from: fromName() || 'The Szmansky Family',
 });
 // The design an occasion has now, to mark its card "Current".
 const currentKey = (o) => (o?.design?.customId ? `${CUSTOM}:${o.design.customId}` : o?.design?.template || '');
@@ -1920,7 +1923,7 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
   const dated = f.kind.value !== 'card'; // cards and labels have no date, time or place
   const body = {
     name: f.namedItem('name').value.trim(), kind: f.kind.value,
-    date: dated ? f.date.value : '', time: dated ? f.time.value.trim() : '', location: dated ? f.location.value.trim() : '',
+    date: dated ? f.date.value : '', time: dated ? f.time.value.trim() : '', location: dated ? f.location.value.trim() : '', subject: dated ? f.honoree.value.trim() : '',
     nameStyle: f.nameStyle.value, greetStyle: f.greetStyle.value, notes: f.notes.value.trim(),
     // The plain message from earlier versions is kept; designs are saved from the design window.
     invite: { subject: f.subject.value.trim(), message: (form.dataset.form === 'occasion-new' ? '' : state.occ?.occasion?.invite?.message) || undefined },
