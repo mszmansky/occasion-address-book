@@ -2545,15 +2545,23 @@ const BOX_CSS = { thin: '1px solid', thick: '3px solid', dashed: '2px dashed', d
 const PICTURE = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="6.25" r="1.25" fill="currentColor"/><path d="m2.5 12 3.8-3.8 2.4 2.4 1.8-1.8L13.5 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 
 function wireDesign(editor) {
-  // A text box is never the first or last thing on the page: an empty line before and after it lets
-  // you click outside the box, so what you add next goes on the page, not into the box.
-  const room = () => Object.assign(document.createElement('p'), { innerHTML: '<br>' });
+  // A text box is never the last thing on the page: an empty line after it lets you click below the
+  // box, so what you add next goes on the page, not into the box. (Not saved unless you type on it.)
+  const room = () => { const p = Object.assign(document.createElement('p'), { innerHTML: '<br>' }); p.dataset.room = ''; return p; };
   const keepRoom = () => {
-    for (const box of editor.querySelectorAll(':scope > [data-box]')) {
-      if (!box.previousElementSibling) { const p = room(); p.dataset.room = ''; box.before(p); }
-      if (!box.nextElementSibling) { const p = room(); p.dataset.room = ''; box.after(p); }
-    }
+    for (const box of editor.querySelectorAll(':scope > [data-box]')) if (!box.nextElementSibling) box.after(room());
   };
+  // Clicking above everything on the page starts a line there (without moving anything down first).
+  editor.addEventListener('mousedown', (e) => {
+    const first = editor.firstElementChild;
+    if (e.target !== editor || !first || e.clientY >= first.getBoundingClientRect().top) return;
+    e.preventDefault();
+    const p = room();
+    editor.prepend(p);
+    const r = document.createRange(); r.setStart(p, 0); r.collapse(true);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    editor.focus();
+  });
   keepRoom();
   new MutationObserver(keepRoom).observe(editor, { childList: true });
   editor.addEventListener('input', () => { // a line you type on is yours to keep
@@ -3117,7 +3125,9 @@ function wireDesign(editor) {
     // After the paragraph the cursor is in (a box can't go inside a paragraph), else at the end.
     let at = caretEl();
     while (at && at.parentElement !== editor) at = at.parentElement;
-    if (at) at.after(el); else editor.append(el);
+    // On an empty line, the box takes its place (so it doesn't sit below a blank line).
+    const emptyLine = at?.matches('p, div:not([data-box])') && !at.textContent.trim() && !at.querySelector('img, hr');
+    if (emptyLine) at.replaceWith(el); else if (at) at.after(el); else editor.append(el);
     const r = document.createRange();
     r.selectNodeContents(el.querySelector('p'));
     const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
