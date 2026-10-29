@@ -2402,6 +2402,10 @@ let designRange = null; // the editor selection, kept while the toolbar has focu
 function designHtml(editor) {
   const copy = editor.cloneNode(true);
   copy.querySelectorAll('.selected, .line-selected').forEach((el) => el.classList.remove('selected', 'line-selected'));
+  // The empty lines the Designer keeps around text boxes (so you can click outside them) aren't saved.
+  copy.querySelectorAll(':scope > p[data-room]').forEach((p) => {
+    if (!p.textContent.trim() && !p.querySelector('img, hr')) p.remove(); else p.removeAttribute('data-room');
+  });
   return copy.innerHTML.replace(/ class=""/g, '');
 }
 
@@ -2541,6 +2545,20 @@ const BOX_CSS = { thin: '1px solid', thick: '3px solid', dashed: '2px dashed', d
 const PICTURE = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="6.25" r="1.25" fill="currentColor"/><path d="m2.5 12 3.8-3.8 2.4 2.4 1.8-1.8L13.5 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 
 function wireDesign(editor) {
+  // A text box is never the first or last thing on the page: an empty line before and after it lets
+  // you click outside the box, so what you add next goes on the page, not into the box.
+  const room = () => Object.assign(document.createElement('p'), { innerHTML: '<br>' });
+  const keepRoom = () => {
+    for (const box of editor.querySelectorAll(':scope > [data-box]')) {
+      if (!box.previousElementSibling) { const p = room(); p.dataset.room = ''; box.before(p); }
+      if (!box.nextElementSibling) { const p = room(); p.dataset.room = ''; box.after(p); }
+    }
+  };
+  keepRoom();
+  new MutationObserver(keepRoom).observe(editor, { childList: true });
+  editor.addEventListener('input', () => { // a line you type on is yours to keep
+    editor.querySelectorAll(':scope > p[data-room]').forEach((p) => { if (p.textContent.trim()) p.removeAttribute('data-room'); });
+  });
   const canvas = modal.querySelector('[data-design-canvas]');
   const src = modal.querySelector('[data-design-src]');
   const imgbar = modal.querySelector('[data-design-imgbar]');
