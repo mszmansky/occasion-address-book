@@ -769,6 +769,9 @@ legend { font-weight: 600; font-size: 13px; color: var(--ink-2); padding: 0 6px;
 /* "i" on cards with a note; hovering shows the note */
 .hh-card { position: relative; }
 .hh-card.has-corner .hh-name { padding-right: 24px; }
+.hh-card.selecting { padding-left: 42px; }
+.hh-select { position: absolute; top: 12px; left: 12px; display: flex; color: var(--ink-3); }
+.hh-card.selected .hh-select { color: #2563eb; }
 .hh-corner { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .hh-note { display: flex; color: var(--ink-3); }
 .hh-verified { display: flex; padding: 2px; color: var(--ok); }

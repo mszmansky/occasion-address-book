@@ -49,6 +49,7 @@ const INVITE_BATCH = 25;
 const state = {
   session: null, pendingEmail: null, books: [], bookId: '', authMode: 'signin', showLanding: true, authMsg: '', authErr: '', authEmail: rememberedEmail(),
   me: null, households: [], occasions: [], loading: true,
+  selecting: false, selected: new Set(), // the Address book's select mode and the households picked in it
   view: 'people',                 // 'people' | 'occasions' | 'admin'
   occasionId: null, occ: null,    // open occasion: { occasion, tags }
   search: '',
@@ -553,21 +554,23 @@ function renderPeople() {
     const b = state.me.book;
     return `<div class="panel empty"><h2>No households yet</h2>
       <p>${esc(b.ownerName || b.ownerEmail)}'s address book is empty so far.${canEdit() ? ' You can add the first household.' : ''}</p>
-      ${canEdit() ? '<button class="btn primary" data-action="add-household">+ Household</button>' : ''}</div>`;
+      ${canEdit() ? '<button class="btn primary" data-action="add-household">New Household</button>' : ''}</div>`;
   }
   if (!state.households.length) {
     return `<div class="panel empty">
       <h2>Start your address book</h2>
       <p>Add a household for each envelope you send: a family at one address, a couple, or one person. Then tag them for occasions like Christmas cards or a party, and print labels or envelopes.</p>
-      ${canEdit() ? '<div class="row-gap"><button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button><button class="btn" data-action="import">Import…</button></div>' : ''}
+      ${canEdit() ? '<div class="row-gap"><button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">New Household</button><button class="btn" data-action="import">Import…</button></div>' : ''}
     </div>`;
   }
   return `
   <div class="page-head">
     <h1>Address book <span class="muted count">${plural(state.households.length, 'household')}</span></h1>
     <div class="actions">
+      ${state.selecting ? `<span class="muted small" data-select-count>${state.selected.size} selected</span>` : ''}
+      <button class="btn${state.selecting ? ' on' : ''}" data-action="select-mode" aria-pressed="${Boolean(state.selecting)}" title="${state.selecting ? 'Leave select mode' : 'Select households'}">${state.selecting ? 'Done' : 'Select'}</button>
       <button class="btn icon-only" data-action="print-book" title="Print the households shown" aria-label="Print the households shown">${PRINT_ICON}</button>
-      ${canEdit() ? '<button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">+ Household <kbd>N</kbd></button>' : ''}
+      ${canEdit() ? '<button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">New Household</button>' : ''}
     </div>
   </div>
   ${pending ? `<div class="notice"><span><b>${plural(pending, 'household')}</b> sent back ${pending === 1 ? 'an address' : 'addresses'} to review.</span>
@@ -769,7 +772,9 @@ function householdCard(h) {
     note && `<span class="hh-note" data-action="show-note" data-note="${esc(note)}" title="Show note"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="6.3" r="1.1" fill="currentColor"/><path d="M10 9v5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="sr">Note: ${esc(note)}</span></span>`,
     verified && `<span class="hh-verified" title="Address verified ${esc(fmtDate(h.addressVerifiedAt))}"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.2 10.3l2.5 2.5 5.1-5.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr">Address verified</span></span>`,
   ].filter(Boolean).join('');
-  return `<button class="hh-card${note ? ' has-note' : ''}${corner ? ' has-corner' : ''}" data-action="edit-household" data-id="${esc(h.id)}">
+  const sel = state.selecting && state.selected.has(h.id);
+  return `<button class="hh-card${note ? ' has-note' : ''}${corner ? ' has-corner' : ''}${state.selecting ? ' selecting' : ''}${sel ? ' selected' : ''}" data-action="${state.selecting ? 'select-household' : 'edit-household'}" data-id="${esc(h.id)}"${state.selecting ? ` aria-pressed="${sel}"` : ''}>
+    ${state.selecting ? `<span class="hh-select" aria-hidden="true">${sel ? '<svg viewBox="0 0 20 20" width="20" height="20"><circle cx="10" cy="10" r="9" fill="currentColor"/><path d="M6 10.4l2.6 2.6 5.3-5.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '<svg viewBox="0 0 20 20" width="20" height="20"><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>'}</span>` : ''}
     ${corner ? `<span class="hh-corner">${corner}</span>` : ''}
     <span class="hh-name">${esc(h.labelName)}</span>
     ${effectiveFormalName(h) ? `<span class="small muted">${esc(effectiveFormalName(h))}</span>` : ''}
@@ -4071,6 +4076,14 @@ document.addEventListener('click', async (e) => {
     // address book
     case 'add-household': householdModal(); break;
     case 'edit-household': householdModal(hhById().get(id)); break;
+    case 'select-mode': state.selecting = !state.selecting; state.selected = new Set(); render(); break;
+    case 'select-household': {
+      if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+      renderHouseholdList();
+      const n = document.querySelector('[data-select-count]');
+      if (n) n.textContent = `${state.selected.size} selected`;
+      break;
+    }
     case 'add-member': {
       const box = modal.querySelector('[data-members]');
       if (box.children.length >= 20) return toast('At most 20 people per household', true);
