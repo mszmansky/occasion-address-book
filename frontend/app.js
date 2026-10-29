@@ -1775,6 +1775,7 @@ const CUSTOM_MAX = 3;
 const svgDataUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 const designKind = (kind) => (kind === 'invite' ? 'invite' : 'email');
 const kindWord = (kind) => (designKind(kind) === 'invite' ? 'Invitations' : 'Emails');
+const customLabel = (kind) => `Custom ${designKind(kind) === 'invite' ? 'Invitation' : 'Email'} Designs`;
 
 let customDesigns = null; // the person's custom designs, once loaded
 async function loadCustomDesigns(force = false) {
@@ -1804,7 +1805,7 @@ function templatePicker(o) {
   if (cur) theme = cur.startsWith(`${CUSTOM}:`) ? CUSTOM : templateById(cur)?.theme ?? theme; // open where the current design is
   const values = previewValues(o);
   return `<label><span data-design-list-label>${kindWord(kind)}</span><select name="tplTheme" data-tpl-theme>${TEMPLATE_THEMES.map((th) => `<option ${th === theme ? 'selected' : ''}>${esc(th)}</option>`).join('')}
-      <option value="${CUSTOM}" data-custom-option ${theme === CUSTOM ? 'selected' : ''}>Custom ${kindWord(kind)}</option></select></label>
+      <option value="${CUSTOM}" data-custom-option ${theme === CUSTOM ? 'selected' : ''}>${customLabel(kind)}</option></select></label>
     <div class="tpl-grids">${TEMPLATE_THEMES.map((th) => `<div class="tpl-grid" data-tpl="${esc(th)}" ${th === theme ? '' : 'hidden'}>${TEMPLATES.filter((t) => t.theme === th)
     .map((t) => designCard(t.id, t.name, templateDesign(t, svgDataUrl(artSvg(t))), values, { current: cur === t.id })).join('')}</div>`).join('')}
       <div class="tpl-grid" data-tpl="${CUSTOM}" data-custom-grid ${theme === CUSTOM ? '' : 'hidden'}><p class="muted small" style="margin:0">Loading…</p></div></div>`;
@@ -1816,7 +1817,7 @@ async function fillCustomGrid(form) {
   if (!grid) return;
   const kind = designKind(form.elements.kind.value);
   form.querySelector('[data-design-list-label]').textContent = kindWord(kind);
-  form.querySelector('[data-custom-option]').textContent = `Custom ${kindWord(kind)}`;
+  form.querySelector('[data-custom-option]').textContent = customLabel(kind);
   let list;
   try { list = (await loadCustomDesigns()).filter((d) => d.kind === kind); } catch (e) { grid.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
   const o = state.occ?.occasion && form.dataset.form === 'occasion-edit' ? state.occ.occasion : {};
