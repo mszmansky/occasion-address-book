@@ -109,7 +109,7 @@ const ARTWORK = {
   santa: { file: 'art/santa.png', width: '34%' },
   pines: { draw: snowScene, box: [90, 100], width: '30%' },
   night: { draw: nightScene, box: [90, 100], width: '30%' },
-  mistletoe: { draw: ART.mistletoe, width: '34%' },
+  mistletoe: { file: 'art/mistletoe.jpg', width: '34%' },
   balloons: { draw: ART.balloons, width: '34%' },
   cupcake: { draw: ART.cupcake, width: '32%' },
   confetti: { draw: confettiStrip, box: [300, 60], width: '100%' },
