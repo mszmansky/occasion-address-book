@@ -952,6 +952,7 @@ label > span.hint { display: block; }
 .btn.icon-only { padding-left: 8px; padding-right: 8px; display: inline-flex; align-items: center; }
 .share-menu .btn[aria-expanded=true] { background: var(--surface-2); }
 .share-menu .menu { min-width: 170px; }
+.sel-share .menu { min-width: 220px; }
 
 /* USPS address check */
 .addr-check { display: grid; gap: 10px; }

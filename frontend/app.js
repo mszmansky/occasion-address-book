@@ -569,7 +569,7 @@ function renderPeople() {
     <div class="actions">
       ${state.selecting ? `<span class="muted small" data-select-count>${state.selected.size} selected</span>` : ''}
       <button class="btn${state.selecting ? ' on' : ''}" data-action="select-mode" aria-pressed="${Boolean(state.selecting)}" title="${state.selecting ? 'Leave select mode' : 'Select households'}">${state.selecting ? 'Done' : 'Select'}</button>
-      ${state.selecting && isOwner() ? `<button class="btn icon-only" data-action="send-households" title="Share the selected households" aria-label="Share the selected households" ${state.selected.size ? '' : 'disabled'}>${SHARE_ICON}</button>` : ''}
+      ${state.selecting && isOwner() ? selShareMenu() : ''}
       <button class="btn icon-only" data-action="print-book" title="Print the households shown" aria-label="Print the households shown" ${state.selecting ? 'disabled' : ''}>${PRINT_ICON}</button>
       ${canEdit() ? '<button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">New Household</button>' : ''}
     </div>
@@ -3747,6 +3747,50 @@ function renderShareList() {
     </div>`).join('') : '<p class="muted small" style="margin:0">Not shared with anyone yet.</p>';
 }
 
+// Select mode's share button: like a household's share menu, for all the selected households, with
+// "Occasions Address Book" (a private copy in someone else's own book) at the top.
+function selShareMenu() {
+  const canShareSheet = typeof navigator.share === 'function';
+  const items = (verb) => `<button type="button" role="menuitem" data-action="sel-share" data-how="${verb}" data-kind="vcf">vCard (.vcf)</button>
+      <button type="button" role="menuitem" data-action="sel-share" data-how="${verb}" data-kind="csv">CSV (.csv)</button>`;
+  return `<div class="share-menu sel-share">
+    <button type="button" class="btn icon-only" data-action="toggle-sel-share" aria-haspopup="menu" aria-expanded="false" aria-controls="sel-share-list" title="Share the selected households" aria-label="Share the selected households" ${state.selected.size ? '' : 'disabled'}>${SHARE_ICON}</button>
+    <div class="menu" id="sel-share-list" role="menu" hidden>
+      <div class="menu-label">Share</div>
+      <button type="button" role="menuitem" data-action="send-households">Occasions Address Book</button>
+      ${canShareSheet ? items('share') : ''}
+      <hr><div class="menu-label">Download</div>
+      ${items('download')}
+    </div>
+  </div>`;
+}
+
+function setSelShareMenu(open) {
+  const btn = document.querySelector('[data-action=toggle-sel-share]');
+  const menu = document.getElementById('sel-share-list');
+  if (!btn || !menu) return;
+  menu.hidden = !open;
+  btn.setAttribute('aria-expanded', String(open));
+}
+
+// The selected households as one vCard or CSV file: the share sheet where there is one, else a download.
+async function shareSelected(how, kind) {
+  setSelShareMenu(false);
+  const list = shownHouseholds().filter((h) => state.selected.has(h.id));
+  if (!list.length) return;
+  const base = list.length === 1 ? fileBaseName(list[0]) : 'Households';
+  const name = `${base}.${kind}`;
+  const text = kind === 'vcf' ? list.map(householdToVcard).join('') : householdsToCsv(list);
+  const type = kind === 'vcf' ? 'text/vcard' : 'text/csv';
+  if (how === 'share') {
+    const file = new File([text], name, { type });
+    if (navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: plural(list.length, 'household') }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+  }
+  download(name, text, type);
+}
+
 // Select mode's Share: a private copy of each selected household for someone else's own address book.
 function sendHouseholdsModal() {
   const n = state.selected.size;
@@ -4027,6 +4071,7 @@ document.addEventListener('click', async (e) => {
   if (!e.target.closest('.user-menu')) setUserMenu(false);
   if (!e.target.closest('.book-menu')) setBookMenu(false);
   if (!e.target.closest('.share-menu')) setShareMenu(false);
+  if (!e.target.closest('.sel-share')) setSelShareMenu(false);
   if (!el) return;
   const { action, id } = el.dataset;
   switch (action) {
@@ -4100,15 +4145,17 @@ document.addEventListener('click', async (e) => {
     // address book
     case 'add-household': householdModal(); break;
     case 'edit-household': householdModal(hhById().get(id)); break;
-    case 'send-households': sendHouseholdsModal(); break;
+    case 'send-households': setSelShareMenu(false); sendHouseholdsModal(); break;
+    case 'toggle-sel-share': setSelShareMenu(document.getElementById('sel-share-list').hidden); break;
+    case 'sel-share': await shareSelected(el.dataset.how, el.dataset.kind); break;
     case 'select-mode': state.selecting = !state.selecting; state.selected = new Set(); render(); break;
     case 'select-household': {
       if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
       renderHouseholdList();
       const n = document.querySelector('[data-select-count]');
       if (n) n.textContent = `${state.selected.size} selected`;
-      const send = document.querySelector('[data-action=send-households]');
-      if (send) send.disabled = !state.selected.size;
+      const send = document.querySelector('[data-action=toggle-sel-share]');
+      if (send) { send.disabled = !state.selected.size; if (!state.selected.size) setSelShareMenu(false); }
       break;
     }
     case 'add-member': {
