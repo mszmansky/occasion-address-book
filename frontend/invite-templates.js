@@ -113,7 +113,7 @@ const ARTWORK = {
   balloons: { draw: ART.balloons, width: '34%' },
   cupcake: { draw: ART.cupcake, width: '32%' },
   confetti: { draw: confettiStrip, box: [300, 60], width: '100%' },
-  champagne: { draw: champagne, width: '36%' },
+  champagne: { file: 'art/champagne.jpg', width: '36%' },
   fireworks: { draw: fireworksBig, width: '40%' },
   clock: { draw: clock, width: '32%' },
   cap: { draw: gradCap, width: '40%' },
