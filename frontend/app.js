@@ -15,7 +15,7 @@ import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
 import {
   BORDERS, FONTS, FIELDS as DESIGN_FIELDS, DESIGN_DEFAULTS, borderByKey, fieldValues, fontByKey, fontLink, renderDesign, starterHtml,
 } from './design-core.js';
-import { TEMPLATES, TEMPLATE_THEMES, artSize, artSvg, templateById, templateDesign } from './invite-templates.js';
+import { TEMPLATES, TEMPLATE_THEMES, artFile, artSize, artSvg, templateById, templateDesign } from './invite-templates.js';
 
 const cfg = window.APP_CONFIG ?? {};
 const root = document.getElementById('root');
@@ -1810,7 +1810,7 @@ function templatePicker(o) {
   return `<label><span data-design-list-label>${kindWord(kind)}</span><select name="tplTheme" data-tpl-theme>${TEMPLATE_THEMES.map((th) => `<option ${th === theme ? 'selected' : ''}>${esc(th)}</option>`).join('')}
       <option value="${CUSTOM}" data-custom-option ${theme === CUSTOM ? 'selected' : ''}>${customLabel(kind)}</option></select></label>
     <div class="tpl-grids">${TEMPLATE_THEMES.map((th) => `<div class="tpl-grid" data-tpl="${esc(th)}" ${th === theme ? '' : 'hidden'}>${TEMPLATES.filter((t) => t.theme === th)
-    .map((t) => designCard(t.id, t.name, templateDesign(t, svgDataUrl(artSvg(t))), values, { current: cur === t.id })).join('')}</div>`).join('')}
+    .map((t) => designCard(t.id, t.name, templateDesign(t, artFile(t) || svgDataUrl(artSvg(t))), values, { current: cur === t.id })).join('')}</div>`).join('')}
       <div class="tpl-grid" data-tpl="${CUSTOM}" data-custom-grid ${theme === CUSTOM ? '' : 'hidden'}><p class="muted small" style="margin:0">Loading…</p></div></div>`;
 }
 
@@ -1866,9 +1866,17 @@ async function designFromTemplate(id) {
   }
   const t = templateById(id);
   if (!t) throw new Error('That template is no longer available');
-  const scale = 6;
-  const [w, h] = artSize(t);
-  const url = await uploadPicture(await svgToPng(artSvg(t, scale), w * scale, h * scale), 'image/png');
+  let url;
+  if (artFile(t)) {
+    const res = await fetch(artFile(t));
+    if (!res.ok) throw new Error('Could not load the template picture');
+    const type = /\.png$/i.test(artFile(t)) ? 'image/png' : 'image/jpeg';
+    url = await uploadPicture(new Blob([await res.arrayBuffer()], { type }), type);
+  } else {
+    const scale = 6;
+    const [w, h] = artSize(t);
+    url = await uploadPicture(await svgToPng(artSvg(t, scale), w * scale, h * scale), 'image/png');
+  }
   return { ...templateDesign(t, url), name: t.name, template: t.id };
 }
 const pickedName = (id) => (id.startsWith(`${CUSTOM}:`) ? customDesigns?.find((x) => x.id === id.slice(CUSTOM.length + 1))?.name ?? 'custom design' : templateById(id)?.name ?? 'template');

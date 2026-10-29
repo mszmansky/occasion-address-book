@@ -106,7 +106,7 @@ const fireworksBig = () => burst(30, 34, 26, '#ef4444') + burst(68, 30, 22, '#fd
 const ARTWORK = {
   wreath: { draw: ART.wreath, width: '36%' },
   tree: { draw: ART.tree, width: '36%' },
-  santa: { draw: onCircle(ART.santa), width: '34%' },
+  santa: { file: 'art/santa.jpg', width: '34%' },
   pines: { draw: snowScene, box: [90, 100], width: '30%' },
   night: { draw: nightScene, box: [90, 100], width: '30%' },
   mistletoe: { draw: ART.mistletoe, width: '34%' },
@@ -229,6 +229,8 @@ export function artSvg(t, scale = 1) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w * scale}" height="${h * scale}">${a.draw()}</svg>`;
 }
 export const artSize = (t) => ARTWORK[t.art].box ?? [100, 100];
+/** The template's picture file, for templates whose picture is an image rather than a drawing ('' otherwise). */
+export const artFile = (t) => ARTWORK[t.art].file ?? '';
 
 /** The template as a design for the Designer, its picture at src (a PNG link, or a data: URL for previews). */
 export function templateDesign(t, src) {
