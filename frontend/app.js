@@ -569,7 +569,7 @@ function renderPeople() {
     <div class="actions">
       ${state.selecting ? `<span class="muted small" data-select-count>${state.selected.size} selected</span>` : ''}
       <button class="btn${state.selecting ? ' on' : ''}" data-action="select-mode" aria-pressed="${Boolean(state.selecting)}" title="${state.selecting ? 'Leave select mode' : 'Select households'}">${state.selecting ? 'Done' : 'Select'}</button>
-      <button class="btn icon-only" data-action="print-book" title="Print the households shown" aria-label="Print the households shown">${PRINT_ICON}</button>
+      <button class="btn icon-only" data-action="print-book" title="Print the households shown" aria-label="Print the households shown" ${state.selecting ? 'disabled' : ''}>${PRINT_ICON}</button>
       ${canEdit() ? '<button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">New Household</button>' : ''}
     </div>
   </div>
