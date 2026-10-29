@@ -1765,7 +1765,22 @@ function occasionModal(o) {
   // The list opens at the occasion's current design: scroll down to it (custom ones once they've loaded).
   const showCurrent = () => modal.querySelector('.tpl-grid:not([hidden]) .tpl-current')?.closest('.tpl-card')?.scrollIntoView({ block: 'center' });
   requestAnimationFrame(showCurrent);
-  fillCustomGrid(modal.querySelector('form')).then(() => { if (currentKey(o).startsWith(`${CUSTOM}:`)) showCurrent(); });
+  const form = modal.querySelector('form');
+  fillCustomGrid(form).then(() => {
+    // A design saved before the app kept which one it came from (or whose custom design was since
+    // deleted) is found by its name: a custom design first, else a template.
+    if (!form.dataset.template && !form.querySelector('.tpl-current') && o.design?.name) {
+      const name = o.design.name.trim().toLowerCase();
+      const card = [...form.querySelectorAll('[data-custom-grid] .tpl-card'), ...form.querySelectorAll('.tpl-grid:not([data-custom-grid]) .tpl-card')]
+        .find((c) => c.dataset.id !== BLANK && c.querySelector('.tpl-name')?.textContent.trim().toLowerCase() === name);
+      if (card) {
+        markCurrent(form, card.dataset.id);
+        const theme = card.closest('.tpl-grid')?.dataset.tpl;
+        if (theme) { form.elements.tplTheme.value = theme; showTemplateTheme(theme); }
+      }
+    }
+    if (currentKey(o).startsWith(`${CUSTOM}:`) || !currentKey(o)) showCurrent();
+  });
 }
 
 // ---------- design templates and custom designs ----------
@@ -1918,7 +1933,9 @@ async function saveOccasion(form, { thenDesign = false } = {}) {
   // Blank only opens an empty page in the Designer; Save on its own doesn't put an empty design on the occasion.
   const template = picked === BLANK ? '' : picked;
   const hasDesign = !isNew && Boolean(state.occ?.occasion?.design?.html);
-  if (!thenDesign && body.kind === 'email' && !template && !hasDesign) return modalError('An email template needs to be selected or a design saved');
+  // An email needs a design marked Current (Blank only starts one in the Designer).
+  const current = form.querySelector('.tpl-current')?.closest('.tpl-card')?.dataset.id;
+  if (!thenDesign && body.kind === 'email' && (!current || current === BLANK)) return modalError('An email template needs to be selected or a design saved');
   await withBusy(form.querySelector('.btn.primary'), async () => {
     let res;
     try {
