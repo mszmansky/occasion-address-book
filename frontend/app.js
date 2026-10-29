@@ -3819,6 +3819,36 @@ async function alignTest(what) {
   await printPages(win, { title: 'Alignment test', css: pages.css, body: pages.body });
 }
 
+// ---------- show / hide passwords ----------
+// Every password box gets an eye button that shows what's typed (and hides it again).
+const EYE_OPEN = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+const EYE_SHUT = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 13.5 13.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+function addPasswordEyes(root = document) {
+  root.querySelectorAll?.('input[type=password]:not([data-eye])').forEach((input) => {
+    input.dataset.eye = '1';
+    const wrap = document.createElement('span');
+    wrap.className = 'pw-wrap';
+    input.replaceWith(wrap);
+    wrap.append(input);
+    const btn = Object.assign(document.createElement('button'), { type: 'button', className: 'pw-eye', innerHTML: EYE_OPEN, title: 'Show password' });
+    btn.setAttribute('aria-label', 'Show password');
+    btn.setAttribute('aria-pressed', 'false');
+    btn.addEventListener('mousedown', (e) => e.preventDefault()); // keep the cursor in the box
+    btn.addEventListener('click', () => {
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.innerHTML = show ? EYE_SHUT : EYE_OPEN;
+      btn.title = show ? 'Hide password' : 'Show password';
+      btn.setAttribute('aria-label', btn.title);
+      btn.setAttribute('aria-pressed', String(show));
+    });
+    wrap.append(btn);
+  });
+}
+new MutationObserver((list) => { for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) addPasswordEyes(n.parentNode ?? n); })
+  .observe(document.body, { childList: true, subtree: true });
+addPasswordEyes();
+
 // ---------- events ----------
 document.addEventListener('click', async (e) => {
   if (!e.target.closest('.note-tip, .hh-note')) hideNoteTip();
