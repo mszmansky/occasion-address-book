@@ -133,18 +133,23 @@ const P = (inner, style = '') => `<p style="text-align:center;margin:0 0 10px${s
 const WHEN = '<b>{{date}}</b><br>{{time}}<br>{{location}}';
 
 /** An invitation: picture, title, greeting, what it is, when and where, from. */
+// A text box like the Designer's Text box (no border, centered), so each part can be moved, resized or bordered.
+const BOX = (width, inner) => `<div data-box="none" align="center" style="width:${width};padding:6px 12px;margin:6px auto">${inner}</div>`;
+
 function invitation({ title, titleFont, titleColor, titleSize = 40, line, when = WHEN, whenColor = '', sign = 'Hope you can make it!', textFont = '' }) {
   const tf = textFont ? `;font-family:${fam(textFont)}` : '';
-  return `<h1 style="text-align:center;margin:4px 0 8px;font-family:${fam(titleFont)};font-size:${titleSize}px;font-weight:normal;line-height:1.1;color:${titleColor}">${title}</h1>`
+  // One wide box for the title, greeting and the longer line; a narrower one for the shorter when, where and sign-off.
+  return BOX('90%', `<h1 style="text-align:center;margin:4px 0 8px;font-family:${fam(titleFont)};font-size:${titleSize}px;font-weight:normal;line-height:1.1;color:${titleColor}">${title}</h1>`
     + P('Dear {{greeting}},', tf.slice(1))
-    + P(line, tf.slice(1))
-    + P(when, `${whenColor ? `color:${whenColor}` : ''}${tf}`.replace(/^;/, ''))
-    + P(`${sign}<br>{{from}}`, `margin-bottom:0${tf}`);
+    + P(line, `margin-bottom:0${tf}`))
+    + BOX('60%', P(when, `${whenColor ? `color:${whenColor}` : ''}${tf}`.replace(/^;/, ''))
+    + P(`${sign}<br>{{from}}`, `margin-bottom:0${tf}`));
 }
 /** A greeting (no event): picture, title, greeting, wishes, from. */
 function greeting({ title, titleFont, titleColor, titleSize = 42, wish, sign = 'With love,' }) {
-  return `<h1 style="text-align:center;margin:4px 0 10px;font-family:${fam(titleFont)};font-size:${titleSize}px;font-weight:normal;line-height:1.1;color:${titleColor}">${title}</h1>`
-    + P('Dear {{greeting}},') + P(wish) + P(`${sign}<br>{{from}}`, 'margin-bottom:0');
+  return BOX('90%', `<h1 style="text-align:center;margin:4px 0 10px;font-family:${fam(titleFont)};font-size:${titleSize}px;font-weight:normal;line-height:1.1;color:${titleColor}">${title}</h1>`
+    + P('Dear {{greeting}},') + P(wish, 'margin-bottom:0'))
+    + BOX('60%', P(`${sign}<br>{{from}}`, 'margin-bottom:0'));
 }
 
 export const TEMPLATES = [
