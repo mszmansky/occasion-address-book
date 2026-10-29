@@ -569,6 +569,7 @@ function renderPeople() {
     <div class="actions">
       ${state.selecting ? `<span class="muted small" data-select-count>${state.selected.size} selected</span>` : ''}
       <button class="btn${state.selecting ? ' on' : ''}" data-action="select-mode" aria-pressed="${Boolean(state.selecting)}" title="${state.selecting ? 'Leave select mode' : 'Select households'}">${state.selecting ? 'Done' : 'Select'}</button>
+      ${state.selecting && isOwner() ? `<button class="btn icon-only" data-action="send-households" title="Share the selected households" aria-label="Share the selected households" ${state.selected.size ? '' : 'disabled'}>${SHARE_ICON}</button>` : ''}
       <button class="btn icon-only" data-action="print-book" title="Print the households shown" aria-label="Print the households shown" ${state.selecting ? 'disabled' : ''}>${PRINT_ICON}</button>
       ${canEdit() ? '<button class="btn primary" data-action="add-household" title="New household (N)" aria-keyshortcuts="n">New Household</button>' : ''}
     </div>
@@ -3746,6 +3747,29 @@ function renderShareList() {
     </div>`).join('') : '<p class="muted small" style="margin:0">Not shared with anyone yet.</p>';
 }
 
+// Select mode's Share: a private copy of each selected household for someone else's own address book.
+function sendHouseholdsModal() {
+  const n = state.selected.size;
+  if (!n) return;
+  openModal(`Share ${plural(n, 'household')}`, `
+    <label>Their email<input type="email" name="sendEmail" autocomplete="off" maxlength="254" required></label>`, {
+    form: 'send-households',
+    foot: '<div></div><div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">Share</button></div>',
+  });
+  modal.querySelector('[name=sendEmail]').focus();
+}
+
+async function sendHouseholds(form) {
+  const email = form.elements.sendEmail.value.trim();
+  if (!email) return modalError('Enter their email address');
+  return withBusy(form.querySelector('.btn.primary'), async () => {
+    const res = await api('/households/send', { method: 'POST', body: { email, ids: [...state.selected] } });
+    closeModal();
+    const skipped = res.skipped?.length ? ` (${plural(res.skipped.length, 'household')} they already had ${res.skipped.length === 1 ? 'was' : 'were'} skipped)` : '';
+    toast(res.sent ? `Shared ${plural(res.sent, 'household')} with ${email}${res.invited ? ', and invited them to create an account' : ''}${skipped}` : `${email} already has ${res.skipped.length === 1 ? 'that household' : 'those households'}`);
+  });
+}
+
 async function addShare(form) {
   const email = form.elements.shareEmail.value.trim();
   if (!email) return modalError('Enter their email address');
@@ -4076,12 +4100,15 @@ document.addEventListener('click', async (e) => {
     // address book
     case 'add-household': householdModal(); break;
     case 'edit-household': householdModal(hhById().get(id)); break;
+    case 'send-households': sendHouseholdsModal(); break;
     case 'select-mode': state.selecting = !state.selecting; state.selected = new Set(); render(); break;
     case 'select-household': {
       if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
       renderHouseholdList();
       const n = document.querySelector('[data-select-count]');
       if (n) n.textContent = `${state.selected.size} selected`;
+      const send = document.querySelector('[data-action=send-households]');
+      if (send) send.disabled = !state.selected.size;
       break;
     }
     case 'add-member': {
@@ -4375,6 +4402,7 @@ document.addEventListener('submit', async (e) => {
   if (kind === 'design') return saveDesign(form);
   if (kind === 'import') return runImport(form.querySelector('[data-import-go]'));
   if (kind === 'share') return addShare(form);
+  if (kind === 'send-households') return sendHouseholds(form);
   if (kind === 'admin-invite') return adminInvite(form);
   if (kind === 'admin-settings') return saveAdminSettings(form);
   if (kind === 'settings-password') return withBusy(form.querySelector('button[type=submit]'), () => changePassword(form));

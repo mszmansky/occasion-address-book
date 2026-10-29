@@ -251,6 +251,30 @@ ${appUrl ? (to ? signinUrl(appUrl, encodeURIComponent(to)) : appUrl) : ''}`;
   return { subject, html, text };
 }
 
+/** Tells someone that a person sent them copies of households, now in their own address book. */
+export function buildHouseholdsNotice({ senderName, senderEmail, count, invited, appUrl, to = '' }) {
+  const APP = 'Occasions Address Book';
+  const who = senderName || senderEmail;
+  const what = `${count} ${count === 1 ? 'household' : 'households'}`;
+  const signIn = invited
+    ? `You'll also get an email with a temporary password. Sign in to ${APP} with this email address and that password, then choose your own.`
+    : `Sign in to ${APP} with this email address to see them.`;
+  const subject = `${who} sent you ${what}`;
+  const p = (t) => `<p style="margin:0 0 14px">${t}</p>`;
+  const link = appUrl ? (to ? signinUrl(appUrl, encodeURIComponent(to)) : appUrl) : '';
+  const html = layout({
+    heading: `${esc(who)} sent you ${what}`,
+    inner: p(`${esc(who)}${senderName ? ` (${esc(senderEmail)})` : ''} sent you ${what} from their ${APP}. Your own copy of each is now in your address book: names, addresses, people, phones and emails.`)
+      + p(esc(signIn)) + (link ? button(link, `Open ${APP}`) : ''),
+    footer: "If you weren't expecting this, you can ignore this email.",
+  });
+  const text = `${who}${senderName ? ` (${senderEmail})` : ''} sent you ${what} from their ${APP}. Your own copy of each is now in your address book: names, addresses, people, phones and emails.
+
+${signIn}
+${link}`;
+  return { subject, html, text };
+}
+
 /** Tells the person who sent the invitation that a guest answered. */
 export function buildRsvpNotice({ occasionName, householdName, answer, count, note, appUrl }) {
   const APP = 'Occasions Address Book';

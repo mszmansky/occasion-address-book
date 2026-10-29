@@ -986,3 +986,34 @@ test('custom designs: up to 3 named designs per kind; the same name replaces; th
   const saved = (await call('PUT', `/occasions/${o.id}/design`, { ...d('<p>hi</p>'), name: 'Brunch', customId: 'abc123' })).body.occasion.design;
   assert.deepEqual([saved.name, saved.customId], ['Brunch', 'abc123']);
 });
+
+test('sending households puts a private copy of each in the other person\'s own book', async () => {
+  const mailer = createFakeMailer();
+  const directory = createFakeDirectory({ 'kim@example.com': 'user-kim', 'mike@example.com': 'user-1' });
+  const { call } = await setup({ mailer, directory });
+  const KIMC = { sub: 'user-kim', email: 'kim@example.com' };
+  const a = (await call('POST', '/households', { ...smiths, notes: 'Gate code 1234', groups: ['Family'] })).body.household;
+  const b = (await call('POST', '/households', { labelName: 'Kim Lee', address: { line1: '5 Oak St', city: 'Detroit', state: 'MI', zip: '48201' } })).body.household;
+  const res = await call('POST', '/households/send', { ids: [a.id, b.id], email: 'Kim@Example.com' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.sent, 2);
+  const kims = (await call('GET', '/households', undefined, as(KIMC))).body.households;
+  assert.deepEqual(kims.map((h) => h.labelName).sort(), ['Kim Lee', 'The Smith Family']);
+  assert.equal(kims.find((h) => h.labelName === 'The Smith Family').notes, 'Gate code 1234');
+  assert.ok(kims.every((h) => ![a.id, b.id].includes(h.id)), 'their own copies');
+  assert.match(mailer.sent.at(-1).subject, /sent you 2 households/);
+  // Again: the ones Kim has already are skipped.
+  const again = await call('POST', '/households/send', { ids: [a.id], email: 'kim@example.com' });
+  assert.equal(again.body.sent, 0);
+  assert.deepEqual(again.body.skipped, ['The Smith Family']);
+  // Someone new is invited and gets the copies.
+  const joe = await call('POST', '/households/send', { ids: [b.id], email: 'joe@example.com' });
+  assert.equal(joe.body.invited, true);
+  assert.deepEqual(directory.invited, ['joe@example.com']);
+  assert.equal((await call('GET', '/households', undefined, as({ sub: 'user-joe', email: 'joe@example.com' }))).body.households.length, 1);
+  // Not your own email, nothing selected, only your own book.
+  assert.match((await call('POST', '/households/send', { ids: [a.id], email: 'mike@example.com' })).body.error, /your own/);
+  assert.equal((await call('POST', '/households/send', { ids: [], email: 'kim@example.com' })).status, 400);
+  await call('POST', '/shares', { email: 'kim@example.com', role: 'edit' });
+  assert.equal((await call('POST', '/households/send', { ids: [a.id], email: 'joe@example.com' }, as(KIMC, 'user-1'))).status, 403);
+});

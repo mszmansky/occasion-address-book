@@ -5,7 +5,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { HttpError } from './auth.mjs';
 import { userPk } from './repo.mjs';
-import { buildAddressReceived, buildAddressRequest, buildInvite, buildPasswordChanged, buildRsvpNotice, buildShareNotice } from './email.mjs';
+import { buildAddressReceived, buildAddressRequest, buildInvite, buildPasswordChanged, buildHouseholdsNotice, buildRsvpNotice, buildShareNotice } from './email.mjs';
 import { buildIcs } from './ics.mjs';
 import { cleanDesignHtml } from './sanitize.mjs';
 import { BORDERS, FONTS, longDate } from './design-core.mjs';
@@ -587,6 +587,51 @@ export function createApi({ repo, verify, mailer, appUrl, files, media, director
 
   // Someone a book is shared with (edit or view only) can copy one of its households into their own
   // book. The copy is theirs: no occasion lists, address requests or replies come with it.
+  // Sends copies of households from your own address book to someone else's own address book (theirs to
+  // keep and change). Someone without an account is invited, like sharing the book. Households they
+  // already have (same name, street and ZIP) are skipped.
+  route('POST', '/households/send', async ({ user, body }) => {
+    if (user.book.role !== 'owner') throw new HttpError(403, 'Only households in your own address book can be sent');
+    if (!directory) throw new HttpError(503, 'Sharing is not set up');
+    const email = (str(body.email, 'Email', { max: 254, required: true }) ?? '').toLowerCase();
+    if (!EMAIL.test(email)) throw new HttpError(400, `"${email}" is not a valid email`);
+    if (email === user.email) throw new HttpError(400, "That's your own email");
+    const ids = Array.isArray(body.ids) ? [...new Set(body.ids.map(String))] : [];
+    if (!ids.length) throw new HttpError(400, 'Select at least one household');
+    if (ids.length > IMPORT_MAX) throw new HttpError(400, `Send at most ${IMPORT_MAX} households at a time`);
+    const sources = [];
+    for (const id of ids) sources.push(await mustGet(user, `HH#${id}`, 'Household'));
+
+    const { sub, invited } = await directory.invite(email);
+    if (!sub) throw new HttpError(502, 'Could not find or create an account for that email. Please try again.');
+    if (sub === user.sub) throw new HttpError(400, "That's your own account");
+    const theirs = userPk(sub);
+    const key = (h) => [h.labelName, h.address?.line1, h.address?.zip].map((x) => String(x ?? '').trim().toLowerCase()).join('|');
+    const have = new Set((await repo.query(theirs, 'HH#')).map(key));
+    const items = [];
+    const skipped = [];
+    for (const src of sources) {
+      if (have.has(key(src))) { skipped.push(src.labelName); continue; }
+      have.add(key(src));
+      const id = newId();
+      items.push({
+        PK: theirs, SK: `HH#${id}`, id, ...parseHousehold(publicHousehold(src)),
+        ...(src.addressVerifiedAt ? { addressVerifiedAt: src.addressVerifiedAt } : {}),
+        createdAt: nowIso(), updatedAt: nowIso(),
+      });
+    }
+    if (items.length) await repo.batchPut(items);
+    if (items.length) {
+      const senderName = fullName(await getProfile(user)) || '';
+      try {
+        await mailer.send({ to: email, ...buildHouseholdsNotice({ senderName, senderEmail: user.email, count: items.length, invited, appUrl, to: email }), fromName: senderName, replyTo: user.email });
+      } catch (e) {
+        log.error(e); // the copies are there either way
+      }
+    }
+    return { sent: items.length, skipped, invited: invited || undefined };
+  });
+
   route('POST', '/households/:id/copy-to-mine', async ({ user, params }) => {
     if (user.book.role === 'owner') throw new HttpError(400, 'This household is already in your address book');
     const src = await mustGet(user, `HH#${params.id}`, 'Household');
