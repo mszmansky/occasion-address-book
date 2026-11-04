@@ -83,13 +83,37 @@ export function fillFields(html, values = {}) {
   return String(html ?? '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in values ? esc(values[k]).replace(/\r?\n/g, '<br>') : m));
 }
 
-/** The design as one block: its background, base font and color around the filled-in content. */
-export function renderDesign(design = {}, values = {}, { padding = '32px' } = {}) {
+// Invitations laid out freely: <div data-free="card5x7" data-aspect="5:7"> holding parts placed by
+// percentages of the card, with sizes in cqw (hundredths of the card's width), so the same layout
+// fits any card it's printed on. Emails laid out in rows of columns: <div data-rows> (email-safe tables).
+export const isFreeDesign = (html) => /^\s*<div\b[^>]*\bdata-free\b/i.test(String(html ?? ''));
+export const isRowsDesign = (html) => /^\s*<div\b[^>]*\bdata-rows\b/i.test(String(html ?? ''));
+/** A free layout's card shape, "5 / 7" (portrait 5 × 7 when it doesn't say). */
+export function freeAspect(html) {
+  const m = /\bdata-aspect="(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)"/.exec(String(html ?? ''));
+  return m ? `${m[1]} / ${m[2]}` : '5 / 7';
+}
+// The base text size of a free layout: 16px on a 5-inch-wide card (480px), scaling with the card.
+export const FREE_BASE_CQW = 3.333;
+
+/**
+ * The design as one block: its background, base font and color around the filled-in content.
+ * fill: a free layout fills its box (a printed card) instead of keeping its own shape.
+ */
+export function renderDesign(design = {}, values = {}, { padding = '32px', fill = false } = {}) {
   const d = { ...DESIGN_DEFAULTS, ...design };
   const bg = /^#[0-9a-f]{6}$/i.test(d.background) ? d.background : DESIGN_DEFAULTS.background;
   const color = /^#[0-9a-f]{6}$/i.test(d.color) ? d.color : DESIGN_DEFAULTS.color;
   const font = fontByKey(d.font).stack.replace(/"/g, "'");
   const b = borderByKey(d.border);
+  if (isFreeDesign(d.html)) {
+    const edge = /^#[0-9a-f]{6}$/i.test(d.borderColor) ? d.borderColor : DESIGN_DEFAULTS.borderColor;
+    const frame = b.css ? `<div class="design-frame" style="position:absolute;inset:3%;border:${b.css} ${edge};${b.radius ? `border-radius:${b.radius};` : ''}pointer-events:none"></div>` : '';
+    const size = fill ? 'width:100%;height:100%' : `width:100%;aspect-ratio:${freeAspect(d.html)}`;
+    // The card is the size container; its inside takes the base text size from the card's width.
+    return `<div class="design design-free" style="position:relative;overflow:hidden;container-type:inline-size;box-sizing:border-box;${size};background:${bg};color:${color};font-family:${font}">`
+      + `<div class="design-card" style="position:absolute;inset:0;font-size:${FREE_BASE_CQW}cqw;line-height:1.3">${frame}${fillFields(d.html, values)}</div></div>`;
+  }
   if (!b.css) return `<div class="design" style="background:${bg};color:${color};font-family:${font};font-size:16px;line-height:1.5;padding:${padding}">${fillFields(d.html, values)}${CLEAR}</div>`;
   const edge = /^#[0-9a-f]{6}$/i.test(d.borderColor) ? d.borderColor : DESIGN_DEFAULTS.borderColor;
   // The frame sits about half the padding in from the edge, with the rest of the padding inside it.

@@ -13,8 +13,11 @@ import { addressBookReport, addressChecklist, paginateReport } from './report.js
 import { householdToVcard, fileBaseName, parseVcards, contactsToHouseholds } from './vcard-core.js';
 import { FLOURISHES, drawFlourish, flourishByLabel } from './ornaments.js';
 import {
-  BORDERS, FONTS, FIELDS as DESIGN_FIELDS, DESIGN_DEFAULTS, borderByKey, fieldValues, fontByKey, fontLink, renderDesign, starterHtml,
+  BORDERS, FONTS, FIELDS as DESIGN_FIELDS, DESIGN_DEFAULTS, borderByKey, fieldValues, fontByKey, fontLink, isFreeDesign, renderDesign, starterHtml,
 } from './design-core.js';
+import { ROW_LAYOUTS, cqwToPt, ptToCqw } from './layout-core.js';
+import { createRowsEditor, LAYOUT_ICON } from './designer-rows.js';
+import { createFreeEditor } from './designer-free.js';
 import { TEMPLATES, TEMPLATE_THEMES, artFile, artSize, artSvg, templateById, templateDesign } from './invite-templates.js';
 
 const cfg = window.APP_CONFIG ?? {};
@@ -2148,9 +2151,12 @@ function syncPrintForm({ whatChanged = false } = {}) {
     // An envelope stays picked when switching between Addresses and Return addresses. Otherwise return
     // addresses start on the first return-address label sheet (the list's first), and the others from
     // their last choice.
-    const keep = isEnvelope(f.media.value) && what !== 'invitations' ? f.media.value : what === 'return' ? options[0][0] : printPrefs()[what];
+    // Invitations laid out on a card start on that card, the way it was laid out.
+    const card = what === 'invitations' ? /data-free="([^"]+)"[^>]*data-orient="(\w+)"/.exec(state.occ?.occasion?.design?.html ?? '') : null;
+    const keep = card ? card[1] : isEnvelope(f.media.value) && what !== 'invitations' ? f.media.value : what === 'return' ? options[0][0] : printPrefs()[what];
     f.media.innerHTML = options.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('');
     f.media.value = options.some(([k]) => k === keep) ? keep : options[0][0];
+    if (card) { const r = form.querySelector(`[name=orient][value="${card[2]}"]`); if (r) r.checked = true; }
   }
   const media = f.media.value;
   const postcard = what === 'invitations' && INVITE_MEDIA[media]?.postcard;
@@ -2260,7 +2266,7 @@ async function printInvitations(form, win) {
   const place = (html, turn, cls = '') => (turn
     ? `<div class="turned ${cls}" style="width:${ch}in;height:${cw}in;transform:translate(${cw}in,0) rotate(90deg)">${html}</div>`
     : `<div class="upright ${cls}">${html}</div>`);
-  const front = (h) => place(renderDesign(o.design, fieldValues({ occasion: o, greeting: greetingFor(h, inviteGreetStyle(o)), fromName: fromName() }), { padding: `${media.pad}in` }), layout.rotateFront);
+  const front = (h) => place(renderDesign(o.design, fieldValues({ occasion: o, greeting: greetingFor(h, inviteGreetStyle(o)), fromName: fromName() }), { padding: `${media.pad}in`, fill: true }), layout.rotateFront);
   // The address side always runs along the card's long side.
   const back = (h) => place(`${ret.length ? `<div class="ret">${ret.map(esc).join('<br>')}</div>` : ''}
       <div class="to">${addressLines(addressName(h, o), h.address).map(esc).join('<br>')}</div>`, cw < ch, 'back');
@@ -2286,6 +2292,7 @@ async function printInvitations(form, win) {
       .turned { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
       .upright { position: absolute; inset: 0; }
       .turned > .design, .upright > .design { height: 100%; box-sizing: border-box; }
+      .design.design-free p { margin: 0; }
       .design p { margin: 0 0 12px; }
       .design img { max-width: 100%; height: auto; }
       .back { font-family: Helvetica, Arial, sans-serif; color: #000; }
@@ -2392,22 +2399,17 @@ async function runPrint(form) {
 }
 
 // ---------- design window (Invitations and Emails) ----------
-// A small word processor: fonts, sizes, colors, alignment, lists, pictures and fill-in fields
-// ({{greeting}} and friends, as plain text so they take the formatting around them), or HTML pasted
-// in. The API cleans it on save.
+// Emails are laid out in rows of one to three columns (designer-rows.js): blocks of text, pictures,
+// lines and space, dragged anywhere in the rows, and saved as tables every mail app draws the same
+// way. Invitations are laid out freely on the card (designer-free.js): text, pictures and lines
+// dragged and sized anywhere. Both share this window: the name, the text toolbar (fonts, sizes,
+// colors, alignment, lists, fill-in fields such as {{greeting}}), the page's background and border,
+// undo and redo, the color window and the preview. The API cleans the HTML on save.
 const FONT_SIZES = [['2', 'Small'], ['3', 'Normal'], ['4', 'Large'], ['5', 'Larger'], ['6', 'Huge']];
+const PT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42, 48, 60, 72];
 const PICTURE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-let designRange = null; // the editor selection, kept while the toolbar has focus
-
-function designHtml(editor) {
-  const copy = editor.cloneNode(true);
-  copy.querySelectorAll('.selected, .line-selected').forEach((el) => el.classList.remove('selected', 'line-selected'));
-  // The empty lines the Designer keeps around text boxes (so you can click outside them) aren't saved.
-  copy.querySelectorAll(':scope > p[data-room]').forEach((p) => {
-    if (!p.textContent.trim() && !p.querySelector('img, hr')) p.remove(); else p.removeAttribute('data-room');
-  });
-  return copy.innerHTML.replace(/ class=""/g, '');
-}
+let designRange = null; // the text selection, kept while the toolbar has focus
+let designer = null;    // the open Designer's page (rows for emails, free for invitations)
 
 function loadFont(design) {
   const href = fontLink(design);
@@ -2419,18 +2421,103 @@ function loadAllFonts() {
   loadFont({ html: FONTS.filter((f) => f.web).map((f) => f.stack).join(' '), font: '' });
 }
 
+// Colors offered in the color window: classic invitation colors.
+const PALETTE = ['#000000', '#1d2125', '#4b5563', '#9ca3af', '#ffffff', '#fdf6e3', '#f5e6c8', '#c9a227', '#b8860b', '#7f1d1d',
+  '#9f1239', '#dc2626', '#f472b6', '#ea580c', '#facc15', '#14532d', '#16a34a', '#0f766e', '#1e3a8a', '#2563eb', '#7c3aed', '#78350f'];
+const EYE_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+const UPLOAD_ICON = '<svg class="dz-icon" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const UNDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3M2.75 6.5h6.5a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const REDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="m10.5 3.5 3 3-3 3M13.25 6.5h-6.5a4 4 0 0 0 0 8H9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ALIGN = (w) => `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="${{ l: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8', c: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8', r: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' }[w]}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+// Divider lines: the same styles as the page border (drawn by mail apps), plus calligraphy flourishes
+// (drawn here and saved as pictures).
+const LINE_STYLES = [['thin', 'Thin line'], ['thick', 'Thick line'], ['double', 'Double line'], ['dashed', 'Dashed'], ['dotted', 'Dotted'], ['rounded', 'Rounded'], ['groove', 'Engraved']];
+const LINE_CSS = { thin: '1px solid', thick: '4px solid', double: '5px double', dashed: '2px dashed', dotted: '3px dotted', groove: '6px groove' };
+const LINE_OPTIONS = `${LINE_STYLES.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}<optgroup label="Calligraphy">${FLOURISHES.map((f) => `<option value="${f.key}">${esc(f.label.replace(' flourish', ''))}</option>`).join('')}</optgroup>`;
+const toHexColor = (c) => {
+  const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c ?? '');
+  return m ? `#${[m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}` : (/^#[0-9a-f]{6}$/i.test(c ?? '') ? c.toLowerCase() : null);
+};
+// A divider line as HTML: a styled <hr> for the plain styles, a flourish picture for the others.
+async function lineHtml(type, color, width) {
+  const meta = `data-line="${type}" data-line-color="${color}"`;
+  if (LINE_CSS[type]) return `<hr ${meta} style="border:0;border-top:${LINE_CSS[type]} ${color};height:0;width:${width};margin:0 auto">`;
+  if (type === 'rounded') return `<hr ${meta} style="border:0;height:4px;border-radius:2px;background-color:${color};width:${width};margin:0 auto">`;
+  const f = FLOURISHES.find((x) => x.key === type) ?? FLOURISHES[0];
+  const url = await uploadPicture(await drawFlourish(f.key, color), 'image/png');
+  return `<img ${meta} src="${esc(url)}" alt="${esc(f.label)}" style="display:block;width:${width};max-width:100%;height:auto;margin:0 auto">`;
+}
+/** A divider line element's style and color, or null when it isn't one. */
+function lineInfo(el) {
+  if (!el) return null;
+  let type = el.dataset.line || null;
+  if (!type && el.tagName === 'IMG') type = flourishByLabel(el.getAttribute('alt'))?.key ?? null;
+  if (!type && el.tagName === 'HR') {
+    if (el.style.backgroundColor && !el.style.borderTopStyle) type = 'rounded';
+    else {
+      const w = parseFloat(el.style.borderTopWidth) || 1;
+      const st = el.style.borderTopStyle;
+      type = ['double', 'dashed', 'dotted', 'groove'].includes(st) ? st : w >= 3 ? 'thick' : 'thin';
+    }
+  }
+  if (!type) return null;
+  return { type, color: el.dataset.lineColor || toHexColor(el.style.borderTopColor) || toHexColor(el.style.backgroundColor) || '#9ca3af' };
+}
+
+// A picture from the computer: big photos are scaled down to 1600px wide (animated GIFs are left
+// alone), then it's uploaded. Resolves to its address.
+async function uploadPictureFile(file) {
+  if (!PICTURE_TYPES.includes(file.type)) throw new Error('Pictures must be PNG, JPEG, GIF or WebP.');
+  modalError('');
+  const busy = modal.querySelector('[data-add=image]');
+  busy?.classList.add('busy');
+  try {
+    let blob = file;
+    if (file.type !== 'image/gif') {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
+      if (bitmap && bitmap.width > 1600) {
+        const scale = 1600 / bitmap.width;
+        const c = Object.assign(document.createElement('canvas'), { width: 1600, height: Math.round(bitmap.height * scale) });
+        c.getContext('2d').drawImage(bitmap, 0, 0, c.width, c.height);
+        blob = await new Promise((r) => c.toBlob(r, file.type === 'image/png' ? 'image/png' : 'image/jpeg', 0.88));
+      }
+      bitmap?.close?.();
+    }
+    if (blob.size > 5 * 1024 * 1024) throw new Error('That picture is too large (over 5 MB).');
+    return await uploadPicture(blob, blob.type || file.type);
+  } finally {
+    busy?.classList.remove('busy');
+  }
+}
+// Asks for a picture file and uploads it; resolves to its address (null if none was chosen).
+const pickPicture = () => new Promise((resolve, reject) => {
+  const input = Object.assign(document.createElement('input'), { type: 'file', accept: PICTURE_TYPES.join(',') });
+  input.addEventListener('change', () => { const f = input.files[0]; if (!f) resolve(null); else uploadPictureFile(f).then(resolve, reject); }, { once: true });
+  input.addEventListener('cancel', () => resolve(null), { once: true });
+  input.click();
+});
+
+const ADD_ICONS = {
+  text: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 3.5h10M8 3.5v9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  image: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="6.25" r="1.25" fill="currentColor"/><path d="m2.5 12 3.8-3.8 2.4 2.4 1.8-1.8L13.5 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
+  line: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2 8h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M2 4.5h4M2 11.5h7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" opacity=".45"/></svg>',
+  spacer: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 2v12M5.5 4.5 8 2l2.5 2.5M5.5 11.5 8 14l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+
 // start: a design to begin from instead of the saved one (a template); nothing changes until Save.
 // fromEdit: opened from the Edit occasion screen, so Cancel (or ✕, or Esc) goes back to it.
 function designModal(start = null, { fromEdit = false } = {}) {
   const o = state.occ.occasion;
+  const email = kindOf(o) === 'email';
   const d = { ...DESIGN_DEFAULTS, ...(start ?? o.design ?? {}) };
   const html = start?.html ?? o.design?.html ?? starterHtml(o.invite?.message);
   loadAllFonts();
-  // One font picker and one text color: with words selected they change those words; with nothing
-  // selected they change the whole design's font or text color.
+  loadFont(d);
   const colorInput = (name, value, label, title, extra = '') => `<span class="tb-swatch" ${extra}><span class="tb-label">${label}</span><button type="button" class="tb-color" data-color-for="${name}" title="${title}" aria-label="${title}" aria-haspopup="dialog" style="background:${esc(value)}"></button><input type="color" name="${name}" value="${esc(value)}" data-design="${name}" class="native-color" tabindex="-1" aria-hidden="true"></span>`;
   const designName = start?.name ?? o.design?.name ?? '';
-  openModal(kindOf(o) === 'email' ? 'Email Designer' : 'Invitation Designer', `
+  const addBtn = (type, label, title) => `<button type="button" class="tb tb-add" data-add="${type}" title="${title}">${ADD_ICONS[type]} <span>${label}</span></button>`;
+  const sizes = email ? FONT_SIZES : PT_SIZES.map((pt) => [`${pt}pt`, `${pt} pt`]);
+  openModal(email ? 'Email Designer' : 'Invitation Designer', `
     <label class="design-namebar">Name<input name="designName" maxlength="60" value="${val(designName)}" autocomplete="off"></label>
     <div class="design-toolbar" role="toolbar" aria-label="Formatting">
       <span class="tb-group">
@@ -2438,7 +2525,7 @@ function designModal(start = null, { fromEdit = false } = {}) {
         <button type="button" class="tb" data-history="redo" title="Redo (⇧⌘Z)" aria-label="Redo" disabled>${REDO_ICON}</button>
       </span>
       <select data-design="font" aria-label="Font" title="Font">${FONTS.map((f) => `<option value="${f.key}" ${f.key === d.font ? 'selected' : ''} style="font-family:${esc(f.stack)}">${esc(f.label)}</option>`).join('')}</select>
-      <select data-design="fontSize" aria-label="Size" title="Size"><option value="">Size</option>${FONT_SIZES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+      <select data-design="fontSize" aria-label="Size" title="Size"><option value="">Size</option>${sizes.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
       <span class="tb-group">
         <button type="button" class="tb" data-cmd="bold" title="Bold" aria-label="Bold"><b>B</b></button>
         <button type="button" class="tb" data-cmd="italic" title="Italic" aria-label="Italic"><i>I</i></button>
@@ -2451,61 +2538,26 @@ function designModal(start = null, { fromEdit = false } = {}) {
         <button type="button" class="tb" data-cmd="justifyRight" title="Align right" aria-label="Align right">${ALIGN('r')}</button>
       </span>
       <button type="button" class="tb" data-cmd="insertUnorderedList" title="Bulleted list" aria-label="Bulleted list">•≡</button>
-      <span class="tb-break"></span>
       <select data-design="field" aria-label="Insert a fill-in field" title="Insert a fill-in field"><option value="">Insert field</option>${DESIGN_FIELDS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
-      <button type="button" class="tb" data-insert-line title="Insert a line">${LINE_ICON} <span>Line</span></button>
-      <button type="button" class="tb" data-insert-box title="Insert a text box">${TEXTBOX_ICON} <span>Text box</span></button>
-      <label class="tb tb-pic" title="Insert a picture">${PICTURE} <span>Picture</span><input type="file" accept="${PICTURE_TYPES.join(',')}" data-design-picture hidden></label>
+      <span class="tb-break"></span>
+      ${addBtn('text', 'Text', email ? 'Add text (click, or drag onto the page)' : 'Add a text box')}
+      ${addBtn('image', 'Picture', email ? 'Add a picture (click, or drag onto the page)' : 'Add a picture')}
+      ${addBtn('line', 'Line', email ? 'Add a line (click, or drag onto the page)' : 'Add a line')}
+      ${email ? addBtn('spacer', 'Space', 'Add space (click, or drag onto the page)') : ''}
+      ${email ? `<span class="tb-rowadd"><span class="tb-label">Row</span>${Object.keys(ROW_LAYOUTS).map((k) => `<button type="button" class="tb" data-add-row="${k}" title="Add a row: ${esc(ROW_LAYOUTS[k].label)} (click, or drag onto the page)" aria-label="Add a row: ${esc(ROW_LAYOUTS[k].label)}">${LAYOUT_ICON(k)}</button>`).join('')}</span>` : ''}
       <span class="tb-spacer"></span>
+      ${email ? '' : `<label class="tb-swatch"><span class="tb-label">Card</span><select data-design-card aria-label="Card size">${Object.entries(INVITE_MEDIA).map(([k, m]) => `<option value="${k}">${esc(cardLabel(m))}</option>`).join('')}</select></label>
+      <span class="tb-group">${[['portrait', 'Portrait'], ['landscape', 'Landscape']].map(([k, l]) => `<button type="button" class="tb tb-orient" data-orient="${k}" aria-pressed="false" title="${l}">${ORIENT_ICON(k)}</button>`).join('')}</span>`}
       ${colorInput('background', d.background, 'Background', 'Background color')}
       <label class="tb-swatch"><span class="tb-label">Border</span><select data-design="border" aria-label="Border">${BORDERS.map((x) => `<option value="${x.key}" ${x.key === d.border ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select></label>
-      ${colorInput('borderColor', d.borderColor, 'Border color', 'Border color', `data-border-color ${d.border === 'none' ? 'hidden' : ''}`)}
-      <button type="button" class="tb" data-design-html aria-pressed="false" title="Edit or paste HTML">&lt;/&gt;</button>
+      ${colorInput('borderColor', d.borderColor, 'Color', 'Border color', `data-border-color ${d.border === 'none' ? 'hidden' : ''}`)}
     </div>
     <div class="color-pop" data-color-pop hidden role="dialog" aria-label="Choose a color"></div>
-    <div class="design-imgbar" data-design-linebar hidden>
-      <span class="small muted">Line</span>
-      <select data-line-type aria-label="Line style">${LINE_STYLES.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}
-        <optgroup label="Calligraphy">${FLOURISHES.map((f) => `<option value="${f.key}">${esc(f.label.replace(' flourish', ''))}</option>`).join('')}</optgroup></select>
-      ${colorInput('lineColor', d.borderColor, 'Color', 'Line color')}
-      <span class="imgbar-sep"></span>
-      <span class="small muted">Length</span>
-      ${[['25%', 'Short'], ['50%', 'Medium'], ['75%', 'Long'], ['100%', 'Full width']].map(([w, l]) => `<button type="button" class="btn sm" data-line-width="${w}" aria-pressed="false">${l}</button>`).join('')}
-      <button type="button" class="btn sm danger" data-line-remove>Remove</button>
-    </div>
-    <div class="design-imgbar" data-design-boxbar hidden>
-      <span class="small muted">Text box</span>
-      ${[['left', 'Left'], ['center', 'Center'], ['right', 'Right']].map(([k, l]) => `<button type="button" class="btn sm" data-box-place="${k}" aria-pressed="false" title="Place the box on the ${k === 'center' ? 'center' : k}">${l}</button>`).join('')}
-      <span class="imgbar-sep"></span>
-      ${colorInput('boxFill', '#ffffff', 'Fill', 'Fill color')}
-      <button type="button" class="btn sm" data-box-nofill title="No fill color">No fill</button>
-      <span class="imgbar-sep"></span>
-      <span class="imgbar-group"><span class="small muted">Border</span>
-      <select data-box-border aria-label="Text box border" title="Text box border">${BOX_BORDERS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
-      ${colorInput('boxBorderColor', d.borderColor, 'Color', 'Text box border color', 'data-box-border-color')}</span>
-      <span class="imgbar-sep"></span>
-      <button type="button" class="btn sm" data-box-move="-1" title="Move the box up">Up</button>
-      <button type="button" class="btn sm" data-box-move="1" title="Move the box down">Down</button>
-      <button type="button" class="btn sm danger" data-box-remove title="Remove the text box">Remove</button>
-    </div>
-    <div class="design-imgbar" data-design-imgbar hidden>
-      <span class="small muted">Place</span>
-      ${[['left', 'Left, text beside'], ['center', 'Centered'], ['right', 'Right, text beside'], ['inline', 'In the line']].map(([k, l]) => `<button type="button" class="btn sm" data-img-place="${k}" aria-pressed="false">${l}</button>`).join('')}
-      <span class="imgbar-sep"></span>
-      <span class="small muted">Size</span>
-      ${[['25%', 'Small'], ['50%', 'Medium'], ['75%', 'Large'], ['100%', 'Full width']].map(([w, l]) => `<button type="button" class="btn sm" data-img-width="${w}" aria-pressed="false" title="${l}: ${w} of the width">${l}</button>`).join('')}
-      <span class="small muted img-size" data-img-size title="The picture's width, as a share of the design's width"></span>
-      <span class="imgbar-sep"></span>
-      <span class="imgbar-group"><span class="small muted">Border</span>
-      <select data-img-border aria-label="Picture border"><option value="none">None</option>${LINE_STYLES.map(([k, l]) => `<option value="${k}">${esc(k === 'rounded' ? 'Rounded corners' : l)}</option>`).join('')}</select>
-      ${colorInput('imgBorderColor', d.borderColor, 'Color', 'Picture border color', 'data-img-border-color hidden')}</span>
-      <button type="button" class="btn sm danger" data-img-remove>Remove</button>
-    </div>
-    <div class="design-stage">
-      <div class="design-canvas" data-design-canvas data-font="${esc(d.font)}" data-color="${esc(d.color)}" style="background:${esc(d.background)};color:${esc(d.color)};font-family:${esc(fontByKey(d.font).stack)}">
-        <div class="design-edit" contenteditable="true" spellcheck="true" data-design-edit aria-label="Design">${(html)}</div>
+    <div class="design-imgbar" data-design-ctxbar hidden></div>
+    <div class="design-stage ${email ? 'rows' : 'free'}">
+      <div class="design-canvas ${email ? 'rows' : 'free'}" data-design-canvas data-font="${esc(d.font)}" data-color="${esc(d.color)}" style="background:${esc(d.background)};color:${esc(d.color)};font-family:${esc(fontByKey(d.font).stack)}">
+        <div data-design-root></div>
       </div>
-      <textarea class="design-src" data-design-src hidden spellcheck="false" aria-label="HTML"></textarea>
       <div class="design-preview" data-design-preview-pane hidden>
         <div class="preview-nav">
           <button type="button" class="btn ghost sm" data-preview-step="-1" aria-label="Previous household">‹</button>
@@ -2520,97 +2572,120 @@ function designModal(start = null, { fromEdit = false } = {}) {
   });
   if (fromEdit) modal.querySelector('form').dataset.back = 'occasion';
   try { document.execCommand('styleWithCSS', false, true); } catch { /* older browsers */ }
-  const editor = modal.querySelector('[data-design-edit]');
-  editor.focus();
-  wireDesign(editor);
+  wireDesign(email ? 'rows' : 'free', html);
 }
+const ORIENT_ICON = (k) => (k === 'portrait'
+  ? '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="4" y="1.75" width="8" height="12.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>'
+  : '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1.75" y="4" width="12.5" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>');
+// "5 × 7 in cards" → "5 × 7 in", "Avery 8387 postcards (4¼ × 5½ in, 4 per sheet)" → "4¼ × 5½ in (Avery 8387)"
+const cardLabel = (m) => {
+  const size = /(\d[^\s(]*\s×\s\d[^\s,)]*\sin)/.exec(m.name)?.[1] ?? m.name;
+  const avery = /Avery \d+/.exec(m.name)?.[0];
+  return avery ? `${size} (${avery})` : size;
+};
 
-// Colors offered in the color window: classic invitation colors.
-const PALETTE = ['#000000', '#1d2125', '#4b5563', '#9ca3af', '#ffffff', '#fdf6e3', '#f5e6c8', '#c9a227', '#b8860b', '#7f1d1d',
-  '#9f1239', '#dc2626', '#f472b6', '#ea580c', '#facc15', '#14532d', '#16a34a', '#0f766e', '#1e3a8a', '#2563eb', '#7c3aed', '#78350f'];
-const EYE_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
-const LINE_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2 8h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M2 4.5h4M2 11.5h7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" opacity=".45"/></svg>';
-// Divider lines: the same styles as the page border (drawn by mail apps), plus calligraphy flourishes
-// (drawn here and saved as pictures).
-const LINE_STYLES = [['thin', 'Thin line'], ['thick', 'Thick line'], ['double', 'Double line'], ['dashed', 'Dashed'], ['dotted', 'Dotted'], ['rounded', 'Rounded'], ['groove', 'Engraved']];
-const LINE_CSS = { thin: '1px solid', thick: '4px solid', double: '5px double', dashed: '2px dashed', dotted: '3px dotted', groove: '6px groove' };
-const UPLOAD_ICON = '<svg class="dz-icon" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const UNDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3M2.75 6.5h6.5a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const REDO_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="m10.5 3.5 3 3-3 3M13.25 6.5h-6.5a4 4 0 0 0 0 8H9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const ALIGN = (w) => `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="${{ l: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8', c: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8', r: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' }[w]}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
-const TEXTBOX_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.4"/><path d="M5 5.5h6M8 5.5v5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
-// Text box borders (the box's data-box attribute keeps which one).
-const BOX_BORDERS = [['none', 'No border'], ['thin', 'Thin line'], ['thick', 'Thick line'], ['dashed', 'Dashed'], ['dotted', 'Dotted'], ['double', 'Double line'], ['rounded', 'Rounded']];
-const BOX_CSS = { thin: '1px solid', thick: '3px solid', dashed: '2px dashed', dotted: '3px dotted', double: '4px double', rounded: '2px solid' };
-const PICTURE = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.5" cy="6.25" r="1.25" fill="currentColor"/><path d="m2.5 12 3.8-3.8 2.4 2.4 1.8-1.8L13.5 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-
-function wireDesign(editor) {
-  // A text box is never the last thing on the page: an empty line after it lets you click below the
-  // box, so what you add next goes on the page, not into the box. (Not saved unless you type on it.)
-  const room = () => { const p = Object.assign(document.createElement('p'), { innerHTML: '<br>' }); p.dataset.room = ''; return p; };
-  const keepRoom = () => {
-    for (const box of editor.querySelectorAll(':scope > [data-box]')) if (!box.nextElementSibling) box.after(room());
-  };
-  // Clicking above everything on the page starts a line there (without moving anything down first).
-  editor.addEventListener('mousedown', (e) => {
-    const first = editor.firstElementChild;
-    if (e.target !== editor || !first || e.clientY >= first.getBoundingClientRect().top) return;
-    e.preventDefault();
-    const p = room();
-    editor.prepend(p);
-    const r = document.createRange(); r.setStart(p, 0); r.collapse(true);
-    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
-    editor.focus();
-  });
-  keepRoom();
-  new MutationObserver(keepRoom).observe(editor, { childList: true });
-  editor.addEventListener('input', () => { // a line you type on is yours to keep
-    editor.querySelectorAll(':scope > p[data-room]').forEach((p) => { if (p.textContent.trim()) p.removeAttribute('data-room'); });
-  });
+function wireDesign(mode, html) {
+  const form = modal.querySelector('form');
   const canvas = modal.querySelector('[data-design-canvas]');
-  const src = modal.querySelector('[data-design-src]');
-  const imgbar = modal.querySelector('[data-design-imgbar]');
-  let picked = null; // the picture being resized
-
-  const keepRange = () => {
-    const sel = window.getSelection();
-    if (sel.rangeCount && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) designRange = sel.getRangeAt(0).cloneRange();
-  };
-  const restore = () => {
-    editor.focus();
-    if (!designRange) return;
-    const sel = window.getSelection();
-    sel.removeAllRanges(); sel.addRange(designRange);
-  };
-  const exec = (cmd, value = null) => { restore(); document.execCommand(cmd, false, value); keepRange(); };
-  const hasSelection = () => Boolean(designRange && !designRange.collapsed && editor.contains(designRange.commonAncestorContainer));
-
-  // Undo / redo: the app keeps its own history of the whole design (text, pictures, font, colors), so
-  // every change can be undone, not just typing. Typing is grouped into one step per pause.
+  const root = modal.querySelector('[data-design-root]');
+  const ctxbar = modal.querySelector('[data-design-ctxbar]');
+  const bar = modal.querySelector('.design-toolbar');
   const bgInput = modal.querySelector('[name=background]');
   const colorIn = modal.querySelector('[data-design=color]');
   const fontSel = modal.querySelector('[data-design=font]');
+  const sizeSel = modal.querySelector('[data-design=fontSize]');
   const undoBtn = modal.querySelector('[data-history=undo]');
   const redoBtn = modal.querySelector('[data-history=redo]');
   const borderSel = modal.querySelector('[data-design=border]');
   const borderColor = modal.querySelector('[name=borderColor]');
+  const textSwatch = modal.querySelector('[data-color-for=color]');
+  const colorInput = (name, value, label, title, extra = '') => `<span class="tb-swatch" ${extra}><span class="tb-label">${label}</span><button type="button" class="tb-color" data-color-for="${name}" title="${title}" aria-label="${title}" aria-haspopup="dialog" style="background:${esc(value)}"></button><input type="color" name="${name}" value="${esc(value)}" data-design="${name}" class="native-color" tabindex="-1" aria-hidden="true"></span>`;
+  const run = async (fn) => { try { return await fn(); } catch (e) { modalError(e.message); return undefined; } };
+  let record = () => {}; let recordSoon = () => {};
+  const ctx = {
+    bar: ctxbar, canvas, colorInput, esc, toHex: toHexColor, run,
+    changed: (soon) => (soon ? recordSoon() : record()),
+    lineHtml, lineInfo, lineOptions: LINE_OPTIONS, pickPicture, uploadFile: uploadPictureFile,
+    lineColor: () => (borderByKey(borderSel.value).css ? borderColor.value : canvas.dataset.color),
+    cards: INVITE_MEDIA,
+  };
+  const ed = mode === 'rows' ? createRowsEditor(root, ctx) : createFreeEditor(root, ctx);
+  designer = ed;
+  modal.addEventListener('close', () => { ed.destroy(); if (designer === ed) designer = null; document.removeEventListener('selectionchange', onSelection); }, { once: true });
+
   // The page border, drawn like the finished design: a frame a little inside the edge.
+  const pageFrame = Object.assign(document.createElement('div'), { className: 'page-frame' });
+  if (mode === 'free') canvas.prepend(pageFrame);
   const applyBorder = () => {
     const b = borderByKey(borderSel.value);
     modal.querySelector('[data-border-color]').hidden = !b.css;
+    if (mode === 'free') {
+      pageFrame.hidden = !b.css;
+      pageFrame.style.border = b.css ? `${b.css} ${borderColor.value}` : '';
+      pageFrame.style.borderRadius = b.radius ?? '';
+      return;
+    }
     canvas.style.padding = b.css ? '16px' : '';
-    editor.style.border = b.css ? `${b.css} ${borderColor.value}` : '';
-    editor.style.borderRadius = b.radius ?? '';
-    editor.style.padding = b.css ? '16px' : '';
+    root.style.border = b.css ? `${b.css} ${borderColor.value}` : '';
+    root.style.borderRadius = b.radius ?? '';
+    root.style.padding = b.css ? '16px' : '';
   };
   applyBorder();
-  const snap = () => ({ html: editor.innerHTML.replace(/ class="(line-)?selected"/g, ''), font: canvas.dataset.font, color: canvas.dataset.color, background: bgInput.value, border: borderSel.value, borderColor: borderColor.value });
+
+  // The card's size and shape (invitations).
+  const cardSel = modal.querySelector('[data-design-card]');
+  const syncCard = () => {
+    if (mode !== 'free') return;
+    const c = ed.card();
+    cardSel.value = c.size;
+    modal.querySelectorAll('[data-orient]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.orient === c.orient)));
+  };
+  cardSel?.addEventListener('change', () => { ed.setCard(cardSel.value, ed.card().orient); syncCard(); });
+  bar.addEventListener('click', (e) => {
+    const or = e.target.closest('[data-orient]');
+    if (or && mode === 'free') { ed.setCard(ed.card().size, or.dataset.orient); syncCard(); }
+  });
+
+  // ---- text: selection and formatting ----
+  const liveRange = () => Boolean(designRange && root.contains(designRange.startContainer) && ed.textHost(designRange.startContainer));
+  const keepRange = () => {
+    const sel = window.getSelection();
+    if (sel.rangeCount && root.contains(sel.getRangeAt(0).commonAncestorContainer) && ed.textHost(sel.getRangeAt(0).startContainer)) designRange = sel.getRangeAt(0).cloneRange();
+  };
+  const restore = () => {
+    if (!liveRange()) return false;
+    ed.textHost(designRange.startContainer).focus();
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(designRange);
+    return true;
+  };
+  const selectAll = (el) => { const r = document.createRange(); r.selectNodeContents(el); designRange = r; };
+  // The kept selection is in text that can be typed in now (a text box no longer being typed in is
+  // formatted as a whole instead).
+  const editableRange = () => liveRange() && ed.textHost(designRange.startContainer).isContentEditable;
+  const hasSelection = () => editableRange() && !designRange.collapsed;
+  const textTarget = () => (editableRange() ? ed.textHost(designRange.startContainer) : ed.wholeText());
+  // Formats the selected words; with nothing selected, all of the selected text box or block.
+  const exec = (cmd, value = null, { whole = false } = {}) => {
+    if (whole || !editableRange()) {
+      const t = textTarget();
+      if (!t) return false;
+      selectAll(t);
+    }
+    restore();
+    document.execCommand(cmd, false, value);
+    keepRange();
+    return true;
+  };
+
+  // ---- undo / redo: the whole design (parts, text, font, colors, card) ----
+  const snap = () => ({ html: ed.html(), font: canvas.dataset.font, color: canvas.dataset.color, background: bgInput.value, border: borderSel.value, borderColor: borderColor.value });
   const same = (a, b) => ['html', 'font', 'color', 'background', 'border', 'borderColor'].every((k) => a[k] === b[k]);
-  const history = [snap()];
+  let history = [];
   let at = 0;
   let pending = null;
   const syncHistory = () => { undoBtn.disabled = at === 0; redoBtn.disabled = at === history.length - 1; };
-  const record = () => {
+  record = () => {
     clearTimeout(pending); pending = null;
     const now = snap();
     if (same(now, history[at])) return;
@@ -2619,18 +2694,19 @@ function wireDesign(editor) {
     at = history.length - 1;
     syncHistory();
   };
-  const recordSoon = () => { clearTimeout(pending); pending = setTimeout(record, 500); };
+  recordSoon = () => { clearTimeout(pending); pending = setTimeout(record, 500); };
+  const setFont = (key) => { canvas.dataset.font = key; canvas.style.fontFamily = fontByKey(key).stack; fontSel.value = key; };
+  const setColor = (c) => { canvas.dataset.color = c; canvas.style.color = c; colorIn.value = c; textSwatch.style.background = c; };
   const apply = (s) => {
-    editor.innerHTML = s.html;
-    canvas.dataset.font = s.font; canvas.style.fontFamily = fontByKey(s.font).stack; fontSel.value = s.font;
-    canvas.dataset.color = s.color; canvas.style.color = s.color; colorIn.value = s.color;
+    ed.load(s.html);
+    setFont(s.font); setColor(s.color);
     bgInput.value = s.background; canvas.style.background = s.background;
     borderSel.value = s.border; borderColor.value = s.borderColor; applyBorder();
-    for (const [n, v] of [['color', s.color], ['background', s.background], ['borderColor', s.borderColor]]) {
+    for (const [n, v] of [['background', s.background], ['borderColor', s.borderColor]]) {
       const sw = modal.querySelector(`[data-color-for="${n}"]`); if (sw) sw.style.background = v;
     }
-    pick(null); pickLine(null);
     designRange = null;
+    syncCard();
     syncHistory();
   };
   const step = (dir) => {
@@ -2639,270 +2715,77 @@ function wireDesign(editor) {
     if (to < 0 || to >= history.length) return;
     at = to;
     apply(history[at]);
-    editor.focus();
   };
-  modal.querySelector('.design-toolbar').addEventListener('click', (e) => {
+  bar.addEventListener('click', (e) => {
     const h = e.target.closest('[data-history]');
     if (h) step(h.dataset.history === 'undo' ? -1 : 1);
   });
-  editor.addEventListener('input', recordSoon);
-  editor.addEventListener('keydown', (e) => {
+  form.addEventListener('keydown', (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    if (e.target.closest?.('input, select, textarea')) return;
     const k = e.key.toLowerCase();
-    if (k === 'z') { e.preventDefault(); step(e.shiftKey ? 1 : -1); }
-    else if (k === 'y') { e.preventDefault(); step(1); }
+    if (k === 'z') { e.preventDefault(); step(e.shiftKey ? 1 : -1); } else if (k === 'y') { e.preventDefault(); step(1); }
   });
-  // Fields and pictures go in at the caret as real nodes (insertHTML splits paragraphs around chips).
-  const insertNode = (html) => {
-    restore();
-    const sel = window.getSelection();
-    if (!sel.rangeCount || !editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-      const r = document.createRange(); r.selectNodeContents(editor); r.collapse(false); sel.removeAllRanges(); sel.addRange(r);
-    }
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-    const frag = range.createContextualFragment(html);
-    const last = frag.lastChild;
-    range.insertNode(frag);
-    range.setStartAfter(last); range.collapse(true);
-    sel.removeAllRanges(); sel.addRange(range);
-    keepRange();
-    editor.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-  editor.addEventListener('keyup', keepRange);
-  editor.addEventListener('mouseup', keepRange);
-  editor.addEventListener('input', keepRange);
+  root.addEventListener('input', recordSoon);
+  root.addEventListener('keyup', keepRange);
+  root.addEventListener('mouseup', keepRange);
+  root.addEventListener('input', keepRange);
 
-  // Where a picture sits. Floats (with the align attribute for Outlook) are what mail apps understand;
-  // free positioning anywhere on the page doesn't survive email, so pictures are dragged within the text.
-  const PLACES = {
-    left: { float: 'left', display: '', margin: '0 16px 12px 0', align: 'left' },
-    right: { float: 'right', display: '', margin: '0 0 12px 16px', align: 'right' },
-    center: { float: '', display: 'block', margin: '12px auto', align: '' },
-    inline: { float: '', display: '', margin: '', align: '' },
-  };
-  const placeOf = (img) => (img.style.float === 'left' ? 'left' : img.style.float === 'right' ? 'right' : img.style.display === 'block' ? 'center' : 'inline');
-  const place = (img, where) => {
-    const p = PLACES[where];
-    img.style.float = p.float; img.style.display = p.display; img.style.margin = p.margin;
-    if (p.align) img.setAttribute('align', p.align); else img.removeAttribute('align');
-  };
-  const showPlace = (img) => imgbar.querySelectorAll('[data-img-place]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.imgPlace === placeOf(img))));
-
-  // A picture's border: the same styles as lines, in any color (through the color window).
-  const imgBorderSel = imgbar.querySelector('[data-img-border]');
-  const imgBorderColor = modal.querySelector('[name=imgBorderColor]');
-  const imgBorderOf = (img) => {
-    if (!img.style.borderStyle || img.style.borderStyle === 'none') return 'none';
-    if (img.style.borderRadius) return 'rounded';
-    const st = img.style.borderStyle; const w = parseFloat(img.style.borderWidth) || 1;
-    return st === 'double' ? 'double' : st === 'dashed' ? 'dashed' : st === 'dotted' ? 'dotted' : st === 'groove' ? 'groove' : w >= 3 ? 'thick' : 'thin';
-  };
-  function showImgBorder(img) {
-    const style = imgBorderOf(img);
-    imgBorderSel.value = style;
-    if (style !== 'none') imgBorderColor.value = toHexColor(img.style.borderColor) || imgBorderColor.value;
-    modal.querySelector('[data-img-border-color]').hidden = style === 'none';
-    modal.querySelector('[data-color-for=imgBorderColor]').style.background = imgBorderColor.value;
-  }
-  function setImgBorder(img, style, color) {
-    img.style.border = ''; img.style.borderRadius = '';
-    if (style === 'rounded') { img.style.border = `3px solid ${color}`; img.style.borderRadius = '14px'; }
-    else if (LINE_CSS[style]) img.style.border = `${LINE_CSS[style]} ${color}`;
-    showImgBorder(img);
-    record();
-  }
-  imgBorderSel.addEventListener('change', () => { if (picked) setImgBorder(picked, imgBorderSel.value, imgBorderColor.value); });
-
-  // The picture's width as a share of the design's width ("36%"), shown beside the size buttons; the
-  // matching button, if any, is pressed. Drag the picture's handles for any size in between.
-  const imgRoom = () => { const cs = getComputedStyle(editor); return editor.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); };
-  const imgWidthOf = (img) => (/%$/.test(img.style.width) ? `${Math.round(parseFloat(img.style.width))}%` : `${Math.round((img.getBoundingClientRect().width / imgRoom()) * 100)}%`);
-  function showSize(img) {
-    const w = imgWidthOf(img);
-    imgbar.querySelectorAll('[data-img-width]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.imgWidth === w)));
-    imgbar.querySelector('[data-img-size]').textContent = w;
-  }
-  const imgHandles = Object.assign(document.createElement('div'), { className: 'box-handles img-handles', hidden: true });
-  imgHandles.innerHTML = ['w', 'e', 'sw', 'se'].map((h) => `<span class="bh bh-${h}" data-h="${h}" title="Drag to resize"></span>`).join('');
-  canvas.append(imgHandles);
-  function positionImgHandles() {
-    if (!picked || !editor.contains(picked) || canvas.hidden || !canvas.offsetParent) { imgHandles.hidden = true; return; }
-    const c = canvas.getBoundingClientRect();
-    const r = picked.getBoundingClientRect();
-    Object.assign(imgHandles.style, { left: `${r.left - c.left}px`, top: `${r.top - c.top}px`, width: `${r.width}px`, height: `${r.height}px` });
-    imgHandles.hidden = false;
-  }
-  let imgDrag = null;
-  imgHandles.addEventListener('pointerdown', (e) => {
-    const h = e.target.dataset.h;
-    if (!h || !picked) return;
-    e.preventDefault();
-    e.target.setPointerCapture(e.pointerId);
-    imgDrag = { h, rect: picked.getBoundingClientRect(), centered: placeOf(picked) === 'center', room: imgRoom() };
-  });
-  imgHandles.addEventListener('pointermove', (e) => {
-    if (!imgDrag || !picked) return;
-    const { h, rect, centered, room } = imgDrag;
-    const w = centered ? 2 * Math.abs(e.clientX - (rect.left + rect.width / 2)) : h.includes('e') ? e.clientX - rect.left : rect.right - e.clientX;
-    picked.style.width = `${Math.max(5, Math.min(100, Math.round((w / room) * 100)))}%`;
-    picked.style.maxWidth = '100%'; picked.style.height = 'auto';
-    picked.removeAttribute('width'); picked.removeAttribute('height');
-    showSize(picked);
-    positionImgHandles();
-  });
-  const endImgDrag = () => { if (imgDrag) { imgDrag = null; record(); positionImgHandles(); } };
-  imgHandles.addEventListener('pointerup', endImgDrag);
-  imgHandles.addEventListener('pointercancel', endImgDrag);
-  editor.addEventListener('input', positionImgHandles);
-  modal.querySelector('.modal-body').addEventListener('scroll', positionImgHandles, { passive: true });
-  window.addEventListener('resize', positionImgHandles);
-  modal.addEventListener('close', () => window.removeEventListener('resize', positionImgHandles), { once: true });
-
-  const pick = (img) => {
-    editor.querySelectorAll('img.selected').forEach((i) => i.classList.remove('selected'));
-    picked = img;
-    img?.classList.add('selected');
-    imgbar.hidden = !img;
-    if (img) { showImgBorder(img); showPlace(img); showSize(img); }
-    requestAnimationFrame(positionImgHandles); // after the picture bar shows and moves the design down
-  };
-  editor.addEventListener('click', (e) => {
-    const line = e.target.closest('hr, img');
-    if (line && lineTypeOf(line)) { pick(null); pickLine(line); return; }
-    pickLine(null);
-    pick(e.target.closest('img'));
-  });
-
-  // ---- divider lines ----
-  const linebar = modal.querySelector('[data-design-linebar]');
-  const lineColorIn = modal.querySelector('[name=lineColor]');
-  let line = null; // the line being edited
-  const toHexColor = (c) => {
-    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c ?? '');
-    return m ? `#${[m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}` : (/^#[0-9a-f]{6}$/i.test(c ?? '') ? c : null);
-  };
-  function lineTypeOf(el) {
-    if (!el) return null;
-    if (el.dataset.line) return el.dataset.line;
-    if (el.tagName === 'IMG') return flourishByLabel(el.getAttribute('alt'))?.key ?? null;
-    if (el.tagName !== 'HR') return null;
-    if (el.style.backgroundColor && !el.style.borderTopStyle) return 'rounded';
-    const w = parseFloat(el.style.borderTopWidth) || 1;
-    const st = el.style.borderTopStyle;
-    return st === 'double' ? 'double' : st === 'dashed' ? 'dashed' : st === 'dotted' ? 'dotted' : st === 'groove' ? 'groove' : w >= 3 ? 'thick' : 'thin';
-  }
-  const lineColorOf = (el) => el.dataset.lineColor || toHexColor(el.style.borderTopColor) || toHexColor(el.style.backgroundColor) || lineColorIn.value;
-  const lineWidthOf = (el) => el.style.width || '50%';
-  // Builds the line as HTML: a styled <hr> for the plain styles, a flourish picture for the others.
-  async function lineHtml(type, color, width) {
-    const meta = `data-line="${type}" data-line-color="${color}"`;
-    if (LINE_CSS[type]) return `<hr ${meta} style="border:0;border-top:${LINE_CSS[type]} ${color};height:0;width:${width};margin:16px auto">`;
-    if (type === 'rounded') return `<hr ${meta} style="border:0;height:4px;border-radius:2px;background-color:${color};width:${width};margin:16px auto">`;
-    const f = FLOURISHES.find((x) => x.key === type) ?? FLOURISHES[0];
-    const url = await uploadPicture(await drawFlourish(f.key, color), 'image/png');
-    return `<img ${meta} src="${esc(url)}" alt="${esc(f.label)}" style="display:block;width:${width};max-width:100%;height:auto;margin:12px auto">`;
-  }
-  function pickLine(el) {
-    editor.querySelectorAll('.line-selected').forEach((x) => x.classList.remove('line-selected'));
-    line = el;
-    linebar.hidden = !el;
-    if (!el) return;
-    el.classList.add('line-selected');
-    imgbar.hidden = true;
-    linebar.querySelector('[data-line-type]').value = lineTypeOf(el);
-    lineColorIn.value = lineColorOf(el);
-    linebar.querySelector('[data-color-for=lineColor]').style.background = lineColorIn.value;
-    linebar.querySelectorAll('[data-line-width]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lineWidth === lineWidthOf(el))));
-  }
-  // Redraws the selected line with a new style, color or length (flourishes are redrawn and re-saved).
-  async function changeLine({ type = lineTypeOf(line), color = lineColorOf(line), width = lineWidthOf(line) } = {}) {
-    if (!line) return;
-    const old = line;
-    linebar.classList.add('busy');
-    try {
-      const html = await lineHtml(type, color, width);
-      const fresh = document.createRange().createContextualFragment(html).firstChild;
-      old.replaceWith(fresh);
-      pickLine(fresh);
-      record();
-    } catch (e) { modalError(e.message); } finally { linebar.classList.remove('busy'); }
-  }
-  modal.querySelector('[data-insert-line]').addEventListener('click', async () => {
-    const color = borderByKey(borderSel.value).css ? borderColor.value : canvas.dataset.color;
-    insertNode((await lineHtml('thin', color, '50%')).replace('<hr ', '<hr data-new '));
-    const inserted = editor.querySelector('[data-new]');
-    inserted?.removeAttribute('data-new');
-    pickLine(inserted);
-    record();
-  });
-  linebar.addEventListener('change', (e) => { if (e.target.matches('[data-line-type]')) changeLine({ type: e.target.value }); });
-  linebar.addEventListener('click', (e) => {
-    const w = e.target.closest('[data-line-width]')?.dataset.lineWidth;
-    if (w) changeLine({ width: w });
-    if (e.target.closest('[data-line-remove]')) { line.remove(); pickLine(null); record(); }
-  });
-
-  // Drag a picture to move it to another spot in the text; drop a picture file from the Mac to add it.
-  let dragged = null;
-  const caretAt = (x, y) => {
-    if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
-    const pos = document.caretPositionFromPoint?.(x, y);
-    if (!pos) return null;
-    const r = document.createRange(); r.setStart(pos.offsetNode, pos.offset); r.collapse(true);
-    return r;
-  };
-  editor.addEventListener('dragstart', (e) => {
-    dragged = e.target.closest?.('img') ?? null;
-    if (!dragged) return;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', '');
-  });
-  editor.addEventListener('dragend', () => { dragged = null; });
-  editor.addEventListener('dragover', (e) => {
-    if (dragged || [...(e.dataTransfer?.items ?? [])].some((i) => i.kind === 'file')) { e.preventDefault(); e.dataTransfer.dropEffect = dragged ? 'move' : 'copy'; }
-  });
-  editor.addEventListener('drop', (e) => {
-    const file = [...(e.dataTransfer?.files ?? [])].find((f) => PICTURE_TYPES.includes(f.type));
-    if (!dragged && !file) return;
-    e.preventDefault();
-    const r = caretAt(e.clientX, e.clientY);
-    if (!r || !editor.contains(r.startContainer)) { dragged = null; return; }
-    if (file) {
-      designRange = r; // the picture goes where it was dropped
-      insertPicture(file, insertNode);
-      return;
-    }
-    if (dragged.contains(r.startContainer)) { dragged = null; return; }
-    r.insertNode(dragged);
-    pick(dragged);
-    dragged = null;
-    record();
-  });
-
-  const bar = modal.querySelector('.design-toolbar');
-  // Buttons act without stealing the selection.
+  // ---- the toolbar ----
+  // Buttons act without stealing the text selection; a color window or list remembers it first.
   bar.addEventListener('mousedown', (e) => { if (e.target.closest('button.tb')) e.preventDefault(); });
+  bar.addEventListener('pointerdown', (e) => { if (e.target.closest('input[type=color], select, [data-color-for]')) keepRange(); });
   bar.addEventListener('click', (e) => {
     const b = e.target.closest('[data-cmd]');
-    if (b) exec(b.dataset.cmd);
+    if (b) { if (exec(b.dataset.cmd)) record(); syncToolbar(); }
   });
+  // Adding parts: click to add (emails: or drag onto the page).
+  for (const b of bar.querySelectorAll('[data-add]')) {
+    if (mode === 'rows') ed.palette(b, b.dataset.add);
+    else b.addEventListener('click', () => run(() => ed.add(b.dataset.add)));
+  }
+  for (const b of bar.querySelectorAll('[data-add-row]')) ed.palette(b, `row:${b.dataset.addRow}`);
+  // Free layouts: sizes in points on the card, kept relative to the card's width.
+  const cardWidthIn = () => (mode === 'free' ? ed.card().shape[0] : 0);
+  function setPointSize(pt) {
+    const host = textTarget();
+    if (!host) return false;
+    if (!hasSelection()) selectAll(host);
+    restore();
+    document.execCommand('fontSize', false, '7');
+    const cqw = `${Math.round(ptToCqw(pt, cardWidthIn()) * 1000) / 1000}cqw`;
+    host.querySelectorAll('font[size="7"]').forEach((f) => { const s = document.createElement('span'); s.style.fontSize = cqw; s.append(...f.childNodes); f.replaceWith(s); });
+    host.querySelectorAll('[style*="xxx-large"]').forEach((el) => { el.style.fontSize = cqw; });
+    keepRange();
+    return true;
+  }
   bar.addEventListener('change', (e) => {
     const t = e.target;
     const what = t.dataset.design;
     if (what === 'font') {
-      if (hasSelection() || ((own.font || inBox()) && selectBlock())) exec('fontName', fontByKey(t.value).stack); // these words, this paragraph or text box
-      else { canvas.dataset.font = t.value; canvas.style.fontFamily = fontByKey(t.value).stack; }   // the whole design
+      const stack = fontByKey(t.value).stack;
+      // These words, else all of the text box or block being typed in or selected, else the whole design.
+      if (!(hasSelection() ? exec('fontName', stack) : exec('fontName', stack, { whole: true }))) setFont(t.value);
       record();
       syncToolbar();
     }
     if (what === 'border') { applyBorder(); record(); }
-    if (what === 'fontSize' && /^\d$/.test(t.value)) {
-      if (hasSelection() || selectBlock()) { exec('fontSize', t.value); record(); }
+    if (what === 'fontSize' && t.value && t.value !== 'current') {
+      const done = mode === 'free' ? setPointSize(parseFloat(t.value)) : (hasSelection() ? exec('fontSize', t.value) : exec('fontSize', t.value, { whole: true }));
+      if (done) record();
       syncToolbar();
     }
-    if (what === 'field' && t.value) { exec('insertText', `{{${t.value}}}`); t.value = ''; }
-    if (t.matches('[data-design-picture]') && t.files[0]) { const f = t.files[0]; t.value = ''; insertPicture(f, insertNode); }
+    if (what === 'field' && t.value) {
+      const field = `{{${t.value}}}`;
+      t.value = '';
+      if (editableRange()) { exec('insertText', field); record(); return; }
+      const host = ed.wholeText();
+      if (host) {
+        const r = document.createRange(); r.selectNodeContents(host.lastElementChild ?? host); r.collapse(false); designRange = r;
+        exec('insertText', field); record(); return;
+      }
+      ed.addText(mode === 'free' ? `<p style="text-align:center">${field}</p>` : `<p>${field}</p>`);
+    }
   });
   // Colors: Safari's color panel may report a pick only as "change" (other browsers send "input" while
   // dragging), so both are handled; applying the same color twice is harmless.
@@ -2911,32 +2794,25 @@ function wireDesign(editor) {
     if (t.type !== 'color') return;
     const sw = modal.querySelector(`[data-color-for="${t.name}"]`);
     if (sw) sw.style.background = t.value;
-    if (t.name === 'lineColor') { if (e.type === 'change') changeLine({ color: t.value }); return; }
-    if (t.name === 'imgBorderColor') { if (picked && imgBorderSel.value !== 'none') setImgBorder(picked, imgBorderSel.value, t.value); return; }
     if (t.dataset.design === 'color') {
-      if (hasSelection() || ((own.color || inBox()) && selectBlock())) exec('foreColor', t.value);
-      else { canvas.dataset.color = t.value; canvas.style.color = t.value; }
+      if (!(hasSelection() ? exec('foreColor', t.value) : exec('foreColor', t.value, { whole: true }))) setColor(t.value);
       recordSoon(); // dragging through colors is one step
     }
     if (t.dataset.design === 'background') { canvas.style.background = t.value; recordSoon(); }
     if (t.dataset.design === 'borderColor') { applyBorder(); recordSoon(); }
   };
-  for (const el of [bar, linebar, imgbar]) { el.addEventListener('input', onColor); el.addEventListener('change', onColor); }
+  bar.addEventListener('input', onColor);
+  bar.addEventListener('change', onColor);
 
   // The color window: the color now on the swatch with its code, the colors already used in this
   // design (so text can match the background or border exactly), a palette, a code box, and the
-  // Mac's own color picker under "More colors…".
+  // computer's own color picker under "More colors…".
   const pop = modal.querySelector('[data-color-pop]');
   let popFor = null;
-  const toHex = (c) => {
-    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c);
-    if (m) return `#${[m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
-    return /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : null;
-  };
   const usedColors = () => {
     const found = [canvas.dataset.color, bgInput.value, borderColor.value];
-    editor.querySelectorAll('[style]').forEach((el) => { found.push(toHex(el.style.color), toHex(el.style.backgroundColor)); });
-    editor.querySelectorAll('font[color]').forEach((el) => found.push(toHex(el.getAttribute('color'))));
+    root.querySelectorAll('[style]').forEach((el) => { found.push(toHexColor(el.style.color), toHexColor(el.style.backgroundColor)); });
+    root.querySelectorAll('font[color]').forEach((el) => found.push(toHexColor(el.getAttribute('color'))));
     return [...new Set(found.filter(Boolean).map((c) => c.toLowerCase()))].slice(0, 14);
   };
   const chip = (c) => `<button type="button" class="pop-chip" data-pick="${c}" style="background:${c}" title="${c.toUpperCase()}" aria-label="${c.toUpperCase()}"></button>`;
@@ -2969,7 +2845,7 @@ function wireDesign(editor) {
     pop.style.left = `${Math.max(8, Math.min(r.left - host.left, host.width - pop.offsetWidth - 8))}px`;
     pop.style.top = `${r.bottom - host.top + 6 + modal.querySelector('.modal-body').scrollTop}px`;
   };
-  modal.querySelector('form').addEventListener('click', (e) => {
+  form.addEventListener('click', (e) => {
     const sw = e.target.closest('[data-color-for]');
     if (!sw) return;
     keepRange();
@@ -2997,246 +2873,61 @@ function wireDesign(editor) {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePop(); }
   });
   modal.addEventListener('pointerdown', (e) => { if (!pop.hidden && !e.target.closest('[data-color-pop], [data-color-for]')) closePop(); });
-  // A color picker takes focus: remember the selection before it opens.
-  bar.addEventListener('pointerdown', (e) => { if (e.target.closest('input[type=color], select')) keepRange(); });
+  ctxbar.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
 
   // ---- the toolbar follows the text ----
-  // Click into any part of the design and the toolbar shows that text's font, size, color, bold,
-  // italic, underline, alignment and list. With nothing selected, a new font or color goes to that
-  // paragraph when it has its own (a template's title, say), otherwise to the whole design; a new
-  // size goes to the paragraph.
-  const sizeSel = modal.querySelector('[data-design=fontSize]');
-  const textSwatch = modal.querySelector('[data-color-for=color]');
+  // Click into any text and the toolbar shows its font, size, color, bold, italic, underline,
+  // alignment and list.
   const SIZE_PX = { 2: 13, 3: 16, 4: 18, 5: 24, 6: 32 }; // what the browser draws for each size
   const firstFamily = (ff) => String(ff ?? '').split(',')[0].replace(/['"]/g, '').trim().toLowerCase();
   const fontKeyOf = (ff) => FONTS.find((f) => firstFamily(f.stack) === firstFamily(ff))?.key ?? null;
-  const own = { font: false, color: false };
   const caretEl = () => {
-    const r = designRange && editor.contains(designRange.startContainer) ? designRange : null;
-    if (!r) return null;
+    if (!liveRange()) return null;
+    const r = designRange;
     let n = r.startContainer;
     if (n.nodeType !== 1) n = n.parentElement;
     else if (n.childNodes[r.startOffset]?.nodeType === 1) n = n.childNodes[r.startOffset];
-    return n && editor.contains(n) && n !== editor ? n : null;
+    return n && root.contains(n) ? n : null;
   };
-  const BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, div:not([data-design-edit])';
-  // Selects the paragraph the cursor is in, so a change applies to all of it.
-  function selectBlock() {
-    const block = caretEl()?.closest('[data-box]') ?? caretEl()?.closest(BLOCKS); // a whole text box, or the paragraph
-    if (!block || !editor.contains(block)) return false;
-    const r = document.createRange();
-    r.selectNodeContents(block);
-    designRange = r;
-    return true;
-  }
+  const showSize = (value, label) => {
+    let current = sizeSel.querySelector('[data-current]');
+    if (value) { current?.remove(); sizeSel.value = value; return; }
+    if (!current) { current = new Option('', 'current'); current.dataset.current = ''; sizeSel.add(current, 1); }
+    current.textContent = label;
+    sizeSel.value = 'current';
+  };
   function syncToolbar() {
     const el = caretEl();
     if (!el) return;
     const cs = getComputedStyle(el);
-    const base = getComputedStyle(editor);
-    own.font = firstFamily(cs.fontFamily) !== firstFamily(base.fontFamily);
     fontSel.value = fontKeyOf(cs.fontFamily) ?? canvas.dataset.font;
-    const px = Math.round(parseFloat(cs.fontSize));
-    const level = Object.keys(SIZE_PX).find((k) => SIZE_PX[k] === px);
-    let current = sizeSel.querySelector('[data-current]');
-    if (level) {
-      current?.remove();
-      sizeSel.value = level;
+    const px = parseFloat(cs.fontSize);
+    if (mode === 'free') {
+      const pt = Math.round(cqwToPt((px / canvas.clientWidth) * 100, cardWidthIn()));
+      showSize(PT_SIZES.includes(pt) ? `${pt}pt` : '', `${pt} pt`);
     } else {
-      if (!current) { current = new Option('', 'current'); current.dataset.current = ''; sizeSel.add(current, 1); }
-      current.textContent = `${px} px`;
-      sizeSel.value = 'current';
+      const level = Object.keys(SIZE_PX).find((k) => SIZE_PX[k] === Math.round(px));
+      showSize(level ?? '', `${Math.round(px)} px`);
     }
     const hex = toHexColor(cs.color);
-    own.color = Boolean(hex) && hex !== toHexColor(base.color);
     if (hex) { colorIn.value = hex; textSwatch.style.background = hex; }
     for (const b of bar.querySelectorAll('[data-cmd]')) {
       let on = false;
       try { on = document.queryCommandState(b.dataset.cmd); } catch { /* not supported */ }
       b.setAttribute('aria-pressed', String(on));
     }
-    syncBox();
   }
-  const onSelection = () => {
+  function onSelection() {
     const sel = window.getSelection();
-    if (!sel.rangeCount || !editor.contains(sel.getRangeAt(0).startContainer)) return;
+    if (!sel.rangeCount || !root.contains(sel.getRangeAt(0).startContainer)) return;
     keepRange();
     syncToolbar();
-  };
+  }
   document.addEventListener('selectionchange', onSelection);
-  modal.addEventListener('close', () => document.removeEventListener('selectionchange', onSelection), { once: true });
-  bar.addEventListener('click', (e) => { if (e.target.closest('[data-cmd]')) syncToolbar(); });
 
-  // ---- text boxes ----
-  // A box of text, like PowerPoint's, that stays in the flow of the design (so it looks the same in
-  // print and email): drag its edges to size it, place it left, center or right, give it a fill and a
-  // border, and move it up or down. With the cursor in a box, Font, Size and Text color change all of it.
-  const boxbar = modal.querySelector('[data-design-boxbar]');
-  const boxFill = modal.querySelector('[name=boxFill]');
-  const boxBorderSel = boxbar.querySelector('[data-box-border]');
-  const boxBorderColor = modal.querySelector('[name=boxBorderColor]');
-  let box = null;
-  const inBox = () => Boolean(caretEl()?.closest('[data-box]'));
-  const handles = Object.assign(document.createElement('div'), { className: 'box-handles', hidden: true });
-  handles.innerHTML = ['w', 'e', 's', 'sw', 'se'].map((h) => `<span class="bh bh-${h}" data-h="${h}" title="Drag to resize"></span>`).join('');
-  canvas.append(handles);
-  const boxPlaceOf = (b) => (b.style.marginLeft === 'auto' && b.style.marginRight === 'auto' ? 'center' : b.style.marginLeft === 'auto' ? 'right' : 'left');
-  function setBoxPlace(b, place) {
-    b.style.margin = { left: '12px auto 12px 0', center: '12px auto', right: '12px 0 12px auto' }[place];
-    b.setAttribute('align', place);
-  }
-  function setBoxBorder(b, key, color) {
-    b.dataset.box = key;
-    b.style.border = BOX_CSS[key] ? `${BOX_CSS[key]} ${color}` : '';
-    b.style.borderRadius = key === 'rounded' ? '12px' : '';
-  }
-  function positionHandles() {
-    if (!box || !editor.contains(box) || canvas.hidden || !canvas.offsetParent) { handles.hidden = true; return; }
-    const c = canvas.getBoundingClientRect();
-    const r = box.getBoundingClientRect();
-    Object.assign(handles.style, { left: `${r.left - c.left}px`, top: `${r.top - c.top}px`, width: `${r.width}px`, height: `${r.height}px` });
-    handles.hidden = false;
-  }
-  function syncBox() {
-    const b = caretEl()?.closest('[data-box]');
-    box = b && editor.contains(b) ? b : null;
-    boxbar.hidden = !box;
-    if (box) {
-      const place = boxPlaceOf(box);
-      boxbar.querySelectorAll('[data-box-place]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.boxPlace === place)));
-      const fill = toHexColor(box.style.backgroundColor);
-      boxFill.value = fill ?? '#ffffff';
-      boxbar.querySelector('[data-color-for=boxFill]').style.background = fill ?? 'transparent';
-      boxBorderSel.value = BOX_BORDERS.some(([k]) => k === box.dataset.box) ? box.dataset.box : 'none';
-      const edge = toHexColor(box.style.borderTopColor) ?? boxBorderColor.value;
-      boxBorderColor.value = edge;
-      boxbar.querySelector('[data-color-for=boxBorderColor]').style.background = edge;
-      boxbar.querySelector('[data-box-border-color]').hidden = boxBorderSel.value === 'none';
-    }
-    positionHandles();
-  }
-  modal.querySelector('[data-insert-box]').addEventListener('click', () => {
-    const el = document.createElement('div');
-    el.style.width = '60%';
-    el.style.padding = '12px';
-    setBoxPlace(el, 'center');
-    setBoxBorder(el, 'none', '#9ca3af');
-    el.innerHTML = '<p style="margin:0">Your text here</p>';
-    // After the paragraph the cursor is in (a box can't go inside a paragraph), else at the end.
-    let at = caretEl();
-    while (at && at.parentElement !== editor) at = at.parentElement;
-    // On an empty line, the box takes its place (so it doesn't sit below a blank line).
-    const emptyLine = at?.matches('p, div:not([data-box])') && !at.textContent.trim() && !at.querySelector('img, hr');
-    if (emptyLine) at.replaceWith(el); else if (at) at.after(el); else editor.append(el);
-    const r = document.createRange();
-    r.selectNodeContents(el.querySelector('p'));
-    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
-    editor.focus();
-    designRange = r.cloneRange();
-    record();
-    syncToolbar();
-  });
-  boxbar.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); }); // keep the cursor in the box
-  boxbar.addEventListener('click', (e) => {
-    if (!box) return;
-    const place = e.target.closest('[data-box-place]')?.dataset.boxPlace;
-    if (place) setBoxPlace(box, place);
-    if (e.target.closest('[data-box-nofill]')) box.style.backgroundColor = '';
-    const move = Number(e.target.closest('[data-box-move]')?.dataset.boxMove);
-    if (move === -1 && box.previousElementSibling) box.previousElementSibling.before(box);
-    if (move === 1 && box.nextElementSibling) box.nextElementSibling.after(box);
-    if (move) { // moving it takes the cursor out of it: put it back at the end of its text
-      const walk = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
-      let text = null;
-      while (walk.nextNode()) text = walk.currentNode;
-      const r = document.createRange();
-      if (text) r.setStart(text, text.length); else { r.selectNodeContents(box); r.collapse(false); }
-      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
-      designRange = r.cloneRange();
-    }
-    if (e.target.closest('[data-box-remove]')) { box.remove(); box = null; designRange = null; }
-    if (place || move || e.target.closest('[data-box-nofill], [data-box-remove]')) { record(); syncBox(); }
-  });
-  boxBorderSel.addEventListener('change', () => { if (box) { setBoxBorder(box, boxBorderSel.value, boxBorderColor.value); record(); syncBox(); } });
-  // Colors arrive as "input" while dragging, or only "change" (Safari, and the color window).
-  const onBoxColor = (e) => {
-    if (!box || !['boxFill', 'boxBorderColor'].includes(e.target.name)) return;
-    boxbar.querySelector(`[data-color-for=${e.target.name}]`).style.background = e.target.value;
-    if (e.target.name === 'boxFill') box.style.backgroundColor = e.target.value;
-    else if (boxBorderSel.value !== 'none') setBoxBorder(box, boxBorderSel.value, e.target.value);
-    recordSoon();
-  };
-  boxbar.addEventListener('input', onBoxColor);
-  boxbar.addEventListener('change', onBoxColor);
-  // Resizing: the side handles set the width (both sides together for a centered box), the bottom
-  // ones the height.
-  let drag = null;
-  handles.addEventListener('pointerdown', (e) => {
-    const h = e.target.dataset.h;
-    if (!h || !box) return;
-    e.preventDefault();
-    e.target.setPointerCapture(e.pointerId);
-    const cs = getComputedStyle(box);
-    const ecs = getComputedStyle(editor);
-    drag = {
-      h, rect: box.getBoundingClientRect(), place: boxPlaceOf(box),
-      extra: box.getBoundingClientRect().width - parseFloat(cs.width), // padding and border
-      room: editor.clientWidth - parseFloat(ecs.paddingLeft) - parseFloat(ecs.paddingRight),
-    };
-  });
-  handles.addEventListener('pointermove', (e) => {
-    if (!drag || !box) return;
-    const { h, rect, place, extra, room } = drag;
-    if (h.includes('e') || h.includes('w')) {
-      const w = place === 'center' ? 2 * Math.abs(e.clientX - (rect.left + rect.width / 2))
-        : h.includes('e') ? e.clientX - rect.left : rect.right - e.clientX;
-      const pct = Math.round(((w - extra) / room) * 100);
-      box.style.width = `${Math.max(15, Math.min(Math.floor(((room - extra) / room) * 100), pct))}%`;
-    }
-    if (h.includes('s')) box.style.minHeight = `${Math.max(0, Math.round(e.clientY - rect.top - extra))}px`;
-    positionHandles();
-  });
-  const endDrag = () => { if (drag) { drag = null; record(); syncBox(); } };
-  handles.addEventListener('pointerup', endDrag);
-  handles.addEventListener('pointercancel', endDrag);
-  editor.addEventListener('input', positionHandles);
-  modal.querySelector('.modal-body').addEventListener('scroll', positionHandles, { passive: true });
-  window.addEventListener('resize', positionHandles);
-  modal.addEventListener('close', () => window.removeEventListener('resize', positionHandles), { once: true });
-
-  imgbar.addEventListener('click', (e) => {
-    if (!picked) return;
-    const w = e.target.closest('[data-img-width]')?.dataset.imgWidth;
-    if (w) { picked.style.width = w; picked.style.maxWidth = '100%'; picked.style.height = 'auto'; picked.removeAttribute('width'); picked.removeAttribute('height'); showSize(picked); }
-    const where = e.target.closest('[data-img-place]')?.dataset.imgPlace;
-    if (where) { place(picked, where); showPlace(picked); }
-    if (e.target.closest('[data-img-remove]')) { picked.remove(); pick(null); }
-    record();
-    requestAnimationFrame(positionImgHandles);
-  });
-
-  // HTML view: edit or paste HTML; switching back shows it (cleaned) in the editor.
-  const htmlBtn = modal.querySelector('[data-design-html]');
-  htmlBtn.addEventListener('click', async () => {
-    const toSource = src.hidden;
-    if (toSource) {
-      src.value = designHtml(editor);
-      canvas.hidden = true; src.hidden = false; src.focus();
-    } else {
-      editor.innerHTML = (await cleanForEditor(src.value));
-      src.hidden = true; canvas.hidden = false; editor.focus();
-      record();
-    }
-    htmlBtn.setAttribute('aria-pressed', String(toSource));
-    lockToolbar(toSource, htmlBtn);
-  });
-
-  // Formatting tools are off while the HTML or the preview is showing (page colors and border stay
-  // usable in the HTML view).
-  function lockToolbar(on, except) {
-    bar.querySelectorAll('select, button.tb, input, .tb-pic, .tb-color').forEach((el) => {
-      if (el === except) return;
-      if (except === htmlBtn && el.matches('input[type=color], [data-color-for=background], [data-color-for=borderColor], [data-design=border]')) return;
+  // Formatting tools are off while the preview shows.
+  function lockToolbar(on) {
+    bar.querySelectorAll('select, button.tb, input, .tb-color').forEach((el) => {
       if (el.matches('[data-history]')) { el.disabled = on || (el.dataset.history === 'undo' ? at === 0 : at === history.length - 1); return; }
       el.classList.toggle('off', on);
       if ('disabled' in el) el.disabled = on;
@@ -3255,7 +2946,7 @@ function wireDesign(editor) {
     return onList.length ? onList : [...state.households].sort(byName);
   };
   const currentDesign = () => ({
-    html: designHtml(editor), background: bgInput.value, color: canvas.dataset.color, font: canvas.dataset.font,
+    html: ed.html(), background: bgInput.value, color: canvas.dataset.color, font: canvas.dataset.font,
     border: borderSel.value, borderColor: borderColor.value,
   });
   const showPreview = () => {
@@ -3271,39 +2962,35 @@ function wireDesign(editor) {
       : '<span class="muted">No households yet</span>';
     pane.querySelector('[data-preview-step="-1"]').disabled = previewAt <= 0;
     pane.querySelector('[data-preview-step="1"]').disabled = previewAt >= list.length - 1;
-    pane.querySelector('[data-preview-body]').innerHTML = `<div class="preview-page">${renderDesign(design, fieldValues({ occasion: o, greeting, fromName: fromName() }))}</div>`;
+    const page = `<div class="preview-page${mode === 'free' ? ' free' : ''}"${mode === 'free' ? ` style="width:${canvas.style.width}"` : ''}>${renderDesign(design, fieldValues({ occasion: o, greeting, fromName: fromName() }))}</div>`;
+    pane.querySelector('[data-preview-body]').innerHTML = page;
   };
   previewBtn.addEventListener('click', () => {
     const on = pane.hidden;
-    if (on && !src.hidden) htmlBtn.click(); // leave the HTML view first
+    if (on) { ed.select(null); closePop(); }
     pane.hidden = !on;
     canvas.hidden = on;
-    imgbar.hidden = true; pick(null); pickLine(null); closePop();
     previewBtn.setAttribute('aria-pressed', String(on));
-    lockToolbar(on, previewBtn);
-    if (on) showPreview(); else editor.focus();
+    lockToolbar(on);
+    if (on) showPreview();
   });
   pane.addEventListener('click', (e) => {
-    const step = Number(e.target.closest('[data-preview-step]')?.dataset.previewStep);
-    if (step) { previewAt += step; showPreview(); }
+    const s = Number(e.target.closest('[data-preview-step]')?.dataset.previewStep);
+    if (s) { previewAt += s; showPreview(); }
   });
-}
 
-// HTML typed or pasted in is cleaned before it's shown in the app (the API cleans it again, more
-// strictly, on save). Parsed in an inert document, so nothing in it runs or loads while cleaning.
-const UNSAFE_TAGS = 'script, style, link, meta, base, iframe, frame, frameset, object, embed, applet, form, input, button, select, textarea, svg, math, template, noscript';
-async function cleanForEditor(html) {
-  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
-  doc.body.querySelectorAll(UNSAFE_TAGS).forEach((el) => el.remove());
-  doc.body.querySelectorAll('*').forEach((el) => {
-    for (const { name, value } of [...el.attributes]) {
-      const v = value.replace(/[\s\u0000-\u001f]/g, '').toLowerCase();
-      if (name.startsWith('on') || name === 'class' || name === 'id' || name === 'srcdoc' || name === 'formaction'
-        || (['href', 'src', 'xlink:href', 'action', 'background'].includes(name) && !/^(https?:|mailto:|tel:|#)/.test(v))) el.removeAttribute(name);
-      if (name === 'style' && /url\(|expression\(/i.test(value)) el.removeAttribute(name);
-    }
-  });
-  return doc.body.innerHTML;
+  // ---- start ----
+  const begin = async () => {
+    await ed.load(html);
+    syncCard();
+    history = [snap()];
+    at = 0;
+    syncHistory();
+    if (mode === 'rows') root.querySelector('.rb-text')?.focus();
+  };
+  // Earlier invitations are laid out once their fonts are in, so each part lands where it printed.
+  if (mode === 'free' && !isFreeDesign(html)) document.fonts.ready.then(() => { if (designer === ed) begin(); });
+  else begin();
 }
 
 async function uploadPicture(blob, type) {
@@ -3313,45 +3000,13 @@ async function uploadPicture(blob, type) {
   return url;
 }
 
-async function insertPicture(file, insertNode) {
-  if (!PICTURE_TYPES.includes(file.type)) return modalError('Pictures must be PNG, JPEG, GIF or WebP.');
-  modalError('');
-  const label = modal.querySelector('.tb-pic');
-  label.classList.add('busy');
-  try {
-    let blob = file;
-    // Big photos are scaled down to 1600px wide (animated GIFs are left alone).
-    if (file.type !== 'image/gif') {
-      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
-      if (bitmap && bitmap.width > 1600) {
-        const scale = 1600 / bitmap.width;
-        const canvas = Object.assign(document.createElement('canvas'), { width: 1600, height: Math.round(bitmap.height * scale) });
-        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-        blob = await new Promise((r) => canvas.toBlob(r, type, 0.88));
-      }
-      bitmap?.close?.();
-    }
-    if (blob.size > 5 * 1024 * 1024) throw new Error('That picture is too large (over 5 MB).');
-    const url = await uploadPicture(blob, blob.type || file.type);
-    insertNode(`<img src="${esc(url)}" alt="" style="width:50%;max-width:100%;height:auto">`);
-  } catch (e) {
-    modalError(e.message);
-  } finally {
-    label.classList.remove('busy');
-  }
-  return undefined;
-}
-
 async function saveDesign(form) {
-  const editor = form.querySelector('[data-design-edit]');
-  const src = form.querySelector('[data-design-src]');
-  if (!src.hidden) editor.innerHTML = (await cleanForEditor(src.value));
   const name = form.elements.designName.value.trim();
   if (!name) { form.elements.designName.focus(); return modalError('Give the design a name'); }
+  if (!designer) return undefined;
   const body = {
     name,
-    html: designHtml(editor),
+    html: designer.html(),
     background: form.querySelector('[name=background]').value,
     color: form.querySelector('[data-design-canvas]').dataset.color,
     font: form.querySelector('[data-design-canvas]').dataset.font,
@@ -3384,6 +3039,7 @@ async function saveDesign(form) {
       });
     }
   });
+  return undefined;
 }
 
 // ---------- invitations ----------

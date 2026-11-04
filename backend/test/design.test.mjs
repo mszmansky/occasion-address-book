@@ -75,7 +75,7 @@ test('borders frame the design; unknown values fall back', async () => {
 
 test('divider lines survive cleaning', () => {
   const hr = '<hr data-line="double" style="border:0;border-top:5px double #14532d;height:0;width:75%;margin:16px auto" />';
-  assert.equal(cleanDesignHtml(hr), '<hr style="border:0;border-top:5px double #14532d;height:0;width:75%;margin:16px auto" />');
+  assert.equal(cleanDesignHtml(hr), hr, 'the line keeps its style name too');
   const bar = '<hr style="border:0;height:4px;border-radius:2px;background-color:#9f1239;width:50%;margin:16px auto" />';
   assert.equal(cleanDesignHtml(bar), bar);
 });
@@ -83,4 +83,29 @@ test('divider lines survive cleaning', () => {
 test('a Designer text box keeps its size, place, fill and border when saved', () => {
   const box = '<div data-box="rounded" align="center" style="width:60%;padding:12px;margin:12px auto;border:2px solid #9f1239;border-radius:12px;background-color:#fdf2f8;min-height:90px"><p style="margin:0">Hi</p></div>';
   assert.equal(cleanDesignHtml(box), box);
+});
+
+test('rows of columns (emails) and freely placed parts (invitations) survive cleaning', () => {
+  const rows = '<div data-rows><table data-row role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background-color:#fdf2f8"><tr>'
+    + '<td data-col width="50%" valign="top" style="width:50%;vertical-align:top;padding:4px 8px"><div data-block="text" style="padding:4px 0"><p>Hi</p></div></td>'
+    + '<td data-col width="50%" valign="top" style="width:50%;vertical-align:top;padding:4px 8px"><div data-block="spacer" style="height:24px;line-height:24px;font-size:1px">&nbsp;</div></td></tr></table></div>';
+  assert.equal(cleanDesignHtml(rows).replace(/\u00a0/g, '&nbsp;'), rows);
+  const free = '<div data-free="card5x7" data-orient="portrait" data-aspect="5:7" style="position:absolute;inset:0">'
+    + '<div data-item="text" style="position:absolute;left:10%;top:5.5%;width:80%;z-index:2"><p style="font-size:6.5cqw;margin:0">Hi</p></div>'
+    + '<div data-item="image" style="position:absolute;left:30%;top:20%;width:40%;z-index:1"><img alt="" src="https://x.example/a.png" style="display:block;width:100%;height:auto" /></div></div>';
+  assert.equal(cleanDesignHtml(free), free);
+  assert.doesNotMatch(cleanDesignHtml('<div style="position:fixed;z-index:99999">x</div>'), /fixed|99999/);
+});
+
+test('a free layout renders at its card shape, or filling a printed card', async () => {
+  const { renderDesign: r, isFreeDesign, freeAspect } = await import('../../frontend/design-core.js');
+  const html = '<div data-free="card4x6" data-orient="landscape" data-aspect="6:4" style="position:absolute;inset:0"><div data-item="text" style="position:absolute;left:10%;top:10%;width:80%">{{greeting}}</div></div>';
+  assert.ok(isFreeDesign(html));
+  assert.equal(freeAspect(html), '6 / 4');
+  const out = r({ html, border: 'thin', borderColor: '#14532d' }, { greeting: 'Kim &amp; Joe' });
+  assert.match(out, /class="design design-free"[^>]*container-type:inline-size[^>]*aspect-ratio:6 \/ 4/);
+  assert.match(out, /<div class="design-frame" style="position:absolute;inset:3%;border:1px solid #14532d;/);
+  assert.match(out, />Kim &amp;amp; Joe</);
+  assert.match(r({ html }, {}, { fill: true }), /width:100%;height:100%/);
+  assert.ok(!isFreeDesign('<p>x</p>'));
 });

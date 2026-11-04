@@ -4,8 +4,8 @@
 
 import sanitizeHtml from 'sanitize-html';
 
-const LENGTH = /^-?\d+(\.\d+)?(px|em|rem|%|pt|in|cm|mm)?$/;
-const LENGTHS = /^(-?\d+(\.\d+)?(px|em|rem|%|pt|in|cm|mm)?|auto)(\s+(-?\d+(\.\d+)?(px|em|rem|%|pt|in|cm|mm)?|auto)){0,3}$/;
+const LENGTH = /^-?\d+(\.\d+)?(px|em|rem|%|pt|in|cm|mm|cqw)?$/;
+const LENGTHS = /^(-?\d+(\.\d+)?(px|em|rem|%|pt|in|cm|mm|cqw)?|auto)(\s+(-?\d+(\.\d+)?(px|em|rem|%|pt|in|cm|mm|cqw)?|auto)){0,3}$/;
 const COLOR = /^(#[0-9a-f]{3,8}|rgba?\(\s*[\d.\s,%]+\)|hsla?\(\s*[\d.\s,%deg]+\)|[a-z]{3,20})$/i;
 const FONT_FAMILY = /^[\w\s'",-]{1,200}$/;
 const BORDER = /^[\w\s#().,%-]{1,80}$/;
@@ -15,7 +15,11 @@ export const ALLOWED = {
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'hr', 'a', 'img',
     'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col'],
   allowedAttributes: {
-    '*': ['style', 'align', 'dir', 'title', 'data-box'], // data-box: a Designer text box (its border style)
+    // data-box: a text box (its border style). data-line, data-line-color: a divider line's style and color.
+    // Emails laid out in rows: data-rows, data-row, data-col, data-block. Invitations laid out freely:
+    // data-free (card size), data-orient, data-aspect, data-item.
+    '*': ['style', 'align', 'dir', 'title', 'data-box', 'data-line', 'data-line-color', 'data-rows', 'data-row', 'data-col', 'data-block',
+      'data-free', 'data-orient', 'data-aspect', 'data-item'],
     a: ['href', 'target'],
     img: ['src', 'alt', 'width', 'height'],
     font: ['face', 'size', 'color'],
@@ -42,6 +46,9 @@ export const ALLOWED = {
       'border-color': [COLOR], 'border-style': [/^[a-z\s]{1,40}$/], 'border-width': [LENGTHS], 'border-radius': [LENGTHS], 'border-collapse': [/^(collapse|separate)$/],
       display: [/^(block|inline|inline-block|none|table|table-cell|table-row)$/], float: [/^(left|right|none)$/],
       'white-space': [/^(normal|nowrap|pre|pre-wrap|pre-line)$/],
+      // Freely placed invitation parts.
+      position: [/^(absolute|relative)$/], left: [LENGTH], top: [LENGTH], right: [LENGTH], bottom: [LENGTH], inset: [LENGTHS],
+      'z-index': [/^\d{1,3}$/], 'box-sizing': [/^(border-box|content-box)$/],
     },
   },
   // Links open in a new tab and images get alt text, so emails read well without images too.
