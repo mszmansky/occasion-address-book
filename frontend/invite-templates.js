@@ -130,12 +130,6 @@ const gift = (box, lid, ribbon) => () => `<rect x="18" y="46" width="64" height=
   <ellipse cx="39" cy="28" rx="6" ry="3" fill="#000" opacity=".15" transform="rotate(-28 39 28)"/><ellipse cx="61" cy="28" rx="6" ry="3" fill="#000" opacity=".15" transform="rotate(28 61 28)"/>
   <path d="M47 34L38 46M53 34L62 46" stroke="${ribbon}" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="33" r="5" fill="${ribbon}"/>`;
 // Holidays
-const snowman = () => `<circle cx="50" cy="72" r="20" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/><circle cx="50" cy="40" r="14" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
-  <rect x="38" y="16" width="24" height="5" rx="1" fill="#1f2937"/><rect x="42" y="2" width="16" height="16" rx="1" fill="#1f2937"/><rect x="42" y="12" width="16" height="3" fill="#b91c1c"/>
-  <g fill="#1f2937"><circle cx="45" cy="37" r="1.8"/><circle cx="55" cy="37" r="1.8"/><circle cx="50" cy="64" r="2"/><circle cx="50" cy="72" r="2"/><circle cx="50" cy="80" r="2"/></g>
-  <path d="M50 41L62 44L50 45Z" fill="#f97316"/>
-  <path d="M38 52Q50 58 62 52L62 58Q50 63 38 58Z" fill="#b91c1c"/><path d="M58 56L62 70L56 70Z" fill="#991b1b"/>
-  <path d="M32 64L16 52M16 52L12 48M16 52L12 56M68 64L84 52M84 52L88 48M84 52L88 56" stroke="#78350f" stroke-width="2.4" stroke-linecap="round"/>`;
 const menorah = () => {
   const xs = [14, 23, 32, 41, 50, 59, 68, 77, 86];
   const arms = [1, 2, 3, 4].map((i) => `<path d="M${50 - 9 * i} 48V${58 + i * 3}Q${50 - 9 * i} ${70 + i * 4} 50 ${70 + i * 4}Q${50 + 9 * i} ${70 + i * 4} ${50 + 9 * i} ${58 + i * 3}V48" fill="none" stroke="${GOLD}" stroke-width="3"/>`).join('');
@@ -280,7 +274,7 @@ const ARTWORK = {
   gingerbread: { file: 'art/gingerbread.jpg', width: '34%' },
   canes: { file: 'art/canes.jpg', width: '30%' },
   cocoa: { file: 'art/cocoa.jpg', width: '30%' },
-  snowman: { draw: snowman, width: '30%' },
+  snowman: { file: 'art/snowman.jpg', width: '30%' },
   menorah: { draw: menorah, width: '40%' },
   holly: { file: 'art/holly.jpg', width: '30%' },
   poinsettia: { draw: poinsettia, width: '32%' },
