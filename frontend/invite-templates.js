@@ -124,12 +124,6 @@ const bauble = (x, len, r, c) => `<path d="M${x} 0V${len}" stroke="#a8a29e" stro
   <path d="M${x - r * 0.92} ${len + 3 + r * 0.8}Q${x} ${len + 3 + r * 1.25} ${x + r * 0.92} ${len + 3 + r * 0.8}" fill="none" stroke="#fff" stroke-width="1.6" opacity=".55"/>
   <ellipse cx="${f1(x - r * 0.4)}" cy="${f1(len + 3 + r * 0.55)}" rx="${f1(r * 0.25)}" ry="${f1(r * 0.15)}" fill="#fff" opacity=".6" transform="rotate(-35 ${f1(x - r * 0.4)} ${f1(len + 3 + r * 0.55)})"/>`;
 const ornaments = () => `${bauble(24, 16, 13, '#b91c1c')}${bauble(52, 32, 16, '#166534')}${bauble(80, 10, 12, GOLD)}${sparkles([[12, 86, 3], [90, 70, 3.5], [66, 92, 2.5]])}`;
-const gift = (box, lid, ribbon) => () => `<rect x="18" y="46" width="64" height="44" rx="2" fill="${box}"/><rect x="14" y="35" width="72" height="13" rx="2" fill="${lid}"/>
-  <rect x="45" y="35" width="10" height="55" fill="${ribbon}"/>
-  <ellipse cx="39" cy="28" rx="12" ry="7" fill="${ribbon}" transform="rotate(-28 39 28)"/><ellipse cx="61" cy="28" rx="12" ry="7" fill="${ribbon}" transform="rotate(28 61 28)"/>
-  <ellipse cx="39" cy="28" rx="6" ry="3" fill="#000" opacity=".15" transform="rotate(-28 39 28)"/><ellipse cx="61" cy="28" rx="6" ry="3" fill="#000" opacity=".15" transform="rotate(28 61 28)"/>
-  <path d="M47 34L38 46M53 34L62 46" stroke="${ribbon}" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="33" r="5" fill="${ribbon}"/>`;
-// Holidays
 const menorah = () => {
   const xs = [14, 23, 32, 41, 50, 59, 68, 77, 86];
   const arms = [1, 2, 3, 4].map((i) => `<path d="M${50 - 9 * i} 48V${58 + i * 3}Q${50 - 9 * i} ${70 + i * 4} 50 ${70 + i * 4}Q${50 + 9 * i} ${70 + i * 4} ${50 + 9 * i} ${58 + i * 3}V48" fill="none" stroke="${GOLD}" stroke-width="3"/>`).join('');
@@ -280,7 +274,7 @@ const ARTWORK = {
   hats: { draw: partyHats, width: '34%' },
   bunting: { draw: bunting, box: [300, 60], width: '100%' },
   stars: { draw: ART.twinkle, width: '32%' },
-  present: { draw: gift('#7c3aed', '#6d28d9', '#facc15'), width: '30%' },
+  present: { file: 'art/present.jpg', width: '30%' },
   disco: { draw: discoBall, width: '34%' },
   goldConfetti: { draw: confettiOf(['#d4a017', '#f3d27a', '#e5e7eb', '#b8860b'], 7), box: [300, 60], width: '100%' },
   horns: { draw: horns, width: '36%' },
