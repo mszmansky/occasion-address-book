@@ -162,14 +162,6 @@ const petal = (a, len, w, c) => `<path d="M0 0Q${w} ${-len * 0.45} 0 ${-len}Q${-
 const poinsettia = () => `<g transform="translate(50 52)">${[22, 112, 202, 292].map((a) => petal(a, 46, 14, '#15803d')).join('')}
   ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => petal(a, 40, 13, '#b91c1c')).join('')}${[22, 67, 112, 157, 202, 247, 292, 337].map((a) => petal(a, 28, 10, '#dc2626')).join('')}
   <g fill="#facc15">${[[0, 0], [4, 3], [-4, 3], [3, -4], [-3, -4], [0, 5]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.2"/>`).join('')}</g></g>`;
-const cardinal = () => `<path d="M6 74Q50 62 96 70" fill="none" stroke="#78350f" stroke-width="4" stroke-linecap="round"/>
-  <path d="M8 74Q20 69 32 70" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  ${hollyLeaf(78, 70, 160, '#166534').replace('<g ', '<g opacity=".95" ')}
-  <path d="M28 52Q20 70 4 78Q22 72 34 64Z" fill="#991b1b"/>
-  <ellipse cx="48" cy="52" rx="20" ry="15" fill="#dc2626"/><path d="M40 60Q48 46 58 52" fill="none" stroke="#991b1b" stroke-width="3"/>
-  <circle cx="62" cy="36" r="10" fill="#dc2626"/><path d="M56 28L54 14L66 28Z" fill="#dc2626"/>
-  <path d="M60 34Q66 30 72 36L70 44Q62 44 60 34Z" fill="#111827"/><path d="M71 37L80 40L71 43Z" fill="#f97316"/><circle cx="64" cy="35" r="1.6" fill="#fff"/>
-  <path d="M44 66L42 72M52 66L52 72" stroke="#78350f" stroke-width="2"/>`;
 const snowflakeArt = () => `<circle cx="50" cy="50" r="48" fill="#bfdbfe"/><g transform="translate(50 50) scale(.95)">${ART.snowflake()}</g>`;
 
 // Birthday Party
@@ -305,7 +297,7 @@ const ARTWORK = {
   menorah: { draw: menorah, width: '40%' },
   holly: { draw: holly, width: '30%' },
   poinsettia: { draw: poinsettia, width: '32%' },
-  cardinal: { draw: cardinal, width: '36%' },
+  cardinal: { file: 'art/cardinal.jpg', width: '36%' },
   snowflake: { draw: snowflakeArt, width: '28%' },
   cake: { draw: cake, width: '34%' },
   hats: { draw: partyHats, width: '34%' },
