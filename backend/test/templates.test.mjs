@@ -7,7 +7,7 @@ import { cleanDesignHtml } from '../src/lib/sanitize.mjs';
 
 test('every theme has templates, each a normal design', () => {
   assert.equal(new Set(TEMPLATES.map((t) => t.id)).size, TEMPLATES.length);
-  for (const theme of TEMPLATE_THEMES) assert.ok(TEMPLATES.filter((t) => t.theme === theme).length >= 3, theme);
+  for (const theme of TEMPLATE_THEMES) assert.ok(TEMPLATES.filter((t) => t.theme === theme).length >= 8, theme);
   for (const t of TEMPLATES) {
     assert.ok(TEMPLATE_THEMES.includes(t.theme), t.id);
     const d = templateDesign(t, 'https://cards.example.com/media/abc.png');
