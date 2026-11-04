@@ -139,10 +139,6 @@ const menorah = () => {
   }).join('');
   return `${arms}<path d="M50 48V92M36 94H64" stroke="${GOLD}" stroke-width="4" stroke-linecap="round"/><g fill="${GOLD}">${xs.map((x) => `<rect x="${x - 4}" y="46" width="8" height="3" rx="1"/>`).join('')}</g>${candles}`;
 };
-const petal = (a, len, w, c) => `<path d="M0 0Q${w} ${-len * 0.45} 0 ${-len}Q${-w} ${-len * 0.45} 0 0Z" fill="${c}" transform="rotate(${a})"/>`;
-const poinsettia = () => `<g transform="translate(50 52)">${[22, 112, 202, 292].map((a) => petal(a, 46, 14, '#15803d')).join('')}
-  ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => petal(a, 40, 13, '#b91c1c')).join('')}${[22, 67, 112, 157, 202, 247, 292, 337].map((a) => petal(a, 28, 10, '#dc2626')).join('')}
-  <g fill="#facc15">${[[0, 0], [4, 3], [-4, 3], [3, -4], [-3, -4], [0, 5]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.2"/>`).join('')}</g></g>`;
 const snowflakeArt = () => `<circle cx="50" cy="50" r="48" fill="#bfdbfe"/><g transform="translate(50 50) scale(.95)">${ART.snowflake()}</g>`;
 
 // Birthday Party
@@ -277,7 +273,7 @@ const ARTWORK = {
   snowman: { file: 'art/snowman.jpg', width: '30%' },
   menorah: { draw: menorah, width: '40%' },
   holly: { file: 'art/holly.jpg', width: '30%' },
-  poinsettia: { draw: poinsettia, width: '32%' },
+  poinsettia: { file: 'art/poinsettia.jpg', width: '32%' },
   cardinal: { file: 'art/cardinal.jpg', width: '36%' },
   snowflake: { draw: snowflakeArt, width: '28%' },
   cake: { draw: cake, width: '34%' },
