@@ -297,7 +297,7 @@ const ARTWORK = {
   sunflower: { draw: ART.sunflower, width: '32%' },
   dinner: { file: 'art/dinner.jpg', width: '56%' },
   ornaments: { draw: ornaments, width: '36%' },
-  gift: { draw: gift('#166534', '#14532d', '#dc2626'), width: '32%' },
+  gift: { file: 'art/gift.jpg', width: '32%' },
   gingerbread: { file: 'art/gingerbread.jpg', width: '34%' },
   canes: { file: 'art/canes.jpg', width: '30%' },
   cocoa: { file: 'art/cocoa.jpg', width: '30%' },
