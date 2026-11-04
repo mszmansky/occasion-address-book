@@ -145,19 +145,6 @@ const menorah = () => {
   }).join('');
   return `${arms}<path d="M50 48V92M36 94H64" stroke="${GOLD}" stroke-width="4" stroke-linecap="round"/><g fill="${GOLD}">${xs.map((x) => `<rect x="${x - 4}" y="46" width="8" height="3" rx="1"/>`).join('')}</g>${candles}`;
 };
-const leafPath = (L, W) => {
-  const n = 6;
-  const top = []; const bot = [];
-  for (let i = 1; i < n; i++) { const t = i / n; top.push([L * t, -W * Math.sin(Math.PI * t)]); bot.push([L * t, W * Math.sin(Math.PI * t)]); }
-  let d = 'M0 0';
-  let prev = [0, 0];
-  for (const p of [...top, [L, 0]]) { const mx = (prev[0] + p[0]) / 2; const my = (prev[1] + p[1]) / 2 * 0.55; d += `Q${f1(mx)} ${f1(my)} ${f1(p[0])} ${f1(p[1])}`; prev = p; }
-  for (const p of [...bot.reverse(), [0, 0]]) { const mx = (prev[0] + p[0]) / 2; const my = (prev[1] + p[1]) / 2 * 0.55; d += `Q${f1(mx)} ${f1(my)} ${f1(p[0])} ${f1(p[1])}`; prev = p; }
-  return `${d}Z`;
-};
-const hollyLeaf = (x, y, rot, c) => `<g transform="translate(${x} ${y}) rotate(${rot})"><path d="${leafPath(40, 13)}" fill="${c}"/><path d="M2 0H38" stroke="#bbf7d0" stroke-width="1.2" opacity=".7"/></g>`;
-const holly = () => `${hollyLeaf(50, 50, 200, '#166534')}${hollyLeaf(50, 50, -20, '#15803d')}${hollyLeaf(50, 50, 95, '#14532d')}
-  <g fill="#dc2626"><circle cx="46" cy="47" r="6"/><circle cx="56" cy="46" r="6"/><circle cx="51" cy="56" r="6"/></g><g fill="#fff" opacity=".6"><circle cx="44" cy="45" r="1.5"/><circle cx="54" cy="44" r="1.5"/><circle cx="49" cy="54" r="1.5"/></g>`;
 const petal = (a, len, w, c) => `<path d="M0 0Q${w} ${-len * 0.45} 0 ${-len}Q${-w} ${-len * 0.45} 0 0Z" fill="${c}" transform="rotate(${a})"/>`;
 const poinsettia = () => `<g transform="translate(50 52)">${[22, 112, 202, 292].map((a) => petal(a, 46, 14, '#15803d')).join('')}
   ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => petal(a, 40, 13, '#b91c1c')).join('')}${[22, 67, 112, 157, 202, 247, 292, 337].map((a) => petal(a, 28, 10, '#dc2626')).join('')}
@@ -295,7 +282,7 @@ const ARTWORK = {
   cocoa: { file: 'art/cocoa.jpg', width: '30%' },
   snowman: { draw: snowman, width: '30%' },
   menorah: { draw: menorah, width: '40%' },
-  holly: { draw: holly, width: '30%' },
+  holly: { file: 'art/holly.jpg', width: '30%' },
   poinsettia: { draw: poinsettia, width: '32%' },
   cardinal: { file: 'art/cardinal.jpg', width: '36%' },
   snowflake: { draw: snowflakeArt, width: '28%' },
