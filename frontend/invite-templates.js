@@ -129,20 +129,6 @@ const gift = (box, lid, ribbon) => () => `<rect x="18" y="46" width="64" height=
   <ellipse cx="39" cy="28" rx="12" ry="7" fill="${ribbon}" transform="rotate(-28 39 28)"/><ellipse cx="61" cy="28" rx="12" ry="7" fill="${ribbon}" transform="rotate(28 61 28)"/>
   <ellipse cx="39" cy="28" rx="6" ry="3" fill="#000" opacity=".15" transform="rotate(-28 39 28)"/><ellipse cx="61" cy="28" rx="6" ry="3" fill="#000" opacity=".15" transform="rotate(28 61 28)"/>
   <path d="M47 34L38 46M53 34L62 46" stroke="${ribbon}" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="33" r="5" fill="${ribbon}"/>`;
-const gingerbread = () => `<path d="M8 92Q50 84 92 92V96H8Z" fill="#fff"/>
-  <rect x="22" y="48" width="56" height="42" fill="#b45309"/><path d="M12 52L50 18L88 52Z" fill="#92400e"/>
-  <path d="M12 52Q16 58 20 52T28 52T36 52T44 52T52 52T60 52T68 52T76 52T84 52L88 52" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  <path d="M50 18L12 52M50 18L88 52" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-  <g fill="#ef4444"><circle cx="40" cy="36" r="2.6"/><circle cx="60" cy="36" r="2.6"/></g><g fill="#22c55e"><circle cx="50" cy="30" r="2.6"/><circle cx="32" cy="44" r="2.6"/><circle cx="68" cy="44" r="2.6"/></g>
-  <path d="M43 90V72A7 7 0 0 1 57 72V90Z" fill="#7c2d12" stroke="#fff" stroke-width="2"/>
-  <g fill="#fde68a" stroke="#fff" stroke-width="2"><rect x="27" y="58" width="11" height="11"/><rect x="62" y="58" width="11" height="11"/></g>
-  <path d="M32.5 58V69M27 63.5H38M67.5 58V69M62 63.5H73" stroke="#fff" stroke-width="1.6"/>`;
-const cocoa = () => `<path d="M38 22q-6-6 0-12M50 20q-6-6 0-12M62 22q-6-6 0-12" fill="none" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
-  <path d="M22 34H70V78Q70 90 58 90H34Q22 90 22 78Z" fill="#b91c1c"/><path d="M70 44Q86 44 86 58Q86 72 70 72" fill="none" stroke="#b91c1c" stroke-width="7"/>
-  <ellipse cx="46" cy="34" rx="24" ry="5" fill="#78350f"/>
-  <g fill="#fff"><rect x="34" y="28" width="9" height="7" rx="2"/><rect x="46" y="27" width="9" height="7" rx="2" transform="rotate(12 50 30)"/><rect x="40" y="32" width="8" height="6" rx="2"/></g>
-  <path d="M26 52H66" stroke="#fff" stroke-width="3" stroke-dasharray="4 5"/>`;
-
 // Holidays
 const snowman = () => `<circle cx="50" cy="72" r="20" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/><circle cx="50" cy="40" r="14" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
   <rect x="38" y="16" width="24" height="5" rx="1" fill="#1f2937"/><rect x="42" y="2" width="16" height="16" rx="1" fill="#1f2937"/><rect x="42" y="12" width="16" height="3" fill="#b91c1c"/>
@@ -312,9 +298,9 @@ const ARTWORK = {
   dinner: { file: 'art/dinner.jpg', width: '56%' },
   ornaments: { draw: ornaments, width: '36%' },
   gift: { draw: gift('#166534', '#14532d', '#dc2626'), width: '32%' },
-  gingerbread: { draw: gingerbread, width: '34%' },
+  gingerbread: { file: 'art/gingerbread.jpg', width: '34%' },
   canes: { file: 'art/canes.jpg', width: '30%' },
-  cocoa: { draw: cocoa, width: '30%' },
+  cocoa: { file: 'art/cocoa.jpg', width: '30%' },
   snowman: { draw: snowman, width: '30%' },
   menorah: { draw: menorah, width: '40%' },
   holly: { draw: holly, width: '30%' },
