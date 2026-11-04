@@ -137,12 +137,6 @@ const gingerbread = () => `<path d="M8 92Q50 84 92 92V96H8Z" fill="#fff"/>
   <path d="M43 90V72A7 7 0 0 1 57 72V90Z" fill="#7c2d12" stroke="#fff" stroke-width="2"/>
   <g fill="#fde68a" stroke="#fff" stroke-width="2"><rect x="27" y="58" width="11" height="11"/><rect x="62" y="58" width="11" height="11"/></g>
   <path d="M32.5 58V69M27 63.5H38M67.5 58V69M62 63.5H73" stroke="#fff" stroke-width="1.6"/>`;
-const cane = (x, flip) => `<g transform="translate(${x} 0) scale(${flip ? -1 : 1} 1)">
-  <path d="M0 92V36A12 12 0 0 1 24 36V42" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
-  <path d="M0 92V36A12 12 0 0 1 24 36V42" fill="none" stroke="#dc2626" stroke-width="9" stroke-dasharray="5 6" stroke-linecap="butt"/></g>`;
-const candyCanes = () => `${cane(34, false)}${cane(66, true)}
-  <path d="M50 66l-12-8v16Z M50 66l12-8v16Z" fill="#15803d"/><circle cx="50" cy="66" r="4" fill="#166534"/>
-  <path d="M30 80l-10 6M70 80l10 6" stroke="#15803d" stroke-width="3" stroke-linecap="round"/>${sparkles([[14, 20, 3.5], [86, 16, 3], [88, 52, 2.5]], '#fca5a5')}`;
 const cocoa = () => `<path d="M38 22q-6-6 0-12M50 20q-6-6 0-12M62 22q-6-6 0-12" fill="none" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
   <path d="M22 34H70V78Q70 90 58 90H34Q22 90 22 78Z" fill="#b91c1c"/><path d="M70 44Q86 44 86 58Q86 72 70 72" fill="none" stroke="#b91c1c" stroke-width="7"/>
   <ellipse cx="46" cy="34" rx="24" ry="5" fill="#78350f"/>
@@ -319,7 +313,7 @@ const ARTWORK = {
   ornaments: { draw: ornaments, width: '36%' },
   gift: { draw: gift('#166534', '#14532d', '#dc2626'), width: '32%' },
   gingerbread: { draw: gingerbread, width: '34%' },
-  canes: { draw: candyCanes, width: '30%' },
+  canes: { file: 'art/canes.jpg', width: '30%' },
   cocoa: { draw: cocoa, width: '30%' },
   snowman: { draw: snowman, width: '30%' },
   menorah: { draw: menorah, width: '40%' },
