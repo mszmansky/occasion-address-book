@@ -314,7 +314,7 @@ function renderLanding() {
       <div><h3>Private by default</h3><p>Sign-in with an optional authenticator code, and automatic sign-out after 30 minutes away.</p></div>
     </section>
 
-    <footer class="ld-foot"><span>${APP_NAME}</span><a class="ld-link" href="help.html">Help</a><button class="link" data-action="show-signin">Sign in</button></footer>
+    <footer class="ld-foot"><span>${APP_NAME}</span><a class="ld-link" href="help.html">Help</a><a class="ld-link" href="privacy.html">Privacy</a><button class="link" data-action="show-signin">Sign in</button></footer>
   </div>`;
 }
 
@@ -536,6 +536,7 @@ function userChip(email) {
       ${canEdit() ? '<button type="button" role="menuitem" data-action="import">Import…</button>' : ''}
       <button type="button" role="menuitem" data-action="export">Export…</button>
       <a role="menuitem" href="help.html" target="_blank" rel="noopener">Help</a>
+      <a role="menuitem" href="privacy.html" target="_blank" rel="noopener">Privacy</a>
       <hr>
       <button type="button" role="menuitem" data-action="signout">Sign out</button>
     </div>

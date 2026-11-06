@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy · Occasions Address Book</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .help { max-width: 1120px; margin: 0 auto; padding: 0 24px 64px; }
+    .help-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+    .help-top .logo { width: 40px; height: 40px; }
+    .help-top a { color: inherit; text-decoration: none; }
+    .help-body { display: grid; grid-template-columns: 220px 1fr; gap: 48px; padding-top: 36px; }
+    .toc { position: sticky; top: 20px; align-self: start; display: grid; gap: 2px; font-size: 14.5px; }
+    .toc a { color: var(--ink-2); text-decoration: none; padding: 5px 10px; border-radius: 7px; }
+    .toc a:hover { background: var(--surface); color: var(--ink); }
+    .help h1 { font-size: 34px; letter-spacing: -.03em; margin: 0 0 10px; }
+    .help .intro { font-size: 17px; color: var(--ink-2); margin: 0 0 8px; max-width: 62ch; }
+    .help section { padding: 28px 0 8px; border-top: 1px solid var(--line); margin-top: 28px; scroll-margin-top: 16px; }
+    .help section:first-of-type { border-top: 0; margin-top: 8px; }
+    .help h2 { font-size: 23px; letter-spacing: -.02em; margin: 0 0 12px; }
+    .help h3 { font-size: 16.5px; margin: 22px 0 6px; }
+    .help p, .help li { font-size: 15.5px; line-height: 1.65; color: var(--ink); max-width: 68ch; }
+    .help p { margin: 0 0 10px; }
+    .help ul, .help ol { margin: 0 0 12px; padding-left: 22px; }
+    .help li { margin: 3px 0; }
+    .help b { font-weight: 600; }
+    .help .tip { border-left: 3px solid var(--accent); background: var(--surface); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; max-width: 66ch; }
+    .help kbd { font: 13px var(--sans); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 6px; background: var(--surface); }
+    @media (max-width: 860px) {
+      .help-body { grid-template-columns: 1fr; gap: 20px; }
+      .toc { position: static; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: var(--surface); }
+    }
+    @media (max-width: 520px) { .help { padding: 0 16px 48px; } .help h1 { font-size: 28px; } }
+  </style>
+</head>
+<body>
+<div class="help">
+  <header class="help-top">
+    <a class="brand" href="./"><img class="logo" src="icon-192.png" width="40" height="40" alt=""><span>Occasions Address Book</span></a>
+    <a class="btn" href="./">Open the app</a>
+  </header>
+
+  <div class="help-body">
+    <nav class="toc" aria-label="Privacy topics">
+      <a href="#collect">What we keep</a>
+      <a href="#contacts">The people in your book</a>
+      <a href="#use">How it's used</a>
+      <a href="#sharing">Who sees it</a>
+      <a href="#services">Services we use</a>
+      <a href="#browser">Your browser</a>
+      <a href="#keeping">How long it's kept</a>
+      <a href="#security">Security</a>
+      <a href="#choices">Your choices</a>
+      <a href="#children">Children</a>
+      <a href="#changes">Changes</a>
+      <a href="#contact">Contact</a>
+    </nav>
+
+    <main>
+      <h1>Privacy</h1>
+      <p class="intro">Occasions Address Book keeps the mailing list for your cards and invitations. Your address book is yours: we don't sell it, rent it, use it for advertising, or share it with anyone you haven't chosen to share it with.</p>
+      <p class="muted small">Effective November 5, 2026</p>
+
+      <section id="collect">
+        <h2>What we keep</h2>
+        <ul>
+          <li><b>Your account:</b> your email address and password (managed by Amazon Cognito; we never see or store your password), when you joined and when you last signed in.</li>
+          <li><b>Your settings:</b> your name, return address, the name your emails come from, your printer adjustments and, if you add one, your photo.</li>
+          <li><b>Your address book:</b> the households you add or import, with their names, greetings, addresses, people, phone numbers, email addresses, groups and notes.</li>
+          <li><b>Your occasions:</b> each occasion's details (name, date, time, location, subject), who's on its list, what was mailed or sent, your designs and the pictures you add to them, and RSVP answers from your guests.</li>
+          <li><b>Things you delete</b> stay in your Trash for 30 days so you can bring them back.</li>
+        </ul>
+      </section>
+
+      <section id="contacts">
+        <h2>The people in your book</h2>
+        <p>The households in your address book are people you know, and you decide what's kept about them. We use their details only to do what you ask: print their envelopes and labels, and send them the emails, invitations and address requests you choose to send.</p>
+        <ul>
+          <li>When you send an <b>address update request</b>, the household gets a private link (good for 30 days) to confirm or correct their address. What they enter goes to you to review; it isn't added until you accept it.</li>
+          <li>When you send an <b>emailed invitation</b>, each guest gets a private link to answer Yes, Maybe or No, with an optional count and note. Their answer is kept with your occasion and RSVP records are removed after about 400 days.</li>
+          <li>Opening those links doesn't require an account. We don't add anything to emails to track whether they're opened.</li>
+        </ul>
+        <p>If you're in someone's address book and want to be removed, ask that person, or contact us (below) and we'll pass the request along.</p>
+      </section>
+
+      <section id="use">
+        <h2>How it's used</h2>
+        <p>Only to run the app: to show you your address book, print, send the emails you send, check addresses when you ask, sign you in and keep your account secure. We send you email only about your account (invitations to join, password resets, notices when someone shares a book with you or sends you households, and RSVP answers to your invitations). There are no ads, no marketing emails and no analytics or tracking scripts.</p>
+      </section>
+
+      <section id="sharing">
+        <h2>Who sees it</h2>
+        <ul>
+          <li><b>You.</b> Your address book is private to your account.</li>
+          <li><b>People you share with.</b> If you share your address book, they can see it (and change it, if you allow that) until you stop sharing. If you send someone households, they get their own copy to keep.</li>
+          <li><b>The people you email.</b> They see the email you send them, with your name and email address as the sender, and pictures in your design.</li>
+          <li><b>The app's administrators</b> can see the list of accounts (email, name, when joined and last signed in) to invite, disable or remove accounts. They don't browse address books, and would only look at your data if you ask for help with it or it's needed to keep the service running.</li>
+          <li><b>The law.</b> We'd disclose information only if required to by law.</li>
+        </ul>
+        <p>Pictures you add to designs are stored at web addresses that are hard to guess, because your guests' mail apps need to load them; anyone with the exact address can view the picture.</p>
+      </section>
+
+      <section id="services">
+        <h2>Services we use</h2>
+        <p>The app runs on Amazon Web Services in the United States (Ohio region). These services handle your information on our behalf, only to provide their part of the app:</p>
+        <ul>
+          <li><b>Amazon Cognito</b> for accounts and sign-in.</li>
+          <li><b>Amazon DynamoDB and S3</b> to store your data and pictures, encrypted at rest.</li>
+          <li><b>Amazon Simple Email Service</b> to deliver the emails you send and account emails.</li>
+          <li><b>Amazon CloudFront, API Gateway and Lambda</b> to serve the app. The app's server logs (such as times and errors) are kept for 30 days to fix problems.</li>
+          <li><b>Google Address Validation</b>, only when you check an address: the address is sent to Google to correct it and add the ZIP+4.</li>
+          <li><b>Google Fonts</b>, which provides the app's typefaces; your browser loads them from Google, which sees your IP address.</li>
+        </ul>
+      </section>
+
+      <section id="browser">
+        <h2>Your browser</h2>
+        <p>The app uses no cookies. It keeps a few things in your browser's local storage so it works smoothly: your sign-in session, the email you sign in with (if you choose to have it remembered), which address book you were viewing, your last print choices and template theme, and the time of your last activity (for the automatic sign-out). Signing out removes your session; clearing your browser's site data removes the rest.</p>
+      </section>
+
+      <section id="keeping">
+        <h2>How long it's kept</h2>
+        <p>Your account and address book are kept until your account is deleted. Deleting an account permanently removes its address book, occasions, designs, Trash and photo. Items in the Trash are removed after 30 days, address update links expire after 30 days, and RSVP records are removed after about 400 days. Copies in backups and logs age out on their own schedule.</p>
+      </section>
+
+      <section id="security">
+        <h2>Security</h2>
+        <p>Everything travels over encrypted connections (HTTPS), data is encrypted where it's stored, and each request is checked against your account so you only reach your own address book and the books shared with you. The app signs you out after a period of inactivity. No system is perfectly secure, so use a strong password you don't use elsewhere.</p>
+      </section>
+
+      <section id="choices">
+        <h2>Your choices</h2>
+        <ul>
+          <li><b>See and change</b> your information any time in the app; export your address book as a spreadsheet (.csv) or contacts (.vcf).</li>
+          <li><b>Delete</b> households and occasions yourself; they're removed for good from the Trash after 30 days, or right away if you empty it.</li>
+          <li><b>Stop sharing</b> your book with anyone, any time.</li>
+          <li><b>Delete your account</b> by emailing us from your account's address; we'll remove it and everything in it.</li>
+        </ul>
+      </section>
+
+      <section id="children">
+        <h2>Children</h2>
+        <p>The app is for adults and isn't meant for anyone under 13. We don't knowingly keep accounts for children.</p>
+      </section>
+
+      <section id="changes">
+        <h2>Changes</h2>
+        <p>If this page changes, the date at the top changes too. For important changes, we'll let account holders know by email.</p>
+      </section>
+
+      <section id="contact">
+        <h2>Contact</h2>
+        <p>Questions, requests or concerns about your privacy: <a href="mailto:support@occasions-address-book.com">support@occasions-address-book.com</a>.</p>
+      </section>
+    </main>
+  </div>
+</div>
+</body>
+</html>
