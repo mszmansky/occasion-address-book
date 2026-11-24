@@ -1213,7 +1213,7 @@ fieldset[hidden] { display: none; }
 .admin-invite input { width: 260px; max-width: 100%; }
 .admin-table td { vertical-align: middle; }
 .admin-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
-.admin-del:hover, .admin-del:focus-visible { color: var(--overdue); }
+
 .admin-pill { margin-left: 6px; font-size: 11px; vertical-align: 1px; }
 .admin-pill::before { display: none; }
 @media (max-width: 640px) {
@@ -1263,8 +1263,8 @@ input[type=password]::-ms-reveal, input[type=password]::-ms-clear { display: non
 .design-namebar input { max-width: 320px; font-weight: 400; }
 .tpl-card { position: relative; }
 .tpl-current { position: absolute; top: 4px; left: 4px; z-index: 1; font-size: 11px; font-weight: 600; color: #fff; background: var(--accent); border-radius: 4px; padding: 1px 6px; }
-.tpl-del { position: absolute; top: 2px; right: 2px; z-index: 1; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--ink-3); background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
-.tpl-del:hover, .tpl-del:focus-visible { color: var(--overdue); }
+.tpl-del { position: absolute; top: 2px; right: 2px; z-index: 1; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--delete); background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.tpl-del:hover, .tpl-del:focus-visible { box-shadow: 0 0 0 1.5px var(--delete); }
 
 /* ---------- Email Designer: rows of columns ---------- */
 .design-canvas.rows { padding: 24px 24px 24px 40px; }
@@ -1339,3 +1339,9 @@ body.rb-dragging-now, body.rb-dragging-now * { cursor: grabbing !important; user
 .fb-guide-h { left: 0; right: 0; height: 1px; }
 .tb-orient[aria-pressed=true] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .preview-page.free { max-width: 100%; }
+
+/* Delete buttons: a red trash can */
+:root { --delete: #dc2626; }
+@media (prefers-color-scheme: dark) { :root { --delete: #f87171; } }
+.del-btn, .btn.del-btn, .icon-btn.del-btn { color: var(--delete); }
+.btn.del-btn:hover, .icon-btn.del-btn:hover { border-color: var(--delete); background: color-mix(in srgb, var(--delete) 10%, var(--surface)); }

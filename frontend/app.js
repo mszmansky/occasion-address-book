@@ -88,6 +88,8 @@ const allGroups = () => [...new Set(state.households.flatMap((h) => h.groups ?? 
 const peopleNames = (h) => (h.members ?? []).map((m) => [m.firstName, m.lastName].filter(Boolean).join(' ')).join(', ');
 const PENCIL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10.6 2.6a1.6 1.6 0 0 1 2.3 0l.5.5a1.6 1.6 0 0 1 0 2.3L6 12.8l-3.3.8.8-3.3 7.1-7.7zM9.5 3.8l2.7 2.7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/></svg>';
 const MAIL = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="m2.5 4.5 5.5 4 5.5-4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+// A bigger trash can for the Delete buttons (red: .del-btn).
+const TRASH_BTN = '<svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.75c0-.4.3-.75.75-.75h1.5c.4 0 .75.35.75.75V4M4 4l.6 9.1c.05.5.45.9 1 .9h4.8c.55 0 .95-.4 1-.9L12 4M6.75 6.75v4.5M9.25 6.75v4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const TRASH = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.75c0-.4.3-.75.75-.75h1.5c.4 0 .75.35.75.75V4M4 4l.6 9.1c.05.5.45.9 1 .9h4.8c.55 0 .95-.4 1-.9L12 4M6.75 6.75v4.5M9.25 6.75v4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const BOOK_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 2.75A1.75 1.75 0 0 1 4.75 1h7.5c.41 0 .75.34.75.75v10.5a.75.75 0 0 1-.75.75H4.75a.75.75 0 0 0 0 1.5H13M3 2.75v10.5A1.75 1.75 0 0 0 4.75 15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 4.5h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
 const REQUIRED = '<span class="req" aria-hidden="true" title="Required">*</span>';
@@ -792,7 +794,6 @@ function householdCard(h) {
 
 // ---------- Trash: deleted households and occasions, kept 30 days ----------
 const TRASH_DAYS = 30;
-const X_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 const daysLeft = (iso) => Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000));
 
 async function trashModal() {
@@ -807,7 +808,7 @@ async function trashModal() {
         <div class="small muted">${[t.detail, `Deleted ${fmtDate(t.deletedAt)}${t.deletedBy && t.deletedBy !== state.session?.user?.email ? ` by ${esc(t.deletedBy)}` : ''}`].filter(Boolean).map(esc).join(' · ')}</div></div>
       <span class="small ${left <= 3 ? 'trash-soon' : 'muted'}">${left === 0 ? 'Deleted today' : `${plural(left, 'day')} left`}</span>
       ${canEdit() ? `<span class="trash-actions"><button type="button" class="btn sm" data-action="trash-restore" data-type="${t.type}" data-id="${esc(t.id)}" data-name="${esc(t.name)}">Restore</button>
-        <button type="button" class="btn sm ghost danger" data-action="trash-forever" data-type="${t.type}" data-id="${esc(t.id)}" data-name="${esc(t.name)}" title="Delete forever" aria-label="Delete ${esc(t.name)} forever">${TRASH}</button></span>` : ''}
+        <button type="button" class="btn sm ghost del-btn" data-action="trash-forever" data-type="${t.type}" data-id="${esc(t.id)}" data-name="${esc(t.name)}" title="Delete forever" aria-label="Delete ${esc(t.name)} forever">${TRASH}</button></span>` : ''}
     </div>`;
   };
   openModal('Trash', items.length
@@ -1247,7 +1248,7 @@ function householdModal(h) {
     base: isNew ? '' : h.updatedAt ?? '',
     wide: true,
     head: isNew ? '' : shareMenu(h),
-    foot: `<div class="left-actions">${isNew ? '' : `<button type="button" class="btn danger" data-action="delete-household" data-id="${esc(h.id)}">Delete</button>
+    foot: `<div class="left-actions">${isNew ? '' : `<button type="button" class="btn icon-only del-btn" data-action="delete-household" data-id="${esc(h.id)}" title="Delete household" aria-label="Delete household">${TRASH_BTN}</button>
       <button type="button" class="btn" data-action="request-address" data-id="${esc(h.id)}" ${allEmails(h).length ? '' : 'disabled title="Add an email address first"'}>${MAIL} Confirm address</button>`}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button>${NEXT_BTN}<button class="btn primary">Save</button></div>`,
   });
@@ -1779,7 +1780,7 @@ function occasionModal(o) {
     form: isNew ? 'occasion-new' : 'occasion-edit',
     base: isNew ? '' : o.updatedAt ?? '',
     wide: true,
-    foot: `<div class="left-actions">${isNew ? '' : '<button type="button" class="btn danger" data-action="delete-occasion">Delete</button>'}</div>
+    foot: `<div class="left-actions">${isNew ? '' : `<button type="button" class="btn icon-only del-btn" data-action="delete-occasion" title="Delete occasion" aria-label="Delete occasion">${TRASH_BTN}</button>`}</div>
       <div class="right"><button type="button" class="btn" data-action="close">Cancel</button><button class="btn primary">${isNew ? 'Create' : 'Save'}</button></div>`,
   });
   loadAllFonts(); // the template previews use the design fonts
@@ -1834,7 +1835,7 @@ const currentKey = (o) => (o?.design?.customId ? `${CUSTOM}:${o.design.customId}
 function designCard(id, name, design, values, { current = false, removable = false } = {}) {
   return `<div class="tpl-card" role="button" tabindex="0" aria-pressed="false" data-action="use-template" data-id="${esc(id)}" title="Use ${esc(name)}">
       ${current ? '<span class="tpl-current">Current</span>' : ''}
-      ${removable ? `<span class="tpl-del" role="button" tabindex="0" data-action="delete-custom-design" data-id="${esc(id.slice(CUSTOM.length + 1))}" data-name="${esc(name)}" title="Delete ${esc(name)}" aria-label="Delete ${esc(name)}">${X_ICON}</span>` : ''}
+      ${removable ? `<span class="tpl-del" role="button" tabindex="0" data-action="delete-custom-design" data-id="${esc(id.slice(CUSTOM.length + 1))}" data-name="${esc(name)}" title="Delete ${esc(name)}" aria-label="Delete ${esc(name)}">${TRASH}</span>` : ''}
       <span class="tpl-prev"><span class="tpl-scale">${renderDesign(design, values, { padding: '34px' })}</span></span>
       <span class="tpl-name">${esc(name)}</span></div>`;
 }
@@ -3225,7 +3226,7 @@ function renderAdmin() {
       <td class="row-actions"><div class="admin-actions">${self ? '' : `
         ${u.status === 'invited' && u.enabled ? `<button type="button" class="btn sm" data-action="admin-resend" data-id="${esc(u.id)}" data-email="${esc(u.email)}" title="Email ${esc(u.email)} a new invitation">Resend invite</button>` : ''}
         <button type="button" class="btn sm" data-action="admin-onoff" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-on="${u.enabled ? '0' : '1'}" title="${u.enabled ? `Sign ${esc(u.email)} out and block sign-in` : `Let ${esc(u.email)} sign in again`}">${u.enabled ? 'Disable' : 'Enable'}</button>
-        <button type="button" class="icon-btn admin-del" data-action="admin-delete" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-name="${who}" title="Delete ${esc(u.email)}'s account" aria-label="Delete ${esc(u.email)}'s account">${X_ICON}</button>`}</div></td>
+        <button type="button" class="icon-btn admin-del del-btn" data-action="admin-delete" data-id="${esc(u.id)}" data-email="${esc(u.email)}" data-name="${who}" title="Delete ${esc(u.email)}'s account" aria-label="Delete ${esc(u.email)}'s account">${TRASH_BTN}</button>`}</div></td>
     </tr>`;
   }).join('');
   const tabs = `<div class="tabs admin-tabs" role="tablist">${[['accounts', 'Accounts'], ['settings', 'Settings']].map(([id, label]) => `
