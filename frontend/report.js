@@ -96,7 +96,8 @@ export function paginateReport(doc) {
   const src = doc.getElementById('report-src');
   if (!src) return;
   const IN = 96;
-  const room = (8.5 - 0.45 - 0.75) * IN; // the page, less the top margin and the footer
+  const pageHeight = src.dataset.page === 'portrait' ? 11 : 8.5; // Letter, upright or sideways
+  const room = (pageHeight - 0.45 - 0.75) * IN; // the page, less the top margin and the footer
   const table = src.querySelector('table');
   const header = src.querySelector('header');
   const rows = [...table.tBodies[0].rows];
@@ -155,14 +156,19 @@ export function addressChecklist(items, { title = 'Addresses', subtitle = [], pr
     </tr>`;
   }).join('');
   const sub = [`${items.length} ${items.length === 1 ? 'household' : 'households'}`, ...subtitle.map(esc), `Printed ${esc(day(printed.toISOString()))}`].join(' · ');
-  const body = `<div id="report-src" data-title="${esc(title)}" data-year="${printed.getFullYear()}" data-site="${esc(site)}"><header>${logo ? `<img class="logo" src="${esc(logo)}" alt="">` : ''}<div><div class="app">Occasions Address Book</div><h1>${esc(title)}</h1><p>${sub}</p></div></header>
+  // Upright Letter: browsers that don't follow a page's own size (Safari) print upright anyway, and a
+  // sideways page then comes out shrunk onto half the sheet.
+  const body = `<div id="report-src" data-page="portrait" data-title="${esc(title)}" data-year="${printed.getFullYear()}" data-site="${esc(site)}"><header>${logo ? `<img class="logo" src="${esc(logo)}" alt="">` : ''}<div><div class="app">Occasions Address Book</div><h1>${esc(title)}</h1><p>${sub}</p></div></header>
     <table class="checklist">
       <colgroup><col class="c-x"><col class="c-n"><col class="c-e"><col class="c-pp"><col class="c-m"></colgroup>
       <thead><tr><th>Done</th><th>#</th><th>Name and address (as on the envelope)</th><th>People</th><th>Mailed</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="5" class="muted">Nobody to list.</td></tr>'}</tbody>
     </table></div>`;
   const css = `${addressBookReport([]).css}
-.c-x { width: 0.5in; } .c-n { width: 0.35in; } .c-e { width: 4.4in; } .c-pp { width: auto; } .c-m { width: 1.2in; }
+@page { size: 8.5in 11in; margin: 0; }
+#report-src, .sheet { width: 8.5in; }
+.sheet { height: 11in; }
+.c-x { width: 0.5in; } .c-n { width: 0.35in; } .c-e { width: 3.3in; } .c-pp { width: auto; } .c-m { width: 1.15in; }
 .checklist td { padding-top: 7pt; padding-bottom: 7pt; }
 .checklist .env { font-size: 10.5pt; line-height: 1.4; }
 .checklist .env .name { font-size: 10.5pt; }
