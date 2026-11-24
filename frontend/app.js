@@ -252,7 +252,7 @@ function renderLanding() {
     <section class="ld-hero">
       <div class="ld-hero-text">
         <h1>Every card and invitation, addressed and on its way.</h1>
-        <p class="ld-lede">Keep the addresses of everyone you send to in one place, choose who gets what for each occasion, then print labels and envelopes or email a designed invitation.</p>
+        <p class="ld-lede">Keep all your addresses in one place, choose who you would like to include for each occasion, then print labels and envelopes or email a designed invitation.</p>
         <div class="ld-cta"><button class="btn primary lg" data-action="show-signin">Sign in</button>
           <span class="ld-note">Accounts are by invitation. Your invitation email has a temporary password.</span></div>
       </div>
