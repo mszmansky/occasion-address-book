@@ -2373,7 +2373,7 @@ async function runPrint(form) {
       subtitle: [f.who.selectedOptions[0]?.textContent.replace(/\s*\(\d+\)$/, '') ?? '', f.order.value === 'zip' ? 'By ZIP code' : 'By last name'].filter(Boolean),
       logo: new URL('icon-192.png', window.location.href).href, site: window.location.host,
     });
-    lastPrinted = households.map((h) => h.id);
+    lastPrinted = []; // a report to double-check the list, not envelopes: nothing to mark mailed
     showAfterPrint('Opened in a new tab with the print window.');
     await printPages(win, { title, css: pages.css, body: pages.body, prepare: paginateReport });
     return undefined;
