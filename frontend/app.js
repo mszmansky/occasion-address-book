@@ -269,7 +269,7 @@ function renderLanding() {
     <section class="ld-features" aria-label="What it does">
       <article class="ld-feature">
         <div class="ld-text"><h2>One address book for the whole family</h2>
-          <p>Each household is one envelope: its greetings, mailing address, the people in it with their email and phone, groups like Family or Neighbors, and notes. Bring in your old list from a spreadsheet, and search or filter it by group, city, state or ZIP.</p></div>
+          <p>Each household is one entry in the address book including its greetings, mailing address, the people in it with their email and phone, groups like Family or Neighbors, and notes. Bring in your old list from a spreadsheet, and search or filter it by group, city, state or ZIP.</p></div>
         <div class="ld-visual ld-hh">
           <div class="mini-card"><span class="mini-verified" title="Address verified"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.2 10.3l2.5 2.5 5.1-5.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><b>The Smith Family</b><span>Mr. and Mrs. John Smith</span><span>123 Maple Street<br>Willow Bend, MI 49002</span><span class="mini-chips"><i>Family</i><i>Christmas</i></span></div>
           <div class="mini-card"><b>The Jones Family</b><span>Bob and Carol</span><span>9 Elm Court<br>Cedar Hollow, MI 49003</span><span class="mini-chips"><i>Neighbors</i></span></div>
