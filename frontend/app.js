@@ -285,7 +285,7 @@ function renderLanding() {
       </article>
       <article class="ld-feature">
         <div class="ld-text"><h2>Labels and envelopes, ready to print</h2>
-          <p>Tick who an occasion is for and print Avery 5160 / 8160 address labels, or A2 and A7 envelopes with your return address, with the greeting you choose on the first line. Start partway through a used label sheet, then mark everyone as mailed.</p></div>
+          <p>Choose who is part of an occasion and print various address labels, or envelope sizes with your return address. Start partway through a used label sheet so you don't waste labels. Also, mark everyone as mailed in case you add more households to the occasion later.</p></div>
         <div class="ld-visual"><div class="label-sheet">${Array.from({ length: 15 }, (_, i) => `<span class="lbl${i < 5 ? ' used' : ''}">${i < 5 ? '' : ['The Smith Family<br>123 Maple Street<br>Willow Bend, MI 49002', 'The Jones Family<br>9 Elm Court<br>Cedar Hollow, MI 49003', 'Grandma Rose<br>40 Lake Drive<br>Juniper Ridge, MI 49004'][i % 3]}</span>`).join('')}</div></div>
       </article>
       <article class="ld-feature">
