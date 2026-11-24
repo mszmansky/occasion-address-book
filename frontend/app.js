@@ -310,7 +310,7 @@ function renderLanding() {
     </section>
 
     <section class="ld-more" aria-label="Also">
-      <div><h3>Share with your family</h3><p>Let your spouse edit the same address book, or someone else just look. Everyone keeps their own book too.</p></div>
+      <div><h3>Share your address book and occasions with others</h3><p>You choose who edits and who views and then everyone keeps their own book too.</p></div>
       <div><h3>The right person, the right greeting</h3><p>Email Mary alone with an invitation that still reads "Dear John and Mary".</p></div>
       <div><h3>Nothing lost by accident</h3><p>Deleted households and occasions wait in the Trash for 30 days.</p></div>
       <div><h3>Private by default</h3><p>Sign-in with an optional authenticator code, and automatic sign-out after 30 minutes away.</p></div>
